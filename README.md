@@ -1,37 +1,20 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 미니지구 시뮬레이션 (mini-earth-sim)
 
-## Getting Started
+아크릴 상자(해양·습지·도시) 모형에 아두이노/ESP32 센서를 연동하고, 실측·시나리오 데이터를 3D 미니 지구와 실시간 그래프로 시각화하는 프로젝트입니다.
 
-First, run the development server:
+## 구성
+
+- **`Critical_Earth_simulator.html`** — Three.js 기반 3D 시뮬레이터. SSP 기후 시나리오 예측 그래프, 복사강제력 물리식(ΔF=5.35·ln(C/280)) 반영, 파도·연기·응결·빙하 파티클 애니메이션 포함.
+- **`app/`** — 위 시뮬레이터를 Next.js 대시보드 형태로 재구성한 웹앱 (`app/page.tsx`).
+- **`extract_nc.py`** — SSP 시나리오별 기후 모델 `.nc` 파일에서 대한민국 격자를 추출해 연도별 CSV(기온·강수량·CO₂ 농도)로 변환하는 스크립트.
+- **`mini_earth_plan.md`** — 아크릴 상자 + 아두이노 센서 + ESP32 실측값을 시뮬레이터에 연동하기 위한 구현 계획서 (데이터 흐름, 입력 소스 추상화 설계 등).
+- **`sync.bat`** — 변경사항을 GitHub에 올리는 동기화 스크립트 (더블클릭 실행).
+
+## 개발 환경 실행 (Next.js 대시보드)
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# mini-earth-sim
+[http://localhost:3000](http://localhost:3000) 에서 확인.
