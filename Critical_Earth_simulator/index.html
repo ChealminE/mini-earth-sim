@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>미니 지구 모델 - 통합 시뮬레이션</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="gl-container">
+    <canvas id="gl"></canvas>
+    <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
+  </div>
+
+  <div id="graph-panel">
+    <h2>이산화탄소와 기후 · 실태와 예측</h2>
+    <div class="sub">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-btn-current" onclick="switchTab('current')">현재 실태</button>
+      <button class="tab-btn" id="tab-btn-future" onclick="switchTab('future')">미래 예측</button>
+      <button class="tab-btn" id="tab-btn-live" onclick="switchTab('live')">실시간 실험</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-current">
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">CO₂ 농도 (2023)</div><div class="value">418.2 ppm</div><div class="delta">1988년 대비 +68.2ppm</div></div>
+        <div class="stat-box"><div class="label">기온편차 (2023)</div><div class="value temp">+0.84°C</div><div class="delta">1988년 대비 +1.21°C</div></div>
+        <div class="stat-box"><div class="label">해양 pH (2023)</div><div class="value ph">8.040</div><div class="delta">1989년 대비 -0.069</div></div>
+        <div class="stat-box"><div class="label">화석연료배출 (2023)</div><div class="value">38,094백만톤</div><div class="delta">1988년 대비 +16,175백만톤</div></div>
+      </div>
+      <div class="chart-block"><div class="chart-title">CO₂농도 추이</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">기온편차 추이</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">해양pH 추이</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">화석연료배출량 추이</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+    </div>
+
+    <div class="tab-panel" id="tab-future">
+      <div class="co2-row">
+        <span class="name">CO₂ 농도 (ppm)</span>
+        <input type="range" min="280" max="600" step="1" value="418" id="co2slider">
+        <span class="value" id="co2out">418</span>
+      </div>
+      <p class="hint">실측 범위: 350~418ppm (1988~2023). 그 밖은 회귀식 기반 추정치예요. 기후 시스템은 임계점을 지나면 선형 관계가 깨질 수 있어 극단값 예측은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬의 대기·해수 상태에도 실시간으로 반영됩니다.</p>
+
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.62°C</div></div>
+        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.049</div></div>
+      </div>
+
+      <div class="charts-2col">
+        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (r=0.925)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (r=-0.972)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+      </div>
+
+      <p class="reg-note">회귀식: 기온편차 = 0.01608 × CO2농도 − 6.101 (R²=0.855) · 해양pH = −0.000942 × CO2농도 + 8.441 (R²=0.946)</p>
+    </div>
+
+    <div class="tab-panel" id="tab-live">
+      <div class="live-status"><span class="live-dot" id="liveDot"></span><span id="liveStatusText">연결 대기중</span></div>
+      <div id="liveGraphs"></div>
+      <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
+      <div class="sensor-grid" id="sensorGrid">
+        <div class="empty-hint">ESP32/우노 데이터 수신 대기중…<br>server.py가 실행 중이어야 연결됩니다.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/common.js"></script>
+<script src="js/tab-current.js"></script>
+<script src="js/tab-future.js"></script>
+<script src="js/tab-live.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
