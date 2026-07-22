@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>미니 지구 모델 - 통합 시뮬레이션</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif;
+    background: #14171c; }
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    grid-template-rows: 1fr;
+    height: 100vh;
+  }
+  #gl-container { grid-column: 1; grid-row: 1; position: relative; background: radial-gradient(ellipse at 50% 35%, #f4f4f2 0%, #dcdcd8 100%); }
+  canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hint {
+    position: absolute; top: 14px; left: 14px; color: #cfd3da; font-size: 12px;
+    background: rgba(0,0,0,0.35); padding: 8px 12px; border-radius: 8px; line-height: 1.6;
+  }
+
+  #graph-panel {
+    grid-column: 2; grid-row: 1; background: #1b1e24; color: #e7e9ec;
+    padding: 18px 18px 16px; overflow-y: auto; border-left: 1px solid #2a2e35;
+  }
+  #graph-panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  #graph-panel .sub { font-size: 11px; color: #9198a3; margin-bottom: 14px; line-height: 1.5; }
+
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid #2a2e35; margin-bottom: 16px; }
+  .tab-btn { background: none; border: none; font-size: 13px; font-weight: 500; color: #7d838d;
+    padding: 9px 4px; margin-right: 16px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: #e7e9ec; border-bottom-color: #85B7EB; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .stat-box { background: #23272f; border-radius: 10px; padding: 10px 12px; }
+  .stat-box .label { font-size: 10px; color: #9198a3; margin-bottom: 4px; }
+  .stat-box .value { font-size: 16px; font-weight: 600; }
+  .stat-box .value.temp { color: #f0997b; }
+  .stat-box .value.ph { color: #5DCAA5; }
+  .stat-box .delta { font-size: 10px; color: #7d838d; margin: 3px 0 0; }
+
+  .chart-block { margin-bottom: 18px; }
+  .chart-block .chart-title { font-size: 11px; color: #9198a3; margin: 0 0 6px; }
+  .chart-wrap { position: relative; width: 100%; height: 150px; }
+  .charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .charts-2col .chart-wrap { height: 130px; }
+
+  .co2-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
+  .co2-row .name { font-size: 11px; color: #9198a3; white-space: nowrap; }
+  .co2-row input[type=range] { flex: 1; }
+  .co2-row .value { font-size: 13px; font-weight: 600; min-width: 46px; text-align: right; }
+  .hint { font-size: 10.5px; color: #7d838d; line-height: 1.5; margin: 0 0 16px; }
+  .reg-note { font-size: 10.5px; color: #b08a5a; background: rgba(232,162,60,0.1); border-radius: 8px;
+    padding: 10px 12px; margin-top: 4px; line-height: 1.6; }
+
+  .live-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #9198a3; margin-bottom: 14px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #E24B4A; transition: background .2s; }
+  .live-dot.on { background: #5DCAA5; }
+  .var-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .var-row select { flex: 1; background: #23272f; border: 1px solid #2a2e35; color: #e7e9ec;
+    font-size: 11px; padding: 6px 8px; border-radius: 6px; }
+  .graph-card { background: #1f2329; border: 1px solid #2a2e35; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+  .graph-card .var-row { margin-bottom: 8px; }
+  .graph-card .remove-btn { background: none; border: none; color: #7d838d; font-size: 14px;
+    cursor: pointer; padding: 0 4px; line-height: 1; }
+  .graph-card .remove-btn:hover { color: #E24B4A; }
+  .graph-card .var-row select { flex: 1; }
+  .add-graph-btn { width: 100%; background: #23272f; border: 1px dashed #3a3f47; color: #9198a3;
+    font-size: 11px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 16px; }
+  .add-graph-btn:hover { color: #e7e9ec; border-color: #5DCAA5; }
+  .add-graph-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .sensor-card { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5;
+    border-radius: 8px; padding: 10px 12px; }
+  .sensor-card .key { font-size: 10px; color: #9198a3; text-transform: uppercase; letter-spacing: .04em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sensor-card .val { font-size: 18px; font-weight: 600; margin-top: 4px; color: #e7e9ec; }
+  .sensor-card .updated { font-size: 9.5px; color: #7d838d; margin-top: 2px; }
+  .empty-hint { font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="gl-container">
+    <canvas id="gl"></canvas>
+    <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
+  </div>
+
+  <div id="graph-panel">
+    <h2>이산화탄소와 기후 · 실태와 예측</h2>
+    <div class="sub">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-btn-current" onclick="switchTab('current')">현재 실태</button>
+      <button class="tab-btn" id="tab-btn-future" onclick="switchTab('future')">미래 예측</button>
+      <button class="tab-btn" id="tab-btn-live" onclick="switchTab('live')">실시간 실험</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-current">
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">CO₂ 농도 (2023)</div><div class="value">418.2 ppm</div><div class="delta">1988년 대비 +68.2ppm</div></div>
+        <div class="stat-box"><div class="label">기온편차 (2023)</div><div class="value temp">+0.84°C</div><div class="delta">1988년 대비 +1.21°C</div></div>
+        <div class="stat-box"><div class="label">해양 pH (2023)</div><div class="value ph">8.040</div><div class="delta">1989년 대비 -0.069</div></div>
+        <div class="stat-box"><div class="label">화석연료배출 (2023)</div><div class="value">38,094백만톤</div><div class="delta">1988년 대비 +16,175백만톤</div></div>
+      </div>
+      <div class="chart-block"><div class="chart-title">CO₂농도 추이</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">기온편차 추이</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">해양pH 추이</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+      <div class="chart-block"><div class="chart-title">화석연료배출량 추이</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+    </div>
+
+    <div class="tab-panel" id="tab-future">
+      <div class="co2-row">
+        <span class="name">CO₂ 농도 (ppm)</span>
+        <input type="range" min="280" max="600" step="1" value="418" id="co2slider">
+        <span class="value" id="co2out">418</span>
+      </div>
+      <p class="hint">실측 범위: 350~418ppm (1988~2023). 그 밖은 회귀식 기반 추정치예요. 기후 시스템은 임계점을 지나면 선형 관계가 깨질 수 있어 극단값 예측은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬의 대기·해수 상태에도 실시간으로 반영됩니다.</p>
+
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.62°C</div></div>
+        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.049</div></div>
+      </div>
+
+      <div class="charts-2col">
+        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (r=0.925)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (r=-0.972)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+      </div>
+
+      <p class="reg-note">회귀식: 기온편차 = 0.01608 × CO2농도 − 6.101 (R²=0.855) · 해양pH = −0.000942 × CO2농도 + 8.441 (R²=0.946)</p>
+    </div>
+
+    <div class="tab-panel" id="tab-live">
+      <div class="live-status"><span class="live-dot" id="liveDot"></span><span id="liveStatusText">연결 대기중</span></div>
+      <div id="liveGraphs"></div>
+      <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
+      <div class="sensor-grid" id="sensorGrid">
+        <div class="empty-hint">ESP32/우노 데이터 수신 대기중…<br>server.py가 실행 중이어야 연결됩니다.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  // ================= 3D 씬 기본 =================
+  const glContainer = document.getElementById('gl-container');
+  const glCanvas = document.getElementById('gl');
+  const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  function fitRenderer() {
+    const w = glContainer.clientWidth, h = glContainer.clientHeight;
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  let camAngleY = -0.5, camAngleX = 0.5, camDist = 8.2;
+  let isDragging = false, prevX = 0, prevY = 0;
+  function updateCamera() {
+    camera.position.x = camDist * Math.sin(camAngleY) * Math.cos(camAngleX);
+    camera.position.z = camDist * Math.cos(camAngleY) * Math.cos(camAngleX);
+    camera.position.y = 0.55 + camDist * Math.sin(camAngleX);
+    camera.lookAt(0, 0.3, 0);
+  }
+  glCanvas.addEventListener('pointerdown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+  window.addEventListener('pointerup', () => isDragging = false);
+  window.addEventListener('pointermove', e => {
+    if (!isDragging) return;
+    camAngleY -= (e.clientX - prevX) * 0.006;
+    camAngleX = Math.max(0.12, Math.min(1.15, camAngleX + (e.clientY - prevY) * 0.005));
+    prevX = e.clientX; prevY = e.clientY;
+    updateCamera();
+  });
+  glCanvas.addEventListener('wheel', e => {
+    camDist = Math.max(5, Math.min(16, camDist + e.deltaY * 0.01));
+    updateCamera();
+  });
+  updateCamera();
+
+  // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
+  function buildAcrylicScene() {
+  const scene = new THREE.Scene();
+  const sun = new THREE.SpotLight(0xfff6e0, 3.2, 20, Math.PI / 5, 0.35, 1.2);
+  sun.position.set(3.4, 3.6, 2.2);
+  sun.target.position.set(0.6, 0.3, 0.3);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0015;
+  scene.add(sun, sun.target);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  const rim = new THREE.DirectionalLight(0xdfe8f5, 0.35);
+  rim.position.set(-5, 3, -4);
+  scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.45));
+
+  // 집게형 조명 스탠드 (사진 속 실제 조명 모형)
+  const lampGroup = new THREE.Group();
+  lampGroup.position.set(3.6, 0, 2.0);
+  scene.add(lampGroup);
+  const lampArmMat = new THREE.MeshStandardMaterial({ color: 0x2a2a28, roughness: 0.5, metalness: 0.4 });
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.05, 16), lampArmMat);
+  lampBase.position.y = 2.5;
+  lampGroup.add(lampBase);
+  const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.2, 8), lampArmMat);
+  lampArm.position.set(-0.2, 2.05, -0.1);
+  lampArm.rotation.z = Math.PI / 3.4;
+  lampGroup.add(lampArm);
+  const lampHead = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, 0.22, 20, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide })
+  );
+  lampHead.position.set(-0.72, 1.42, -0.42);
+  lampHead.rotation.x = Math.PI * 0.62;
+  lampGroup.add(lampHead);
+  const lampBulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfff4d0 })
+  );
+  lampBulb.position.set(-0.72, 1.36, -0.42);
+  lampGroup.add(lampBulb);
+
+  const table = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.6, 3.8, 0.15, 64),
+    new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.9 })
+  );
+  table.position.y = -0.08;
+  table.receiveShadow = true;
+  scene.add(table);
+
+  const BOX_W = 6, BOX_D = 3, BOX_H = 2.3;
+  const TERRAIN_TOP = BOX_H * 0.2; // 지형은 박스 높이의 1/5까지만
+  const OCEAN_BASE = TERRAIN_TOP * 0.38;   // 바다: 모래바닥 (그 위를 물이 채움)
+  const WETLAND_BASE = TERRAIN_TOP * 0.78; // 습지·숲: 지표면
+  const CITY_BASE = TERRAIN_TOP * 0.96;    // 도시: 가장 높음, 거의 지형 상한까지
+  const ZONE_W = BOX_W / 3;
+  const box = new THREE.Group();
+  scene.add(box);
+
+  const acrylicMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.06,
+    roughness: 0.02, transmission: 0.97, thickness: 0.05,
+    side: THREE.DoubleSide, clearcoat: 1, clearcoatRoughness: 0.05
+  });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+  function addPanel(w, h, pos, rot) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), acrylicMat);
+    p.position.copy(pos);
+    if (rot) p.rotation.set(rot.x || 0, rot.y || 0, rot.z || 0);
+    box.add(p);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(p.geometry), edgeMat);
+    edges.position.copy(pos);
+    if (rot) edges.rotation.set(rot.x || 0, rot.y || 0, rot.z || 0);
+    box.add(edges);
+  }
+  addPanel(BOX_W, BOX_H, new THREE.Vector3(0, BOX_H / 2, -BOX_D / 2));
+  addPanel(BOX_D, BOX_H, new THREE.Vector3(-BOX_W / 2, BOX_H / 2, 0), { y: Math.PI / 2 });
+  addPanel(BOX_D, BOX_H, new THREE.Vector3(BOX_W / 2, BOX_H / 2, 0), { y: Math.PI / 2 });
+  addPanel(BOX_W, BOX_H, new THREE.Vector3(0, BOX_H / 2, BOX_D / 2));
+
+  // ================= 대기층 디자인 =================
+  // 1) 온실효과 랩(뚜껑): CO2 농도에 따라 맑은 하늘색 → 뿌연 갈황색으로 색이 변함
+  const CLEAR_SKY = new THREE.Color(0xcfe8ff);
+  const HAZY_SKY = new THREE.Color(0xd9a86c);
+  const lidMat = new THREE.MeshPhysicalMaterial({ color: CLEAR_SKY.clone(), transparent: true, opacity: 0.15, roughness: 0.1, transmission: 0.9, side: THREE.DoubleSide });
+  const lid = new THREE.Mesh(new THREE.PlaneGeometry(BOX_W, BOX_D, 16, 8), lidMat);
+  lid.rotation.x = -Math.PI / 2;
+  lid.position.y = BOX_H - 0.03;
+  const lidPos = lid.geometry.attributes.position;
+  for (let i = 0; i < lidPos.count; i++) {
+    const x = lidPos.getX(i), y = lidPos.getY(i);
+    lidPos.setZ(i, -0.05 * Math.exp(-(x * x + y * y) / 2.5));
+  }
+  lidPos.needsUpdate = true;
+  lid.geometry.computeVertexNormals();
+  box.add(lid);
+
+  // 2) 대기 중 떠다니는 CO2 분자 입자 - 지형(1/5) 위 넓은 대기 공간(4/5)에 퍼져서 떠다님
+  const atmoCount = 380;
+  const atmoGeo = new THREE.BufferGeometry();
+  const atmoPos = new Float32Array(atmoCount * 3);
+  const atmoSeed = new Float32Array(atmoCount * 3);
+  for (let i = 0; i < atmoCount; i++) {
+    const x = (Math.random() - 0.5) * (BOX_W - 0.3);
+    const y = TERRAIN_TOP + 0.05 + Math.random() * (BOX_H - TERRAIN_TOP - 0.15);
+    const z = (Math.random() - 0.5) * (BOX_D - 0.3);
+    atmoPos[i * 3] = x; atmoPos[i * 3 + 1] = y; atmoPos[i * 3 + 2] = z;
+    atmoSeed[i * 3] = Math.random() * Math.PI * 2;
+    atmoSeed[i * 3 + 1] = 0.4 + Math.random() * 0.8;
+    atmoSeed[i * 3 + 2] = Math.random();
+  }
+  atmoGeo.setAttribute('position', new THREE.BufferAttribute(atmoPos, 3));
+  const atmoBase = Float32Array.from(atmoPos);
+  const atmoMat = new THREE.PointsMaterial({ color: 0xffcf8a, size: 0.022, transparent: true, opacity: 0 });
+  const atmosphere = new THREE.Points(atmoGeo, atmoMat);
+  box.add(atmosphere);
+
+  // 3) 은은한 헤이즈 볼륨 - 지형 위 대기 공간 전체를 감싸는 반투명 색 레이어 (스모그 느낌)
+  const hazeMat = new THREE.MeshBasicMaterial({ color: HAZY_SKY.clone(), transparent: true, opacity: 0, side: THREE.BackSide });
+  const haze = new THREE.Mesh(new THREE.BoxGeometry(BOX_W - 0.02, BOX_H - TERRAIN_TOP - 0.05, BOX_D - 0.02), hazeMat);
+  haze.position.y = TERRAIN_TOP + (BOX_H - TERRAIN_TOP) / 2;
+  box.add(haze);
+
+  // 4) 박스 위쪽 가장자리에 얹힌 얼음(구름 역할) 덩어리 클러스터
+  const cloudIceMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
+  const cloudIcePositions = [[-1.6, -0.5], [-1.3, -0.15], [-1.0, -0.6], [-1.75, -0.1], [-1.15, -0.35]];
+  cloudIcePositions.forEach(([x, z]) => {
+    const s = 0.08 + Math.random() * 0.05;
+    const chunk = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), cloudIceMat);
+    chunk.position.set(x, BOX_H - 0.06 - s * 0.3, z);
+    chunk.castShadow = true;
+    box.add(chunk);
+  });
+
+  // 5) 응결 물방울: 벽 안쪽에서 맺혔다가 아래로 흘러내리는 파티클
+  const dropCount = 26;
+  const dropGeo = new THREE.BufferGeometry();
+  const dropPos = new Float32Array(dropCount * 3);
+  const dropSeed = new Float32Array(dropCount * 2); // [speed, xz-slot]
+  for (let i = 0; i < dropCount; i++) {
+    dropPos[i * 3] = (Math.random() - 0.5) * (BOX_W - 0.4);
+    dropPos[i * 3 + 1] = TERRAIN_TOP + Math.random() * (BOX_H - TERRAIN_TOP);
+    dropPos[i * 3 + 2] = (Math.random() < 0.5 ? -1 : 1) * (BOX_D / 2 - 0.02);
+    dropSeed[i * 2] = 0.15 + Math.random() * 0.25;
+    dropSeed[i * 2 + 1] = dropPos[i * 3 + 2];
+  }
+  dropGeo.setAttribute('position', new THREE.BufferAttribute(dropPos, 3));
+  const dropMat = new THREE.PointsMaterial({ color: 0xdff0ff, size: 0.018, transparent: true, opacity: 0.7 });
+  const drops = new THREE.Points(dropGeo, dropMat);
+  box.add(drops);
+
+  // --- 절차적 지표 텍스처 (흙/이끼/자갈 얼룩무늬) ---
+  function createGroundTexture(opts) {
+    const cw = 256, ch = 256;
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const tctx = c.getContext('2d');
+    tctx.fillStyle = opts.base;
+    tctx.fillRect(0, 0, cw, ch);
+    opts.speckLayers.forEach(layer => {
+      for (let i = 0; i < layer.count; i++) {
+        const x = Math.random() * cw, y = Math.random() * ch;
+        const r = layer.minR + Math.random() * (layer.maxR - layer.minR);
+        tctx.fillStyle = layer.color;
+        tctx.globalAlpha = layer.alpha;
+        tctx.beginPath();
+        tctx.arc(x, y, r, 0, Math.PI * 2);
+        tctx.fill();
+      }
+    });
+    tctx.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    return tex;
+  }
+  const oceanFloorTex = createGroundTexture({
+    base: '#c9c2a8',
+    speckLayers: [
+      { count: 220, minR: 1, maxR: 3, color: '#a89f80', alpha: 0.5 },
+      { count: 60, minR: 2, maxR: 5, color: '#8f8567', alpha: 0.4 }
+    ]
+  });
+  const forestFloorTex = createGroundTexture({
+    base: '#3f4a2a',
+    speckLayers: [
+      { count: 260, minR: 1, maxR: 4, color: '#5a6e35', alpha: 0.55 }, // 이끼
+      { count: 160, minR: 1, maxR: 3, color: '#2c3520', alpha: 0.5 }, // 그늘진 흙
+      { count: 40, minR: 2, maxR: 5, color: '#6b7d42', alpha: 0.4 }
+    ]
+  });
+  const cityFloorTex = createGroundTexture({
+    base: '#4a4842',
+    speckLayers: [
+      { count: 300, minR: 1, maxR: 2.5, color: '#615e56', alpha: 0.6 }, // 자갈
+      { count: 80, minR: 1, maxR: 2, color: '#2e2c28', alpha: 0.5 }
+    ]
+  });
+
+  function zoneFloor(xOffset, groundTopY, texture, sideColor) {
+    const h = Math.max(groundTopY, 0.01);
+    const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
+    const topMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 });
+    // BoxGeometry 面 순서: [+x, -x, +y(윗면), -y(밑면), +z, -z]
+    const mats = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
+    const block = new THREE.Mesh(new THREE.BoxGeometry(ZONE_W - 0.015, h, BOX_D - 0.02), mats);
+    block.position.set(xOffset, h / 2, 0);
+    block.castShadow = true;
+    block.receiveShadow = true;
+    box.add(block);
+    return block;
+  }
+  zoneFloor(-ZONE_W, OCEAN_BASE, oceanFloorTex, 0xa89f83);
+  zoneFloor(0, WETLAND_BASE, forestFloorTex, 0x2c331c);
+  zoneFloor(ZONE_W, CITY_BASE, cityFloorTex, 0x3a3832);
+  // 세 블록이 높이가 달라서 경계면(옆면)이 자연스럽게 계단 절벽처럼 드러남 - 별도 리저 불필요
+
+
+  // --- 해양·빙하: 계속 움직이는 돔 파도 ---
+  const oceanGroup = new THREE.Group();
+  oceanGroup.position.x = -ZONE_W;
+  box.add(oceanGroup);
+
+  const waveW = ZONE_W - 0.08, waveD = BOX_D - 0.08;
+  const waveGeo = new THREE.PlaneGeometry(waveW, waveD, 36, 24);
+  const waveBaseY = TERRAIN_TOP - 0.02; // 물 수면은 지형 상한 바로 아래까지 채움
+  const waveMat = new THREE.MeshPhysicalMaterial({
+    color: 0x123a55, transparent: true, opacity: 0.92, roughness: 0.1,
+    transmission: 0.25, clearcoat: 0.9, side: THREE.DoubleSide
+  });
+  const waveMesh = new THREE.Mesh(waveGeo, waveMat);
+  waveMesh.rotation.x = -Math.PI / 2;
+  waveMesh.position.y = waveBaseY;
+  waveMesh.castShadow = true;
+  oceanGroup.add(waveMesh);
+  const wavePosAttr = waveGeo.attributes.position;
+  const waveBase = Float32Array.from(wavePosAttr.array);
+
+  // 아래쪽 몸통(수조 안쪽 물 표현) - 모래바닥(OCEAN_BASE)부터 수면까지 실제 두께로 채움
+  const waterH = Math.max(0.03, waveBaseY - OCEAN_BASE);
+  const waterBody = new THREE.Mesh(
+    new THREE.BoxGeometry(waveW, waterH, waveD),
+    new THREE.MeshPhysicalMaterial({ color: 0x0e2c45, transparent: true, opacity: 0.75, roughness: 0.15, transmission: 0.2 })
+  );
+  waterBody.position.y = OCEAN_BASE + waterH / 2;
+  oceanGroup.add(waterBody);
+
+  // 파도 크레스트 흰 포말 파티클 (전면부에 집중되어 부서지는 느낌)
+  const foamCount = 70;
+  const foamGeo = new THREE.BufferGeometry();
+  const foamPos = new Float32Array(foamCount * 3);
+  const foamSeed = new Float32Array(foamCount * 2);
+  for (let i = 0; i < foamCount; i++) {
+    foamPos[i * 3] = (Math.random() - 0.5) * waveW;
+    foamPos[i * 3 + 1] = waveBaseY + 0.05;
+    foamPos[i * 3 + 2] = waveD * (0.15 + Math.random() * 0.3); // 전면 쪽에 몰림
+    foamSeed[i * 2] = Math.random() * Math.PI * 2;
+    foamSeed[i * 2 + 1] = 0.5 + Math.random();
+  }
+  foamGeo.setAttribute('position', new THREE.BufferAttribute(foamPos, 3));
+  const foamBaseArr = Float32Array.from(foamPos);
+  const foamMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.85 });
+  const foam = new THREE.Points(foamGeo, foamMat);
+  oceanGroup.add(foam);
+
+  const iceMat = new THREE.MeshPhysicalMaterial({ color: 0xf3fbff, roughness: 0.1, transmission: 0.25, clearcoat: 0.85, flatShading: true });
+  const iceMeshes = [];
+  [[-0.5, -0.4], [0.3, 0.3], [0.55, -0.5], [-0.15, 0.5]].forEach(([x, z]) => {
+    const s = 0.045 + Math.random() * 0.03;
+    const ice = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), iceMat);
+    ice.position.set(x, waveBaseY + s * 0.5, z);
+    ice.castShadow = true;
+    oceanGroup.add(ice);
+    iceMeshes.push({ mesh: ice, baseY: ice.position.y });
+  });
+
+  // --- 습지·숲 ---
+  const forestGroup = new THREE.Group();
+  box.add(forestGroup);
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x74705f, roughness: 0.95 });
+  [[-0.6, 0.5], [0.5, -0.55], [-0.5, -0.35]].forEach(([x, z]) => {
+    const s = 0.05 + Math.random() * 0.035;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
+    rock.position.set(x, WETLAND_BASE + s * 0.5, z);
+    rock.castShadow = true;
+    forestGroup.add(rock);
+  });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7433, roughness: 0.8 });
+  const treeDefs = [[-0.3, -0.4], [0.4, 0.4], [0, 0.15], [0.55, -0.15], [-0.55, 0.35], [0.2, -0.55], [-0.15, 0.5]];
+  const treeMeshes = [];
+  treeDefs.forEach(([x, z]) => {
+    const tree = new THREE.Group();
+    // 작은 모종/새싹 느낌: 가는 줄기 + 타원형 잎 여러 장
+    const h = 0.14 + Math.random() * 0.09;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.009, h, 5), trunkMat);
+    stem.position.y = h / 2;
+    stem.castShadow = true;
+    tree.add(stem);
+    const leafCount = 3 + Math.floor(Math.random() * 3);
+    for (let li = 0; li < leafCount; li++) {
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.02, 6, 5), leafMat);
+      leaf.scale.set(1, 0.55, 1.6);
+      const ang = (li / leafCount) * Math.PI * 2;
+      leaf.position.set(Math.cos(ang) * 0.03, h * (0.7 + Math.random() * 0.25), Math.sin(ang) * 0.03);
+      leaf.castShadow = true;
+      tree.add(leaf);
+    }
+    tree.position.set(x, WETLAND_BASE, z);
+    forestGroup.add(tree);
+    treeMeshes.push({ group: tree, baseX: x, baseZ: z });
+  });
+
+  // 습지 진흙 패치: 일반 흙과 달리 어둡고 젖은 광택 + 얕은 물웅덩이
+  const wetlandPatch = new THREE.Mesh(
+    new THREE.CircleGeometry(0.1, 32),
+    new THREE.MeshPhysicalMaterial({ color: 0x2b2318, roughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2 })
+  );
+  wetlandPatch.rotation.x = -Math.PI / 2;
+  wetlandPatch.position.set(-0.2, WETLAND_BASE + 0.006, 0.1);
+  forestGroup.add(wetlandPatch);
+  const puddleMat = new THREE.MeshPhysicalMaterial({ color: 0x3a6a7a, transparent: true, opacity: 0.75, roughness: 0.05, transmission: 0.3, clearcoat: 1 });
+  const puddles = [];
+  [[-0.03, -0.02, 0.035], [0.025, 0.03, 0.028], [-0.02, 0.04, 0.02]].forEach(([px, pz, pr]) => {
+    const puddle = new THREE.Mesh(new THREE.CircleGeometry(pr, 16), puddleMat);
+    puddle.rotation.x = -Math.PI / 2;
+    puddle.position.set(-0.2 + px, WETLAND_BASE + 0.009, 0.1 + pz);
+    forestGroup.add(puddle);
+    puddles.push(puddle);
+  });
+
+  // --- 도시 ---
+  const cityGroup = new THREE.Group();
+  cityGroup.position.x = ZONE_W;
+  box.add(cityGroup);
+  const bldColors = [0x9aa0a8, 0x848a92, 0xb0b5bb, 0x7a8088];
+  const bldDefs = [
+    [-0.55, -0.5, 0.16, 0.35], [-0.15, -0.55, 0.13, 0.24], [0.3, -0.4, 0.18, 0.48],
+    [0.55, -0.15, 0.12, 0.28], [-0.5, 0.2, 0.15, 0.32], [-0.1, 0.5, 0.16, 0.42],
+    [0.35, 0.45, 0.13, 0.22], [0.55, 0.15, 0.14, 0.36]
+  ];
+  const buildingMeshes = [];
+  bldDefs.forEach(([x, z, w, h], i) => {
+    const bldGroup = new THREE.Group();
+    const bld = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, w),
+      new THREE.MeshStandardMaterial({ color: bldColors[i % bldColors.length], roughness: 0.5, metalness: 0.15 })
+    );
+    bld.position.y = h / 2;
+    bld.castShadow = true;
+    bld.receiveShadow = true;
+    bldGroup.add(bld);
+    for (let wy = 0.06; wy < h - 0.03; wy += 0.07) {
+      const win = new THREE.Mesh(
+        new THREE.PlaneGeometry(w * 0.75, 0.025),
+        new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.2, metalness: 0.3 })
+      );
+      win.position.set(0, wy, w / 2 + 0.001);
+      bldGroup.add(win);
+    }
+    bldGroup.position.set(x, CITY_BASE, z);
+    cityGroup.add(bldGroup);
+    buildingMeshes.push(bldGroup);
+  });
+
+  const gasCarMat = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.4, metalness: 0.3 });
+  const evCarMat = new THREE.MeshStandardMaterial({ color: 0x3fb0a0, roughness: 0.3, metalness: 0.4, emissive: 0x0d3a35, emissiveIntensity: 0.3 });
+  const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
+                     [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
+                     [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
+  const carMeshes = [];
+  carSpots.forEach((pos, i) => {
+    const car = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.045, 0.05), gasCarMat);
+    car.position.set(pos[0], CITY_BASE + 0.02, pos[1]);
+    car.castShadow = true;
+    car.visible = false;
+    cityGroup.add(car);
+    carMeshes.push(car);
+  });
+
+  const factory = new THREE.Group();
+  factory.position.set(0.6, CITY_BASE, 0.55);
+  cityGroup.add(factory);
+  const stack = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.03, 0.04, 0.35, 10),
+    new THREE.MeshStandardMaterial({ color: 0x50524f, roughness: 0.7 })
+  );
+  stack.position.y = 0.175;
+  stack.castShadow = true;
+  factory.add(stack);
+  const smokeCount = 60;
+  const smokeGeo = new THREE.BufferGeometry();
+  const smokePos = new Float32Array(smokeCount * 3);
+  const smokeLife = new Float32Array(smokeCount);
+  for (let i = 0; i < smokeCount; i++) {
+    smokePos[i * 3] = 0.6; smokePos[i * 3 + 1] = -1; smokePos[i * 3 + 2] = 0.55;
+    smokeLife[i] = Math.random();
+  }
+  smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
+  const smokeMat = new THREE.PointsMaterial({ color: 0x9a9a96, size: 0.06, transparent: true, opacity: 0.5 });
+  const smoke = new THREE.Points(smokeGeo, smokeMat);
+  cityGroup.add(smoke);
+
+  // 탄소제거기술(DAC) 포집 타워 - carbonRemoval 슬라이더에 따라 등장/크기 변화
+  const captureTower = new THREE.Group();
+  captureTower.position.set(-0.65, CITY_BASE, 0.15);
+  cityGroup.add(captureTower);
+  const towerBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.05, 0.06, 0.3, 12),
+    new THREE.MeshStandardMaterial({ color: 0xd8dadc, roughness: 0.4, metalness: 0.3 })
+  );
+  towerBody.position.y = 0.15;
+  towerBody.castShadow = true;
+  captureTower.add(towerBody);
+  const towerFan = new THREE.Mesh(
+    new THREE.TorusGeometry(0.045, 0.008, 8, 16),
+    new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.3, metalness: 0.5, emissive: 0x0d3a30, emissiveIntensity: 0.4 })
+  );
+  towerFan.position.y = 0.3;
+  towerFan.rotation.x = Math.PI / 2;
+  captureTower.add(towerFan);
+
+  return {
+    scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+    hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
+    wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
+    foamGeo, foamCount, foamSeed, foamBaseArr,
+    carMeshes, evCarMat, gasCarMat,
+    smokeMat, smokeGeo, smokeCount, smokeLife, factory,
+    buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes,
+    CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE,
+    state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24 }
+  };
+  } // buildAcrylicScene 끝
+
+  const sceneCurrent = buildAcrylicScene();
+  const sceneFuture = buildAcrylicScene();
+  const sceneLive = buildAcrylicScene();
+  const bundles = { current: sceneCurrent, future: sceneFuture, live: sceneLive };
+  let activeTab = 'current';
+
+
+
+  // ================= (구) risk_score.js / ssp_interpolation.js 로직은 제거되고
+  //    아래 CO2 시뮬레이터의 실측 데이터 + 회귀식 기반 로직으로 교체됨 =================
+  // 3D 씬(자동차·건물·연기·습지 등)은 그대로 유지하되, 정책 슬라이더가 없어졌으므로
+  // 아래 고정값으로 대체. CO2 값만 미래예측 탭 슬라이더로 실시간 갱신됨.
+  const CO2_MIN = 280, CO2_MAX = 600;
+
+  // ── CO2 시뮬레이터 실측 데이터 (1988~2023) ──────────────────────
+  const years = [1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023];
+  const histCo2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24];
+  const histTemp = [-0.369,-0.433,-0.161,-0.490,-0.591,-0.576,-0.279,-0.271,-0.575,-0.329,0.078,-0.176,-0.212,-0.136,0.040,-0.028,-0.091,-0.009,0.029,0.130,-0.032,0.085,0.215,-0.033,0.016,0.101,0.261,0.416,0.517,0.379,0.407,0.580,0.574,0.401,0.436,0.837];
+  const histPh = [null,8.109,8.112,8.113,8.109,8.108,8.109,8.103,8.102,8.097,8.098,8.094,8.087,8.086,8.087,8.089,8.093,8.071,8.087,8.083,8.077,8.082,8.077,8.078,8.076,8.068,8.069,8.067,8.068,8.064,8.067,8.059,8.051,8.054,8.046,8.040];
+  const histFossil = [21918.756,22200.213,22732.145,23205.592,22520.424,22749.873,22974.598,23516.639,24233.477,24380.322,24295.713,24837.771,25511.482,25692.994,26265.332,27652.691,28610.023,29598.951,30594.152,31499.256,32049.66,31513.014,33317.672,34479.988,34954.734,35275.82,35465.695,35403.527,35392.832,35974.609,36734.004,37086.566,35158.23,36866.863,37527.773,38094.039];
+
+  const tempSlope = 0.0160807738567842, tempIntercept = -6.10149349991621;
+  const phSlope = -0.000941544551611233, phIntercept = 8.44148773488769;
+  function predictTemp(co2) { return tempSlope * co2 + tempIntercept; }
+  function predictPh(co2) { return phSlope * co2 + phIntercept; }
+
+  // ── 탭 전환 ──────────────────────────────────────
+  function switchTab(name) {
+    document.getElementById('tab-current').classList.toggle('active', name === 'current');
+    document.getElementById('tab-future').classList.toggle('active', name === 'future');
+    document.getElementById('tab-live').classList.toggle('active', name === 'live');
+    document.getElementById('tab-btn-current').classList.toggle('active', name === 'current');
+    document.getElementById('tab-btn-future').classList.toggle('active', name === 'future');
+    document.getElementById('tab-btn-live').classList.toggle('active', name === 'live');
+    activeTab = name;
+    if (name === 'future') {
+      chart1.resize(); chart2.resize();
+      sceneFuture.state.co2 = Number(document.getElementById('co2slider').value);
+      applyState(sceneFuture);
+    } else if (name === 'live') {
+      liveGraphs.forEach(g => g.chart.resize());
+      applyState(sceneLive);
+    } else {
+      chartCo2.resize(); chartTempHist.resize(); chartPhHist.resize(); chartFossil.resize();
+      sceneCurrent.state.co2 = histCo2[histCo2.length - 1]; // 2023 실측값
+      applyState(sceneCurrent);
+    }
+  }
+
+  // ── Chart.js 다크 테마 공통 옵션 ──────────────────────────
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const textColor = '#7d838d';
+  const lineOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, animation: false,
+    scales: {
+      x: { ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+      y: { title: { display: true, text: yLabel, color: textColor, font: { size: 9 } },
+           ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
+    },
+    plugins: { legend: { display: false } } });
+
+  const chartCo2 = new Chart(document.getElementById('chartCo2'), {
+    type: 'line', data: { labels: years, datasets: [{ data: histCo2, borderColor: '#85B7EB', pointRadius: 0, tension: 0.15 }] },
+    options: lineOpts('ppm') });
+  const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
+    type: 'line', data: { labels: years, datasets: [{ data: histTemp, borderColor: '#E24B4A', pointRadius: 0, tension: 0.15 }] },
+    options: lineOpts('°C') });
+  const chartPhHist = new Chart(document.getElementById('chartPhHist'), {
+    type: 'line', data: { labels: years, datasets: [{ data: histPh, borderColor: '#5DCAA5', pointRadius: 0, tension: 0.15, spanGaps: true }] },
+    options: lineOpts('pH') });
+  const chartFossil = new Chart(document.getElementById('chartFossil'), {
+    type: 'line', data: { labels: years, datasets: [{ data: histFossil, borderColor: '#EF9F27', pointRadius: 0, tension: 0.15 }] },
+    options: lineOpts('백만톤') });
+
+  const lineX = [280, 600];
+  const tempLine = lineX.map(x => ({x, y: predictTemp(x)}));
+  const phLine = lineX.map(x => ({x, y: predictPh(x)}));
+  const scatterOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, animation: false,
+    scales: {
+      x: { min: 280, max: 600, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+      y: { title: { display: true, text: yLabel, color: textColor, font: { size: 9 } },
+           ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
+    },
+    plugins: { legend: { display: false } } });
+
+  const chart1 = new Chart(document.getElementById('chart1'), {
+    type: 'scatter',
+    data: { datasets: [
+      { data: histCo2.map((c,i)=>({x:c,y:histTemp[i]})), backgroundColor: '#85B7EB', pointRadius: 3 },
+      { data: tempLine, type: 'line', borderColor: '#4a4f57', borderWidth: 1.5, pointRadius: 0, borderDash: [4,4] },
+      { data: [{x:418, y:predictTemp(418)}], backgroundColor: '#E24B4A', pointRadius: 6, pointStyle: 'star' }
+    ]},
+    options: scatterOpts('°C') });
+
+  const chart2 = new Chart(document.getElementById('chart2'), {
+    type: 'scatter',
+    data: { datasets: [
+      { data: histCo2.map((c,i)=>histPh[i]!==null?{x:c,y:histPh[i]}:null).filter(Boolean), backgroundColor: '#5DCAA5', pointRadius: 3 },
+      { data: phLine, type: 'line', borderColor: '#4a4f57', borderWidth: 1.5, pointRadius: 0, borderDash: [4,4] },
+      { data: [{x:418, y:predictPh(418)}], backgroundColor: '#E24B4A', pointRadius: 6, pointStyle: 'star' }
+    ]},
+    options: scatterOpts('pH') });
+
+  const co2slider = document.getElementById('co2slider');
+  const co2out = document.getElementById('co2out');
+  const tempval = document.getElementById('tempval');
+  const phval = document.getElementById('phval');
+  co2slider.addEventListener('input', () => {
+    const co2 = Number(co2slider.value);
+    co2out.textContent = co2;
+    const t = predictTemp(co2), p = predictPh(co2);
+    tempval.textContent = (t >= 0 ? '+' : '') + t.toFixed(2) + '°C';
+    phval.textContent = p.toFixed(3);
+    chart1.data.datasets[2].data = [{x: co2, y: t}];
+    chart1.update('none');
+    chart2.data.datasets[2].data = [{x: co2, y: p}];
+    chart2.update('none');
+    sceneFuture.state.co2 = co2; // 3D 대기 효과와 파도 진폭이 참조하는 값
+    applyState(sceneFuture);
+  });
+
+  // ================= 실시간 실험 탭 (아두이노 WebSocket 연동) =================
+  const liveLatest = {};
+  const liveKnownKeys = new Set();
+  let liveScatterPoints = [];
+  const LIVE_MAX_POINTS = 200;
+  const liveColorRamp = ['#5DCAA5', '#EF9F27', '#E24B4A', '#85B7EB', '#c07fe0', '#8fd83c'];
+  function liveColorFor(key) {
+    let hash = 0;
+    for (const c of key) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+    return liveColorRamp[hash % liveColorRamp.length];
+  }
+
+  function renderSensorGrid() {
+    const grid = document.getElementById('sensorGrid');
+    const keys = [...liveKnownKeys].sort();
+    if (keys.length === 0) return;
+    grid.innerHTML = keys.map(k => {
+      const d = liveLatest[k];
+      const t = new Date(d.timestamp);
+      const timeStr = t.toLocaleTimeString('ko-KR', {hour12:false});
+      return `<div class="sensor-card" style="border-left-color:${liveColorFor(k)}">
+        <div class="key">${k}</div>
+        <div class="val">${typeof d.value === 'number' ? d.value.toFixed(2) : d.value}</div>
+        <div class="updated">${timeStr}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── 다중 그래프 카드 (최대 4개, 각자 독립적인 X/Y 변인 선택) ──────────────
+  const liveGraphs = []; // [{ id, chart, card }]
+  let liveGraphSeq = 0;
+  const MAX_LIVE_GRAPHS = 4;
+
+  function refreshLiveSelectOptions() {
+    const keys = [...liveKnownKeys].sort();
+    liveGraphs.forEach(g => {
+      const xSel = document.getElementById(`xSelect-${g.id}`);
+      const ySel = document.getElementById(`ySelect-${g.id}`);
+      const prevX = xSel.value, prevY = ySel.value;
+      [xSel, ySel].forEach((sel, i) => {
+        const placeholder = i === 0 ? 'X축 변인' : 'Y축 변인';
+        sel.innerHTML = `<option value="">${placeholder}</option>` + keys.map(k => `<option value="${k}">${k}</option>`).join('');
+      });
+      if (keys.includes(prevX)) xSel.value = prevX;
+      if (keys.includes(prevY)) ySel.value = prevY;
+      if (!xSel.value && keys[0]) xSel.value = keys[0];
+      if (!ySel.value && keys[1]) ySel.value = keys[1];
+    });
+  }
+
+  function updateLiveChart(g) {
+    const xKey = document.getElementById(`xSelect-${g.id}`).value;
+    const yKey = document.getElementById(`ySelect-${g.id}`).value;
+    g.chart.options.scales.x.title.text = xKey || '';
+    g.chart.options.scales.y.title.text = yKey || '';
+    if (!xKey || !yKey) { g.chart.data.datasets[0].data = []; g.chart.update(); return; }
+    g.chart.data.datasets[0].data = liveScatterPoints
+      .filter(p => xKey in p && yKey in p)
+      .map(p => ({ x: p[xKey], y: p[yKey] }));
+    g.chart.update();
+  }
+
+  function updateAllLiveCharts() {
+    liveGraphs.forEach(updateLiveChart);
+  }
+
+  function addLiveGraph() {
+    if (liveGraphs.length >= MAX_LIVE_GRAPHS) return;
+    const id = ++liveGraphSeq;
+    const card = document.createElement('div');
+    card.className = 'graph-card';
+    card.innerHTML = `
+      <div class="var-row">
+        <select id="xSelect-${id}"><option value="">X축 변인</option></select>
+        <select id="ySelect-${id}"><option value="">Y축 변인</option></select>
+        <button class="remove-btn" onclick="removeLiveGraph(${id})">✕</button>
+      </div>
+      <div class="chart-wrap" style="height:140px"><canvas id="liveChart-${id}"></canvas></div>`;
+    document.getElementById('liveGraphs').appendChild(card);
+
+    const chart = new Chart(document.getElementById(`liveChart-${id}`), {
+      type: 'scatter',
+      data: { datasets: [{ data: [], backgroundColor: liveColorFor(String(id)), pointRadius: 3, showLine: true,
+        borderColor: 'rgba(93,202,165,0.35)', borderWidth: 1 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+          y: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
+        } } });
+
+    const g = { id, chart, card };
+    liveGraphs.push(g);
+    refreshLiveSelectOptions();
+    document.getElementById(`xSelect-${id}`).addEventListener('change', () => updateLiveChart(g));
+    document.getElementById(`ySelect-${id}`).addEventListener('change', () => updateLiveChart(g));
+    updateLiveChart(g);
+
+    document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  }
+
+  function removeLiveGraph(id) {
+    const idx = liveGraphs.findIndex(g => g.id === id);
+    if (idx === -1) return;
+    liveGraphs[idx].chart.destroy();
+    liveGraphs[idx].card.remove();
+    liveGraphs.splice(idx, 1);
+    document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  }
+
+  // 기본 그래프 카드 2개로 시작
+  addLiveGraph();
+  addLiveGraph();
+
+  function connectLiveSocket() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.onopen = () => {
+      document.getElementById('liveDot').classList.add('on');
+      document.getElementById('liveStatusText').textContent = '연결됨';
+    };
+    ws.onclose = () => {
+      document.getElementById('liveDot').classList.remove('on');
+      document.getElementById('liveStatusText').textContent = '재연결 시도중…';
+      setTimeout(connectLiveSocket, 2000);
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (evt) => {
+      const payload = JSON.parse(evt.data);
+      let newKey = false;
+      for (const [k, v] of Object.entries(payload)) {
+        if (k === 'timestamp' || k === '_source') continue;
+        if (typeof v !== 'number' && typeof v !== 'string') continue;
+        liveLatest[k] = { value: v, timestamp: payload.timestamp || new Date().toISOString() };
+        if (!liveKnownKeys.has(k)) { liveKnownKeys.add(k); newKey = true; }
+      }
+      liveScatterPoints.push(payload);
+      if (liveScatterPoints.length > LIVE_MAX_POINTS) liveScatterPoints.shift();
+      renderSensorGrid();
+      if (newKey) refreshLiveSelectOptions();
+      updateAllLiveCharts();
+
+      // key 이름에 "co2"가 포함된 센서가 있으면 그 값으로 아크릴 모형(sceneLive) 갱신
+      const co2Key = [...liveKnownKeys].find(k => k.toLowerCase().includes('co2'));
+      if (co2Key && typeof liveLatest[co2Key].value === 'number') {
+        sceneLive.state.co2 = Math.max(CO2_MIN, Math.min(CO2_MAX, liveLatest[co2Key].value));
+        applyState(sceneLive);
+      }
+    };
+  }
+  connectLiveSocket(); // 서버가 꺼져 있어도 자동 재시도하므로 항상 연결 시도해둠
+
+  function applyState(S) {
+    // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
+    const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+    S.lidMat.opacity = 0.12 + intensity * 0.35;
+    S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, intensity);
+    S.atmoMat.opacity = 0.35 + intensity * 0.45;
+    S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
+    S.hazeMat.opacity = 0.04 + intensity * 0.18;
+    S.dropMat.opacity = 0.45 + intensity * 0.4;
+    S.iceMeshes.forEach(o => {
+      const shrink = 1 - intensity * 0.5;
+      o.mesh.scale.setScalar(shrink);
+      o.mesh.position.y = o.baseY - (1 - shrink) * 0.1;
+    });
+
+    // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
+    const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
+    const evCount = Math.round(carCount * (S.state.ev / 100));
+    S.carMeshes.forEach((c, i) => {
+      c.visible = i < carCount;
+      c.material = i < evCount ? S.evCarMat : S.gasCarMat;
+    });
+
+    // 화석연료 사용 비율 → 공장 연기 밀도
+    S.smokeMat.opacity = 0.15 + (S.state.fossil / 100) * 0.6;
+    S.smokeMat.size = 0.03 + (S.state.fossil / 100) * 0.06;
+
+    // 도시화 지수 → 표시되는 건물 수
+    const bCount = Math.max(1, Math.round((S.state.cityRatio / 100) * S.buildingMeshes.length));
+    S.buildingMeshes.forEach((bld, i) => { bld.visible = i < bCount; });
+
+    // 탄소제거기술 도입률 → 포집 타워 등장/크기
+    const crScale = S.state.carbonRemoval / 100;
+    S.captureTower.visible = crScale > 0.02;
+    S.captureTower.scale.setScalar(0.3 + crScale * 0.7);
+
+    // 습지 비율 → 습지 패치 크기, 겹치는 나무는 숨김
+    const wetRadius = 0.15 + (S.state.wetlandRatio / 100) * 0.85;
+    S.wetlandPatch.scale.setScalar(wetRadius / 0.1);
+    S.treeMeshes.forEach(t => {
+      const dx = t.baseX - S.wetlandPatch.position.x;
+      const dz = t.baseZ - S.wetlandPatch.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      t.group.visible = dist > wetRadius * 0.9;
+    });
+  }
+  applyState(sceneCurrent);
+  applyState(sceneFuture);
+  applyState(sceneLive);
+  fitRenderer();
+
+  // ================= 애니메이션 =================
+  let t = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    t += 0.016;
+    const S = bundles[activeTab];
+
+    S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
+
+    // 대기 입자 드리프트
+    const ap = S.atmoGeo.attributes.position;
+    for (let i = 0; i < S.atmoCount; i++) {
+      const phase = S.atmoSeed[i * 3], speed = S.atmoSeed[i * 3 + 1], radius = 0.06 + S.atmoSeed[i * 3 + 2] * 0.05;
+      ap.setX(i, S.atmoBase[i * 3] + Math.sin(t * speed + phase) * radius);
+      ap.setY(i, S.atmoBase[i * 3 + 1] + Math.sin(t * speed * 0.6 + phase * 1.7) * radius * 0.6);
+      ap.setZ(i, S.atmoBase[i * 3 + 2] + Math.cos(t * speed + phase) * radius);
+    }
+    ap.needsUpdate = true;
+
+    // 비대칭 브레이킹 웨이브: 전면(ly 양수 쪽)으로 갈수록 크게 말려 부서지는 느낌
+    const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+    const halfD = S.waveD / 2;
+    for (let i = 0; i < S.wavePosAttr.count; i++) {
+      const lx = S.waveBase[i * 3];
+      const ly = S.waveBase[i * 3 + 1];
+      const frontT = Math.max(0, Math.min(1, (ly / halfD + 1) / 2));
+      const swell = Math.sin(lx * 1.5 + t * 0.7) * (0.05 + frontT * 0.09 + intensity * 0.02);
+      const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * 0.012 * frontT;
+      S.wavePosAttr.setZ(i, swell + chop);
+    }
+    S.wavePosAttr.needsUpdate = true;
+    S.waveGeo.computeVertexNormals();
+
+    // 크레스트 포말 파티클: 살짝 흔들리며 부서지는 느낌
+    const fp = S.foamGeo.attributes.position;
+    for (let i = 0; i < S.foamCount; i++) {
+      const phase = S.foamSeed[i * 2], speed = S.foamSeed[i * 2 + 1];
+      fp.setX(i, S.foamBaseArr[i * 3] + Math.sin(t * speed + phase) * 0.02);
+      fp.setY(i, S.waveBaseY + 0.06 + Math.abs(Math.sin(t * speed * 1.4 + phase)) * 0.02);
+    }
+    fp.needsUpdate = true;
+
+    // 응결 물방울: 아래로 서서히 흘러내리다가 지형 근처에서 리셋
+    const dp = S.dropGeo.attributes.position;
+    for (let i = 0; i < S.dropCount; i++) {
+      let y = dp.getY(i) - S.dropSeed[i * 2] * 0.01;
+      if (y < S.TERRAIN_TOP + 0.05) y = S.BOX_H - 0.1;
+      dp.setY(i, y);
+    }
+    dp.needsUpdate = true;
+
+    // 연기 파티클
+    const sp = S.smokeGeo.attributes.position;
+    for (let i = 0; i < S.smokeCount; i++) {
+      S.smokeLife[i] += 0.01 + (S.state.fossil / 100) * 0.015;
+      if (S.smokeLife[i] > 1) S.smokeLife[i] = 0;
+      const life = S.smokeLife[i];
+      sp.setX(i, S.factory.position.x + Math.sin(i * 12.9) * 0.05 * life);
+      sp.setY(i, S.CITY_BASE + 0.35 + life * 0.9);
+      sp.setZ(i, S.factory.position.z + Math.cos(i * 7.3) * 0.05 * life);
+    }
+    sp.needsUpdate = true;
+
+    renderer.render(S.scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', fitRenderer);
+</script>
+</body>
+</html>
