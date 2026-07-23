@@ -100,6 +100,24 @@ const waterNormalTex = textureLoader.load('texture_image/water_normal.png');
 waterNormalTex.wrapS = waterNormalTex.wrapT = THREE.RepeatWrapping;
 waterNormalTex.repeat.set(4, 3);
 
+// ================= 파도 높이 계산 (3개 씬이 공유하는 순수 함수) =================
+// ly는 waveMesh 로컬 좌표(-90도 회전 전 y) 기준, 월드로는 z=-ly. frontT=1이 되는 지점을
+// 카메라가 보는 앞면(월드 z 양수) 쪽에 오도록 -ly 기준으로 잡아야 정면에서도 파도가 보임
+// (이전엔 부호가 반대라 반대편 뒷벽에서만 크게 부서졌음).
+const WAVE_SWELL_BASE = 0.03, WAVE_SWELL_FRONT = 0.05, WAVE_SWELL_INTENSITY = 0.015;
+const WAVE_CHOP_AMP = 0.007;
+// 합계 최댓값(frontT=1, intensity=1일 때) - 이 값을 넘지 않는다는 걸 보장해서
+// 녹지/도시 지표면(GROUND_BASE)보다 파도 정점이 항상 낮게 남도록 waveBaseY와 맞춰둠
+const WAVE_MAX_AMPLITUDE = WAVE_SWELL_BASE + WAVE_SWELL_FRONT + WAVE_SWELL_INTENSITY + WAVE_CHOP_AMP;
+// animate()가 매 프레임 waterBody 높이를 이 값만큼 여유를 두고 동기화한다 (3개 씬 공유값이라 모듈 스코프)
+const WATER_SYNC_BUFFER = 0.04;
+function waveHeightAt(lx, ly, t, intensity, halfD) {
+  const frontT = Math.max(0, Math.min(1, (-ly / halfD + 1) / 2));
+  const swell = Math.sin(lx * 1.5 + t * 0.7) * (WAVE_SWELL_BASE + frontT * WAVE_SWELL_FRONT + intensity * WAVE_SWELL_INTENSITY);
+  const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * WAVE_CHOP_AMP * frontT;
+  return swell + chop;
+}
+
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
 function buildAcrylicScene() {
 const scene = new THREE.Scene();
@@ -173,9 +191,11 @@ scene.add(table);
 
 const BOX_W = 6, BOX_D = 3, BOX_H = 2.3;
 const TERRAIN_TOP = BOX_H * 0.2; // 지형은 박스 높이의 1/5까지만
-const OCEAN_BASE = TERRAIN_TOP * 0.38;   // 바다: 모래바닥 (그 위를 물이 채움)
-const WETLAND_BASE = TERRAIN_TOP * 0.78; // 습지·숲: 지표면
-const CITY_BASE = TERRAIN_TOP * 0.96;    // 도시: 가장 높음, 거의 지형 상한까지
+// 녹지·도시가 서로 다른 높이(0.78/0.96)를 써서 경계에 단차가 보였음 - GROUND_BASE 하나로 통일
+const GROUND_BASE = TERRAIN_TOP * 0.94;  // 습지·숲·도시 공통 지표면 높이
+const OCEAN_BASE = TERRAIN_TOP * 0.3;    // 바다: 모래바닥 (육지보다 낮게 파여있고, 그 위를 물이 채움)
+const WETLAND_BASE = GROUND_BASE;
+const CITY_BASE = GROUND_BASE;
 const ZONE_W = BOX_W / 3;
 
 // ================= 절차적 지형 (블록 상판에 노이즈 기반 높낮이) =================
@@ -339,7 +359,10 @@ box.add(oceanGroup);
 
 const waveW = ZONE_W - 0.08, waveD = BOX_D - 0.08;
 const waveGeo = new THREE.PlaneGeometry(waveW, waveD, 36, 24);
-const waveBaseY = TERRAIN_TOP - 0.02; // 물 수면은 지형 상한 바로 아래까지 채움
+// 기존엔 이 기준선 자체가 이미 녹지 지표면보다 높았고, 최대 진폭까지 더하면 지형 상한마저
+// 넘어서 "파도가 녹지보다 높게 넘실거리는" 문제가 있었음 - WAVE_MAX_AMPLITUDE를 더해도
+// GROUND_BASE보다 확실히 낮게 남도록 기준선을 낮춤
+const waveBaseY = TERRAIN_TOP * 0.55;
 // pH가 낮아질수록(산성화) WAVE_CLEAR → WAVE_MURKY로 수면 색도 함께 탁해짐
 const WAVE_CLEAR = new THREE.Color(0x123a55);
 const WAVE_MURKY = new THREE.Color(0x7a6a42);
@@ -361,19 +384,20 @@ const waveBase = Float32Array.from(wavePosAttr.array);
 // pH가 낮아질수록(산성화) WATER_CLEAR → WATER_MURKY로 탁하게 변함
 const WATER_CLEAR = new THREE.Color(0x0e2c45);
 const WATER_MURKY = new THREE.Color(0x6b5a35);
-// 파도(swell+chop)가 waveBaseY 기준 최대 약 ±0.17까지 출렁이므로, 몸통 윗면을 그보다
-// 확실히 높게 잡아야 파도가 내려갈 때 몸통의 평평한 윗면이 옆면 없는 "판"처럼 드러나지 않음
-const WATER_TOP_MARGIN = 0.2;
-const waterTopY = waveBaseY + WATER_TOP_MARGIN;
-const waterH = Math.max(0.03, waterTopY - OCEAN_BASE);
+// 몸통 윗면의 "정지 상태 기준" 높이 - 실제 매 프레임 높이는 animate()에서 정면 파도 높이에
+// 맞춰 scale.y로 다시 조절되므로(WATER_SYNC_BUFFER 참고), 여기선 최댓값 기준으로 지어만 둠.
+// 예전엔 고정 여유값(0.2)이 실제 파도 진폭(약 0.1)보다 훨씬 커서, 출렁이는 표면과 정지된
+// 몸통 윗면 사이에 큰 빈틈이 생겨 "표면만 있고 몸통은 안 보이는" 것처럼 읽혔음
+const waterTopY = waveBaseY + WAVE_MAX_AMPLITUDE + WATER_SYNC_BUFFER;
+const waterNominalH = Math.max(0.03, waterTopY - OCEAN_BASE);
 // transmission(굴절 투과)을 표면(waveMat)과 몸통 둘 다에 쓰면 겹친 투과 재질끼리
 // 서로를 잘못 가려서 각도에 따라 옆면이 사라지는 문제가 생김 - 몸통은 transmission 없이
 // 색상+불투명도만으로 표현하고, depthWrite를 명시해 자기 자신의 면끼리 항상 올바르게 겹치게 함
 const waterBody = new THREE.Mesh(
-  new THREE.BoxGeometry(waveW, waterH, waveD),
+  new THREE.BoxGeometry(waveW, waterNominalH, waveD),
   new THREE.MeshPhysicalMaterial({ color: WATER_CLEAR.clone(), transparent: true, opacity: 0.82, roughness: 0.15, transmission: 0, depthWrite: true })
 );
-waterBody.position.y = OCEAN_BASE + waterH / 2;
+waterBody.position.y = OCEAN_BASE + waterNominalH / 2;
 oceanGroup.add(waterBody);
 
 // 파도 크레스트 흰 포말 파티클 (전면부에 집중되어 부서지는 느낌)
@@ -666,11 +690,11 @@ return {
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
-  waterBody, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
+  waterBody, waterNominalH, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
   smokeMat, smokeGeo, smokeCount, smokeLife, factory,
   buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
-  CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE,
+  CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE, OCEAN_BASE,
   condensationSpeed: 1,
   state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24, ph: 8.04, tmp: 24, hum: 55 }
 };
@@ -797,16 +821,13 @@ function animate() {
   }
   ap.needsUpdate = true;
 
-  // 비대칭 브레이킹 웨이브: 전면(ly 양수 쪽)으로 갈수록 크게 말려 부서지는 느낌
+  // 비대칭 브레이킹 웨이브: 정면(카메라 쪽)으로 갈수록 크게 말려 부서지는 느낌
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   const halfD = S.waveD / 2;
   for (let i = 0; i < S.wavePosAttr.count; i++) {
     const lx = S.waveBase[i * 3];
     const ly = S.waveBase[i * 3 + 1];
-    const frontT = Math.max(0, Math.min(1, (ly / halfD + 1) / 2));
-    const swell = Math.sin(lx * 1.5 + t * 0.7) * (0.05 + frontT * 0.09 + intensity * 0.02);
-    const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * 0.012 * frontT;
-    S.wavePosAttr.setZ(i, swell + chop);
+    S.wavePosAttr.setZ(i, waveHeightAt(lx, ly, t, intensity, halfD));
   }
   S.wavePosAttr.needsUpdate = true;
   S.waveGeo.computeVertexNormals();
@@ -814,11 +835,17 @@ function animate() {
   // 빙하도 표면과 동일한 수식으로 그 자리의 파도 높이를 계산해 매 프레임 함께 오르내리게 함
   S.iceMeshes.forEach(o => {
     const lx = o.mesh.position.x, ly = -o.mesh.position.z;
-    const frontT = Math.max(0, Math.min(1, (ly / halfD + 1) / 2));
-    const swell = Math.sin(lx * 1.5 + t * 0.7) * (0.05 + frontT * 0.09 + intensity * 0.02);
-    const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * 0.012 * frontT;
-    o.mesh.position.y = o.baseY + o.shrinkY + swell + chop;
+    o.mesh.position.y = o.baseY + o.shrinkY + waveHeightAt(lx, ly, t, intensity, halfD);
   });
+
+  // 해수 몸통(waterBody)도 정면 파도 높이에 맞춰 매 프레임 위아래로 함께 움직이게 해서
+  // 출렁이는 표면과 옆면 있는 몸통이 따로 놀지 않고 하나의 물처럼 보이게 함.
+  // 바닥(모래, OCEAN_BASE)은 고정하고 윗면만 scale.y로 늘였다 줄였다 하는 방식
+  const frontSeaLevel = waveHeightAt(0, -halfD, t, intensity, halfD);
+  const liveTopY = S.waveBaseY + frontSeaLevel + WATER_SYNC_BUFFER;
+  const liveWaterH = Math.max(0.03, liveTopY - S.OCEAN_BASE);
+  S.waterBody.scale.y = liveWaterH / S.waterNominalH;
+  S.waterBody.position.y = S.OCEAN_BASE + liveWaterH / 2;
 
   // 크레스트 포말 파티클: 살짝 흔들리며 부서지는 느낌
   const fp = S.foamGeo.attributes.position;
