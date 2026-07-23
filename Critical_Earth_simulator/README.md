@@ -4,7 +4,7 @@
 
 ## 1. 다운로드 & 실행 (파이썬 설치 필요 없음)
 
-이 저장소의 **GitHub Releases** 페이지에서 **`MiniEarthModel.exe`** 파일을 다운로드하세요.
+[**여기서 `MiniEarthModel.exe` 다운로드**](https://github.com/ChealminE/mini-earth-sim/releases/latest) (GitHub Releases 페이지)
 파이썬도, 별도 설치 과정도 필요 없습니다 — **파일 하나에 실행에 필요한 모든 게 들어있습니다.**
 
 실행하려면 그 파일을 더블클릭하면 끝입니다. 처음이든 그다음이든 항상 이 파일 하나만 실행하면 됩니다.
