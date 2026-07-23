@@ -142,29 +142,45 @@ function connectLiveSocket() {
     if (newKey) refreshLiveSelectOptions();
     updateAllLiveCharts();
 
-    // key 이름에 co2/ph/온도/습도가 포함된 센서가 있으면 그 값으로 아크릴 모형(sceneLive) 갱신
-    let modelChanged = false;
-    const co2Key = [...liveKnownKeys].find(k => k.toLowerCase().includes('co2'));
-    if (co2Key && typeof liveLatest[co2Key].value === 'number') {
-      sceneLive.state.co2 = Math.max(CO2_MIN, Math.min(CO2_MAX, liveLatest[co2Key].value));
-      modelChanged = true;
-    }
-    const phKey = [...liveKnownKeys].find(k => k.toLowerCase().includes('ph'));
-    if (phKey && typeof liveLatest[phKey].value === 'number') {
-      sceneLive.state.ph = Math.max(PH_MIN, Math.min(PH_MAX, liveLatest[phKey].value));
-      modelChanged = true;
-    }
-    const tmpKey = [...liveKnownKeys].find(k => /temp|tmp/i.test(k));
-    if (tmpKey && typeof liveLatest[tmpKey].value === 'number') {
-      sceneLive.state.tmp = Math.max(TMP_MIN, Math.min(TMP_MAX, liveLatest[tmpKey].value));
-      modelChanged = true;
-    }
-    const humKey = [...liveKnownKeys].find(k => /hum/i.test(k));
-    if (humKey && typeof liveLatest[humKey].value === 'number') {
-      sceneLive.state.hum = Math.max(HUM_MIN, Math.min(HUM_MAX, liveLatest[humKey].value));
-      modelChanged = true;
-    }
-    if (modelChanged) applyState(sceneLive);
+    applyLiveSensorEffects();
   };
 }
+
+// ── 센서 키 → 3D 아크릴 효과 매핑 ────────────────────────────
+// 키 이름에 아래 문자열이 "포함"되어 있으면 매칭됨 (대소문자 무관).
+// 여기 등록 안 된 센서는 카드/그래프에는 정상적으로 뜨지만 3D 효과는 없음(에러 없이 그냥 무시됨).
+// 새 효과를 추가하려면: 1) 여기 매핑 추가  2) common.js의 applyState()에서 S.state.xxx를 실제로 사용하는 로직 추가
+const sensorEffectMap = {
+  co2: (value) => {
+    sceneLive.state.co2 = Math.max(CO2_MIN, Math.min(CO2_MAX, value));
+  },
+  // temp: (value) => { sceneLive.state.temp = value; },      // 예시: common.js에 온도 효과 추가 후 활성화
+  // ph:   (value) => { sceneLive.state.ph = value; },        // 예시: 해양 산성화 표현 등
+  // methane: (value) => { sceneLive.state.methane = value; },// 예시: 기포 효과 등
+};
+
+function applyLiveSensorEffects() {
+  let matched = false;
+  for (const [effectKey, applyEffect] of Object.entries(sensorEffectMap)) {
+    const matchedKey = [...liveKnownKeys].find(k => k.toLowerCase().includes(effectKey));
+    if (matchedKey && typeof liveLatest[matchedKey].value === 'number') {
+      applyEffect(liveLatest[matchedKey].value);
+      matched = true;
+    }
+  }
+  if (matched) applyState(sceneLive);
+}
+
+// ── 실험 시작 전 JSON 형식 안내 팝업 ──────────────────────
+function showLiveFormatModal() {
+  if (localStorage.getItem('liveFormatModalDismissed') === 'true') return;
+  document.getElementById('liveFormatModal').classList.add('visible');
+}
+
+document.getElementById('modalCloseBtn').addEventListener('click', () => {
+  const dontShow = document.getElementById('dontShowAgain').checked;
+  if (dontShow) localStorage.setItem('liveFormatModalDismissed', 'true');
+  document.getElementById('liveFormatModal').classList.remove('visible');
+});
+
 connectLiveSocket(); // 서버가 꺼져 있어도 자동 재시도하므로 항상 연결 시도해둠

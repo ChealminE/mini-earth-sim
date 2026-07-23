@@ -4,6 +4,42 @@
 <meta charset="UTF-8">
 <title>미니 지구 모델 - 통합 시뮬레이션</title>
 <link rel="stylesheet" href="style.css">
+<style>
+  /* ── 실시간 실험 안내 모달 (index.html 자체 내장 스타일, style.css와 무관하게 동작) ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal-box {
+    background: #1e1e1e; color: #eee;
+    padding: 24px; border-radius: 12px;
+    max-width: 480px; width: 90%;
+    font-family: inherit;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .modal-box h3 { margin: 0 0 10px; font-size: 16px; }
+  .modal-box p { font-size: 13px; line-height: 1.5; margin: 0 0 14px; color: #ccc; }
+  .modal-example { margin-bottom: 14px; }
+  .modal-label { font-size: 12px; color: #9aa0a8; margin-bottom: 4px; }
+  .modal-example pre {
+    background: #111; padding: 10px; border-radius: 6px;
+    font-size: 12.5px; overflow-x: auto; margin: 0;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .modal-notes { font-size: 12.5px; margin: 12px 0; padding-left: 18px; color: #ccc; line-height: 1.6; }
+  .modal-notes code { background: #111; padding: 1px 5px; border-radius: 4px; }
+  .modal-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 8px; color: #ccc; cursor: pointer; }
+  .modal-close-btn {
+    margin-top: 14px; padding: 8px 16px; width: 100%;
+    border: none; border-radius: 6px; cursor: pointer;
+    background: #5DCAA5; color: #10231c; font-weight: 600; font-size: 13px;
+  }
+  .modal-close-btn:hover { background: #4fb890; }
+</style>
 </head>
 <body>
 <div id="app">
@@ -57,6 +93,39 @@
     </div>
 
     <div class="tab-panel" id="tab-live">
+      <div id="liveFormatModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>실시간 실험 연동 전 확인사항</h3>
+          <p>아두이노에서 이 <b>JSON 형식</b>으로 값을 보내야 대시보드에 표시됩니다.</p>
+
+          <div class="modal-example">
+            <div class="modal-label">예시 (센서 이름은 자유롭게 정해도 됨)</div>
+            <pre>{"temp": 23.4, "co2": 812.3}</pre>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">아두이노 코드 (마지막 출력 부분, ArduinoJson 사용)</div>
+            <pre>JsonDocument doc;
+doc["temp"] = tempValue;
+doc["co2"]  = co2Value;
+serializeJson(doc, Serial);
+Serial.println();</pre>
+          </div>
+
+          <ul class="modal-notes">
+            <li>센서 이름(키)은 자유롭게 지어도 됩니다. (temp, co2 외 다른 이름 가능)</li>
+            <li>측정하는 센서만 넣으면 됩니다. 전부 다 있을 필요는 없습니다.</li>
+            <li>CO₂ 관련 3D 효과를 보려면 키 이름에 <code>co2</code>라는 글자를 포함하세요.</li>
+            <li>USB(우노): 9600bps + <code>Serial.println(json)</code> / WiFi(ESP32): <code>/data</code>로 JSON POST</li>
+          </ul>
+
+          <label class="modal-checkbox">
+            <input type="checkbox" id="dontShowAgain"> 다시 보지 않기
+          </label>
+          <button id="modalCloseBtn" class="modal-close-btn">확인했어요</button>
+        </div>
+      </div>
+
       <div class="live-status"><span class="live-dot" id="liveDot"></span><span id="liveStatusText">연결 대기중</span></div>
       <div id="liveGraphs"></div>
       <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
@@ -67,7 +136,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="js/common.js"></script>
 <script src="js/tab-current.js"></script>
