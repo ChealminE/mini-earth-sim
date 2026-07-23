@@ -1,22 +1,28 @@
 """
-Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리얼 겸용)
-======================================================================
-두 가지 입력 방식을 동시에 지원합니다:
+Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리얼 + BLE 겸용)
+==========================================================================
+세 가지 입력 방식을 동시에 지원합니다:
 
   1) WiFi 보드 (ESP32 등) -> HTTP POST로 /data 에 JSON 전송
   2) USB 시리얼 보드 (아두이노 우노 등) -> 케이블로 연결, JSON 한 줄씩 Serial.println
+  3) BLE 보드 (ESP32 네이티브 BLE, 또는 우노+HM-10 모듈) -> notify로 JSON 한 줄씩 방송
+     (firmware/esp32_ble_sketch, firmware/uno_hm10_sketch 참고)
 
-둘 다 결국 같은 파이프라인(broadcast_to_clients)을 타기 때문에,
-보드를 섞어 써도(탱크1=ESP32, 탱크2=우노) 대시보드는 구분 없이 동작합니다.
+셋 다 결국 같은 파이프라인(handle_incoming)을 타기 때문에,
+보드를 섞어 써도(탱크1=ESP32 WiFi, 탱크2=우노+HM-10 BLE) 대시보드는 구분 없이 동작합니다.
 
 실행 방법:
   python server.py                     # 시리얼 자동 감지 시도
   python server.py --serial COM5       # 포트 직접 지정 (Windows 예시)
   python server.py --serial /dev/ttyUSB0
   python server.py --no-serial         # 시리얼 아예 안 쓸 때 (ESP32만 사용)
+  python server.py --ble               # BLE 기기 이름으로 스캔해서 연결 (기본 이름: MiniEarth)
+  python server.py --ble --ble-name MyBoard
+  python server.py --ble --ble-address AA:BB:CC:DD:EE:FF   # 스캔 생략, 바로 연결
 
 같은 와이파이에 ESP32와 노트북이 있어야 하고,
-우노는 USB 케이블로 노트북에 물려 있어야 합니다.
+우노는 USB 케이블로 노트북에 물려 있어야 하며,
+BLE 보드는 노트북의 블루투스가 켜져 있어야 합니다 (별도 페어링 불필요, bleak가 직접 스캔/연결).
 """
 
 import argparse
@@ -174,6 +180,61 @@ def serial_reader_thread(port: str, baud: int):
             break
 
 
+# ── 3) BLE 보드 경로: ESP32 네이티브 BLE / 우노+HM-10 ─────────────
+# esp32_ble_sketch.ino와 uno_hm10_sketch.ino가 같은 UUID를 쓰기 때문에
+# 보드 종류를 몰라도 이 코드 하나로 둘 다 처리됨.
+BLE_CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
+
+
+async def ble_reader_task(name_filter: str, address: Optional[str]):
+    """bleak으로 BLE 기기에 연결해 notify를 구독.
+    시리얼과 달리 asyncio 네이티브라 별도 스레드 없이 이벤트 루프 위에서 그대로 돈다.
+    연결이 끊기거나 기기를 못 찾으면 계속 재시도한다 (시리얼 자동 재접속과 동일한 정책).
+    """
+    from bleak import BleakClient, BleakScanner
+
+    buffer = ""
+
+    def handle_notify(_, data: bytearray):
+        nonlocal buffer
+        buffer += data.decode("utf-8", errors="ignore")
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)  # 우노 디버그 출력이 섞여 들어와도 여기서 자동으로 걸러짐
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                asyncio.create_task(handle_incoming(payload, source="ble"))
+
+    while True:
+        try:
+            target = address
+            if not target:
+                print(f"[BLE] 이름에 '{name_filter}' 포함된 기기 검색중...")
+                device = await BleakScanner.find_device_by_filter(
+                    lambda d, adv: d.name is not None and name_filter.lower() in d.name.lower()
+                )
+                if device is None:
+                    print(f"[BLE] '{name_filter}' 기기를 찾지 못함, 5초 후 재검색")
+                    await asyncio.sleep(5)
+                    continue
+                target = device.address
+
+            async with BleakClient(target) as client:
+                print(f"[BLE] 연결됨: {target}")
+                await client.start_notify(BLE_CHAR_UUID, handle_notify)
+                while client.is_connected:
+                    await asyncio.sleep(1)
+                print("[BLE] 연결 끊김, 재접속 시도")
+        except Exception as e:
+            print(f"[BLE] 오류: {e}, 5초 후 재시도")
+            await asyncio.sleep(5)
+
+
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -191,6 +252,9 @@ if __name__ == "__main__":
     parser.add_argument("--serial", type=str, default=None, help="시리얼 포트 직접 지정 (예: COM5, /dev/ttyUSB0)")
     parser.add_argument("--baud", type=int, default=9600, help="시리얼 통신 속도 (우노 스케치와 반드시 일치)")
     parser.add_argument("--no-serial", action="store_true", help="시리얼 입력을 사용하지 않음 (ESP32만 사용)")
+    parser.add_argument("--ble", action="store_true", help="BLE(ESP32 네이티브 BLE 또는 우노+HM-10) 입력 사용")
+    parser.add_argument("--ble-name", type=str, default="MiniEarth", help="BLE 기기 이름에 포함될 문자열 (기본: MiniEarth)")
+    parser.add_argument("--ble-address", type=str, default=None, help="BLE 기기 MAC/UUID 직접 지정 (스캔 생략, 더 빠름)")
     args = parser.parse_args()
 
     import uvicorn
@@ -208,17 +272,24 @@ if __name__ == "__main__":
             print("  우노(USB 시리얼): 연결된 포트를 찾지 못함 (연결 후 --serial 로 직접 지정 가능)")
     else:
         print("  시리얼 입력: 비활성화 (--no-serial)")
+
+    if args.ble:
+        target_desc = args.ble_address or f"이름에 '{args.ble_name}' 포함된 기기"
+        print(f"  BLE 입력: 활성화 ({target_desc})")
+    else:
+        print("  BLE 입력: 비활성화 (--ble 로 켤 수 있음)")
     print("=" * 55)
 
     @app.on_event("startup")
-    async def start_serial_if_needed():
+    async def start_inputs_if_needed():
         global main_loop
         main_loop = asyncio.get_running_loop()
-        if args.no_serial:
-            return
-        port = args.serial or find_serial_port()
-        if port:
-            t = threading.Thread(target=serial_reader_thread, args=(port, args.baud), daemon=True)
-            t.start()
+        if not args.no_serial:
+            port = args.serial or find_serial_port()
+            if port:
+                t = threading.Thread(target=serial_reader_thread, args=(port, args.baud), daemon=True)
+                t.start()
+        if args.ble:
+            asyncio.create_task(ble_reader_task(args.ble_name, args.ble_address))
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
