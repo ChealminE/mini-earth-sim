@@ -154,9 +154,18 @@ const sensorEffectMap = {
   co2: (value) => {
     sceneLive.state.co2 = Math.max(CO2_MIN, Math.min(CO2_MAX, value));
   },
-  // temp: (value) => { sceneLive.state.temp = value; },      // 예시: common.js에 온도 효과 추가 후 활성화
-  // ph:   (value) => { sceneLive.state.ph = value; },        // 예시: 해양 산성화 표현 등
-  // methane: (value) => { sceneLive.state.methane = value; },// 예시: 기포 효과 등
+  // common.js의 applyState()가 이미 ph(해양 산성화/물색)·temp(빙하 축소)·hum(응결 물방울)을
+  // 전부 처리하고 있어서 바로 활성화 - 예시 주석이 아니라 실제 동작하는 매핑임
+  ph: (value) => {
+    sceneLive.state.ph = Math.max(PH_MIN, Math.min(PH_MAX, value));
+  },
+  temp: (value) => {
+    sceneLive.state.tmp = Math.max(TMP_MIN, Math.min(TMP_MAX, value));
+  },
+  hum: (value) => {
+    sceneLive.state.hum = Math.max(HUM_MIN, Math.min(HUM_MAX, value));
+  },
+  // methane: (value) => { sceneLive.state.methane = value; },// 예시: common.js에 아직 대응 로직 없음
 };
 
 function applyLiveSensorEffects() {
