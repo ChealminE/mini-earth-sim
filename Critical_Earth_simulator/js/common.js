@@ -137,6 +137,41 @@ const OCEAN_BASE = TERRAIN_TOP * 0.38;   // 바다: 모래바닥 (그 위를 물
 const WETLAND_BASE = TERRAIN_TOP * 0.78; // 습지·숲: 지표면
 const CITY_BASE = TERRAIN_TOP * 0.96;    // 도시: 가장 높음, 거의 지형 상한까지
 const ZONE_W = BOX_W / 3;
+
+// ================= 절차적 지형 (블록 상판에 노이즈 기반 높낮이) =================
+// 여러 사인파를 겹친 값 노이즈 + 가장자리로 갈수록 0에 수렴하는 falloff로
+// 구역 경계(박스 옆면)와는 이음매 없이, 중앙만 자연스럽게 도드라지게 만든다.
+const TERRAIN_HALF_W = (ZONE_W - 0.015) / 2, TERRAIN_HALF_D = (BOX_D - 0.02) / 2;
+function terrainNoise(lx, lz, amplitude, seed) {
+  const u = lx / TERRAIN_HALF_W, v = lz / TERRAIN_HALF_D;
+  const falloff = Math.max(0, 1 - u * u) * Math.max(0, 1 - v * v);
+  const n = Math.sin(lx * 3.1 + seed) * Math.cos(lz * 2.7 + seed * 1.3) * 0.5 +
+            Math.sin(lx * 7.3 - seed * 0.7) * Math.cos(lz * 6.1 + seed) * 0.25 +
+            Math.sin(lx * 13.1 + seed * 2.1) * Math.cos(lz * 11.7 - seed) * 0.125;
+  return amplitude * n * falloff;
+}
+// 습지 구역은 바닥 위에 나무·바위·풀이 고정 좌표로 놓이므로, 지형 높이를
+// 반영한 실제 배치 y값을 구할 때 이 함수로 통일해서 뜨거나 파묻히지 않게 한다.
+const WETLAND_TERRAIN_AMP = 0.012, WETLAND_TERRAIN_SEED = 4.2;
+function wetlandY(x, z) { return WETLAND_BASE + terrainNoise(x, z, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED); }
+const OCEAN_TERRAIN_AMP = 0.02, OCEAN_TERRAIN_SEED = 1.7;
+
+function createTerrainCap(xOffset, groundTopY, texture, amplitude, seed, segX = 24, segZ = 16) {
+  const geo = new THREE.PlaneGeometry(ZONE_W - 0.015, BOX_D - 0.02, segX, segZ);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const lx = pos.getX(i), lz = pos.getY(i);
+    pos.setZ(i, terrainNoise(lx, lz, amplitude, seed));
+  }
+  geo.computeVertexNormals();
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9, flatShading: true }));
+  mesh.position.set(xOffset, groundTopY + 0.001, 0); // 박스 상판 바로 위에 겹쳐서 이음매 없이 대체
+  mesh.receiveShadow = true;
+  box.add(mesh);
+  return mesh;
+}
+
 const box = new THREE.Group();
 scene.add(box);
 
@@ -295,6 +330,10 @@ function zoneFloor(xOffset, groundTopY, texture, sideColor) {
 zoneFloor(-ZONE_W, OCEAN_BASE, oceanFloorTex, 0xa89f83);
 zoneFloor(0, WETLAND_BASE, forestFloorTex, 0x2c331c);
 zoneFloor(ZONE_W, CITY_BASE, cityFloorTex, 0x3a3832);
+// 해저·습지 바닥에만 절차적 지형 기복 적용. 도시는 실제로도 평평하게 포장된 땅이라
+// (건물·차 등 고정 좌표 소품도 많아 굴곡을 주면 오히려 붕 뜬 것처럼 보임) 그대로 둔다.
+createTerrainCap(-ZONE_W, OCEAN_BASE, oceanFloorTex, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
+createTerrainCap(0, WETLAND_BASE, forestFloorTex, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
 // 세 블록이 높이가 달라서 경계면(옆면)이 자연스럽게 계단 절벽처럼 드러남 - 별도 리저 불필요
 
 
@@ -369,7 +408,7 @@ const rockMat = new THREE.MeshStandardMaterial({ color: 0x74705f, roughness: 0.9
 [[-0.6, 0.5], [0.5, -0.55], [-0.5, -0.35]].forEach(([x, z]) => {
   const s = 0.05 + Math.random() * 0.035;
   const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
-  rock.position.set(x, WETLAND_BASE + s * 0.5, z);
+  rock.position.set(x, wetlandY(x, z) + s * 0.5, z);
   rock.castShadow = true;
   forestGroup.add(rock);
 });
@@ -394,7 +433,7 @@ treeDefs.forEach(([x, z]) => {
     leaf.castShadow = true;
     tree.add(leaf);
   }
-  tree.position.set(x, WETLAND_BASE, z);
+  tree.position.set(x, wetlandY(x, z), z);
   forestGroup.add(tree);
   treeMeshes.push({ group: tree, baseX: x, baseZ: z });
 });
@@ -405,14 +444,15 @@ const wetlandPatch = new THREE.Mesh(
   new THREE.MeshPhysicalMaterial({ color: 0x2b2318, roughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2 })
 );
 wetlandPatch.rotation.x = -Math.PI / 2;
-wetlandPatch.position.set(-0.2, WETLAND_BASE + 0.006, 0.1);
+wetlandPatch.position.set(-0.2, wetlandY(-0.2, 0.1) + 0.006, 0.1);
 forestGroup.add(wetlandPatch);
 const puddleMat = new THREE.MeshPhysicalMaterial({ color: 0x3a6a7a, transparent: true, opacity: 0.75, roughness: 0.05, transmission: 0.3, clearcoat: 1 });
 const puddles = [];
 [[-0.03, -0.02, 0.035], [0.025, 0.03, 0.028], [-0.02, 0.04, 0.02]].forEach(([px, pz, pr]) => {
+  const pux = -0.2 + px, puz = 0.1 + pz;
   const puddle = new THREE.Mesh(new THREE.CircleGeometry(pr, 16), puddleMat);
   puddle.rotation.x = -Math.PI / 2;
-  puddle.position.set(-0.2 + px, WETLAND_BASE + 0.009, 0.1 + pz);
+  puddle.position.set(pux, wetlandY(pux, puz) + 0.009, puz);
   forestGroup.add(puddle);
   puddles.push(puddle);
 });
@@ -434,7 +474,7 @@ grassMesh.castShadow = true;
     const gz = (Math.random() - 0.5) * 1.05;
     const dxMud = gx - wetlandPatch.position.x, dzMud = gz - wetlandPatch.position.z;
     if (Math.sqrt(dxMud * dxMud + dzMud * dzMud) < 0.14) continue; // 진흙 패치 근처는 비워둠
-    dummy.position.set(gx, WETLAND_BASE, gz);
+    dummy.position.set(gx, wetlandY(gx, gz), gz);
     dummy.rotation.y = Math.random() * Math.PI * 2;
     const gs = 0.7 + Math.random() * 0.7;
     dummy.scale.set(gs, gs * (0.8 + Math.random() * 0.5), gs);
