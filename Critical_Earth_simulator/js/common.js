@@ -239,7 +239,11 @@ scene.add(box);
 const acrylicMat = new THREE.MeshPhysicalMaterial({
   color: 0xffffff, transparent: true, opacity: 0.06,
   roughness: 0.02, transmission: 0.97, thickness: 0.05,
-  side: THREE.DoubleSide, clearcoat: 1, clearcoatRoughness: 0.05
+  side: THREE.DoubleSide, clearcoat: 1, clearcoatRoughness: 0.05,
+  // 이 유리 벽이 depth buffer에 값을 계속 써서, 벽 바로 안쪽에 겹쳐 있는 다른 반투명
+  // 오브젝트(헤이즈 볼륨 등)가 depth test에서 걸러져 안 보이는 문제가 있었음 - 투명한
+  // 유리는 뒤에 있는 걸 가리면 안 되므로 depthWrite를 꺼서 순수 오버레이로만 동작하게 함
+  depthWrite: false
 });
 const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
 function addPanel(w, h, pos, rot) {
@@ -295,7 +299,11 @@ const atmosphere = new THREE.Points(atmoGeo, atmoMat);
 box.add(atmosphere);
 
 // 3) 은은한 헤이즈 볼륨 - 지형 위 대기 공간 전체를 감싸는 반투명 색 레이어 (스모그 느낌)
-const hazeMat = new THREE.MeshBasicMaterial({ color: HAZY_SKY.clone(), transparent: true, opacity: 0, side: THREE.BackSide });
+// 옆면(4개 수직면)이 바깥 아크릴 벽(addPanel)과 거의 같은 위치에 겹쳐 있어서, 그쪽이
+// 먼저 그려지며 depth buffer를 채워두면 이 헤이즈 벽은 depth test에서 걸러져 옵션값(opacity)을
+// 아무리 올려도 아예 안 그려졌었음(위·아래 면은 겹치는 게 없어서 정상 표시) - depthWrite를 꺼서
+// 다른 투명 오브젝트의 depth buffer에 영향받지 않고 항상 그려지게 함
+const hazeMat = new THREE.MeshBasicMaterial({ color: HAZY_SKY.clone(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
 const haze = new THREE.Mesh(new THREE.BoxGeometry(BOX_W - 0.02, BOX_H - TERRAIN_TOP - 0.05, BOX_D - 0.02), hazeMat);
 haze.position.y = TERRAIN_TOP + (BOX_H - TERRAIN_TOP) / 2;
 box.add(haze);
