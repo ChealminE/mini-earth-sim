@@ -31,6 +31,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -112,6 +113,17 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in clients:
             clients.remove(websocket)
+
+
+# style.css, js/*.js 등 정적 파일 서빙 (반드시 위의 라우트들 뒤에 등록해야
+# "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
+app.mount("/js", StaticFiles(directory=BASE_DIR / "js"), name="js")
+app.mount("/texture_image", StaticFiles(directory=BASE_DIR / "texture_image"), name="textures")
+
+
+@app.get("/style.css")
+async def style_css():
+    return FileResponse(BASE_DIR / "style.css")
 
 
 # ── 2) 시리얼 보드 경로: USB (우노 등) ─────────────────────────

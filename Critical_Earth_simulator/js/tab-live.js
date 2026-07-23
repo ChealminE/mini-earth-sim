@@ -142,12 +142,29 @@ function connectLiveSocket() {
     if (newKey) refreshLiveSelectOptions();
     updateAllLiveCharts();
 
-    // key 이름에 "co2"가 포함된 센서가 있으면 그 값으로 아크릴 모형(sceneLive) 갱신
+    // key 이름에 co2/ph/온도/습도가 포함된 센서가 있으면 그 값으로 아크릴 모형(sceneLive) 갱신
+    let modelChanged = false;
     const co2Key = [...liveKnownKeys].find(k => k.toLowerCase().includes('co2'));
     if (co2Key && typeof liveLatest[co2Key].value === 'number') {
       sceneLive.state.co2 = Math.max(CO2_MIN, Math.min(CO2_MAX, liveLatest[co2Key].value));
-      applyState(sceneLive);
+      modelChanged = true;
     }
+    const phKey = [...liveKnownKeys].find(k => k.toLowerCase().includes('ph'));
+    if (phKey && typeof liveLatest[phKey].value === 'number') {
+      sceneLive.state.ph = Math.max(PH_MIN, Math.min(PH_MAX, liveLatest[phKey].value));
+      modelChanged = true;
+    }
+    const tmpKey = [...liveKnownKeys].find(k => /temp|tmp/i.test(k));
+    if (tmpKey && typeof liveLatest[tmpKey].value === 'number') {
+      sceneLive.state.tmp = Math.max(TMP_MIN, Math.min(TMP_MAX, liveLatest[tmpKey].value));
+      modelChanged = true;
+    }
+    const humKey = [...liveKnownKeys].find(k => /hum/i.test(k));
+    if (humKey && typeof liveLatest[humKey].value === 'number') {
+      sceneLive.state.hum = Math.max(HUM_MIN, Math.min(HUM_MAX, liveLatest[humKey].value));
+      modelChanged = true;
+    }
+    if (modelChanged) applyState(sceneLive);
   };
 }
 connectLiveSocket(); // 서버가 꺼져 있어도 자동 재시도하므로 항상 연결 시도해둠
