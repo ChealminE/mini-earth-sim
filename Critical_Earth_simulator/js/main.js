@@ -32,3 +32,18 @@ fitRenderer();
 animate();
 
 window.addEventListener('resize', fitRenderer);
+
+// ── 밝기 슬라이더 ──────────────────────────────────
+// 같은 씬이라도 화면 밝기·명암비에 따라 톤매핑 결과가 다르게 보여서(어두운 패널일수록
+// 새까맣게 보임), 화면마다 사용자가 직접 노출값을 보정할 수 있게 슬라이더로 노출
+const brightnessSlider = document.getElementById('brightnessSlider');
+const savedExposure = Number(localStorage.getItem('brightnessExposure'));
+if (savedExposure) {
+  renderer.toneMappingExposure = savedExposure;
+  brightnessSlider.value = savedExposure;
+}
+brightnessSlider.addEventListener('input', () => {
+  const exposure = Number(brightnessSlider.value);
+  renderer.toneMappingExposure = exposure;
+  localStorage.setItem('brightnessExposure', exposure);
+});
