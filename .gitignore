@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python (Critical_Earth_simulator/server.py)
+__pycache__/
+*.pyc
+Critical_Earth_simulator/data_log.csv

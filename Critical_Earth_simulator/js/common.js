@@ -265,8 +265,11 @@ box.add(oceanGroup);
 const waveW = ZONE_W - 0.08, waveD = BOX_D - 0.08;
 const waveGeo = new THREE.PlaneGeometry(waveW, waveD, 36, 24);
 const waveBaseY = TERRAIN_TOP - 0.02; // 물 수면은 지형 상한 바로 아래까지 채움
+// pH가 낮아질수록(산성화) WAVE_CLEAR → WAVE_MURKY로 수면 색도 함께 탁해짐
+const WAVE_CLEAR = new THREE.Color(0x123a55);
+const WAVE_MURKY = new THREE.Color(0x7a6a42);
 const waveMat = new THREE.MeshPhysicalMaterial({
-  color: 0x123a55, transparent: true, opacity: 0.92, roughness: 0.1,
+  color: WAVE_CLEAR.clone(), transparent: true, opacity: 0.92, roughness: 0.1,
   transmission: 0.25, clearcoat: 0.9, side: THREE.DoubleSide
 });
 const waveMesh = new THREE.Mesh(waveGeo, waveMat);
@@ -278,10 +281,13 @@ const wavePosAttr = waveGeo.attributes.position;
 const waveBase = Float32Array.from(wavePosAttr.array);
 
 // 아래쪽 몸통(수조 안쪽 물 표현) - 모래바닥(OCEAN_BASE)부터 수면까지 실제 두께로 채움
+// pH가 낮아질수록(산성화) WATER_CLEAR → WATER_MURKY로 탁하게 변함
+const WATER_CLEAR = new THREE.Color(0x0e2c45);
+const WATER_MURKY = new THREE.Color(0x6b5a35);
 const waterH = Math.max(0.03, waveBaseY - OCEAN_BASE);
 const waterBody = new THREE.Mesh(
   new THREE.BoxGeometry(waveW, waterH, waveD),
-  new THREE.MeshPhysicalMaterial({ color: 0x0e2c45, transparent: true, opacity: 0.75, roughness: 0.15, transmission: 0.2 })
+  new THREE.MeshPhysicalMaterial({ color: WATER_CLEAR.clone(), transparent: true, opacity: 0.75, roughness: 0.15, transmission: 0.2 })
 );
 waterBody.position.y = OCEAN_BASE + waterH / 2;
 oceanGroup.add(waterBody);
@@ -466,17 +472,23 @@ return {
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
+  waterBody, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
   smokeMat, smokeGeo, smokeCount, smokeLife, factory,
   buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE,
-  state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24 }
+  condensationSpeed: 1,
+  state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24, ph: 8.04, tmp: 24, hum: 55 }
 };
 } // buildAcrylicScene 끝
 
 // 3D 씬(자동차·건물·연기·습지 등)은 그대로 유지하되, 정책 슬라이더가 없어졌으므로
 // 아래 고정값으로 대체. CO2 값만 미래예측 탭 슬라이더/실시간 실험 탭 값으로 실시간 갱신됨.
 const CO2_MIN = 280, CO2_MAX = 600;
+// 실시간 실험 탭에서만 쓰이는 실측 매핑 범위 (센서 실측값 → 3D 시각효과)
+const PH_MIN = 7.6, PH_MAX = 8.2;   // 해양 산성화 정상역
+const TMP_MIN = 15, TMP_MAX = 35;   // 기온(°C)
+const HUM_MIN = 30, HUM_MAX = 90;   // 습도(%)
 
 // ── Chart.js 다크 테마 공통 옵션 (현재/미래 탭 차트가 공유) ──────────────
 const gridColor = 'rgba(255,255,255,0.06)';
@@ -504,12 +516,32 @@ function applyState(S) {
   S.atmoMat.opacity = 0.35 + intensity * 0.45;
   S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
   S.hazeMat.opacity = 0.04 + intensity * 0.18;
-  S.dropMat.opacity = 0.45 + intensity * 0.4;
+
+  // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
+  const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
+  S.waterBody.material.color.lerpColors(S.WATER_CLEAR, S.WATER_MURKY, phIntensity);
+  S.waterBody.material.transmission = 0.2 * (1 - phIntensity);   // 탁해질수록 투과 거의 0으로
+  S.waterBody.material.opacity = 0.75 + phIntensity * 0.24;
+  S.waterBody.material.roughness = 0.15 + phIntensity * 0.55;    // 탁해질수록 광택↓(진흙 느낌)
+  S.waveMat.color.lerpColors(S.WAVE_CLEAR, S.WAVE_MURKY, phIntensity);
+  S.waveMat.transmission = 0.25 * (1 - phIntensity);
+  S.waveMat.roughness = 0.1 + phIntensity * 0.5;
+  S.waveMat.clearcoat = 0.9 * (1 - phIntensity);   // 맑을 때만 반짝이는 수면, 탁해지면 광택 제거
+
+  // 실측 온도 → 빙하 축소 (CO2 강도와 실측 온도 중 더 강한 쪽을 반영, 시나리오 탭은 co2만 있어 기존과 동일하게 동작)
+  const tempIntensity = Math.min(1, Math.max(0, (S.state.tmp - TMP_MIN) / (TMP_MAX - TMP_MIN)));
+  const iceIntensity = Math.max(intensity, tempIntensity);
   S.iceMeshes.forEach(o => {
-    const shrink = 1 - intensity * 0.5;
+    const shrink = 1 - iceIntensity * 0.5;
     o.mesh.scale.setScalar(shrink);
     o.mesh.position.y = o.baseY - (1 - shrink) * 0.1;
   });
+
+  // 실측 습도 → 응결 물방울 농도·낙하 속도 (역시 co2 강도와 더 강한 쪽 반영)
+  const humIntensity = Math.min(1, Math.max(0, (S.state.hum - HUM_MIN) / (HUM_MAX - HUM_MIN)));
+  const dropIntensity = Math.max(intensity, humIntensity);
+  S.dropMat.opacity = 0.45 + dropIntensity * 0.4;
+  S.condensationSpeed = 1 + dropIntensity * 1.5;
 
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
@@ -588,7 +620,7 @@ function animate() {
   // 응결 물방울: 아래로 서서히 흘러내리다가 지형 근처에서 리셋
   const dp = S.dropGeo.attributes.position;
   for (let i = 0; i < S.dropCount; i++) {
-    let y = dp.getY(i) - S.dropSeed[i * 2] * 0.01;
+    let y = dp.getY(i) - S.dropSeed[i * 2] * 0.01 * S.condensationSpeed;
     if (y < S.TERRAIN_TOP + 0.05) y = S.BOX_H - 0.1;
     dp.setY(i, y);
   }
