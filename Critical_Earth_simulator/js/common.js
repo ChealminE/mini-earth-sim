@@ -128,7 +128,8 @@ lampGroup.position.set(3.6, 0, 2.0);
 scene.add(lampGroup);
 const lampArmMat = new THREE.MeshStandardMaterial({ color: 0x2a2a28, roughness: 0.5, metalness: 0.4 });
 
-const LAMP_POLE_H = 1.7;
+// 박스 전체 높이(BOX_H=2.3)보다 확실히 높은 곳에서 비추도록 기둥을 훨씬 높임
+const LAMP_POLE_H = 2.55;
 const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.04, 20), lampArmMat);
 lampBase.position.y = 0.02;
 lampGroup.add(lampBase);
@@ -137,7 +138,8 @@ lampPole.position.y = LAMP_POLE_H / 2;
 lampGroup.add(lampPole);
 
 const armStart = new THREE.Vector3(0, LAMP_POLE_H, 0); // 기둥 꼭대기
-const armEnd = new THREE.Vector3(-0.9, LAMP_POLE_H - 0.35, -1.1); // 박스 쪽으로 비스듬히 뻗은 팔 끝점(갓 꼭짓점)
+// 박스 위(월드 y>2.3 유지) + 박스 중앙 쪽으로 뻗도록 (lampGroup 로컬 = 월드 - (3.6,0,2.0))
+const armEnd = new THREE.Vector3(-1.6, LAMP_POLE_H - 0.05, -1.7);
 const armDir = new THREE.Vector3().subVectors(armEnd, armStart);
 const armLen = armDir.length();
 const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, armLen, 10), lampArmMat);
@@ -305,10 +307,10 @@ const dropMat = new THREE.PointsMaterial({ color: 0xdff0ff, size: 0.018, transpa
 const drops = new THREE.Points(dropGeo, dropMat);
 box.add(drops);
 
-function zoneFloor(xOffset, groundTopY, texture, sideColor) {
+function zoneFloor(xOffset, groundTopY, texture, sideColor, topColor = 0xffffff) {
   const h = Math.max(groundTopY, 0.01);
   const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
-  const topMat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 });
+  const topMat = new THREE.MeshStandardMaterial({ map: texture, color: topColor, roughness: 0.9 });
   // BoxGeometry 面 순서: [+x, -x, +y(윗면), -y(밑면), +z, -z]
   const mats = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
   const block = new THREE.Mesh(new THREE.BoxGeometry(ZONE_W - 0.015, h, BOX_D - 0.02), mats);
@@ -320,7 +322,9 @@ function zoneFloor(xOffset, groundTopY, texture, sideColor) {
 }
 zoneFloor(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, 0xa89f83);
 zoneFloor(0, WETLAND_BASE, sharedTex.forestGrass, 0x2c331c);
-zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832);
+// 도시 바닥 텍스처가 씬 조명 아래 너무 밝아 안 보여서 씬 전체 조명을 건드리는 대신
+// 이 재질에만 어두운 틴트를 곱해 노출을 낮춘 효과를 줌
+zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832, 0x9a9a9a);
 // 해저·습지 바닥에만 절차적 지형 기복 적용. 도시는 실제로도 평평하게 포장된 땅이라
 // (건물·차 등 고정 좌표 소품도 많아 굴곡을 주면 오히려 붕 뜬 것처럼 보임) 그대로 둔다.
 createTerrainCap(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
@@ -342,7 +346,8 @@ const WAVE_MURKY = new THREE.Color(0x7a6a42);
 const waveMat = new THREE.MeshPhysicalMaterial({
   color: WAVE_CLEAR.clone(), transparent: true, opacity: 0.92, roughness: 0.1,
   transmission: 0.25, clearcoat: 0.9, side: THREE.DoubleSide,
-  normalMap: waterNormalTex, normalScale: new THREE.Vector2(0.35, 0.35)
+  normalMap: waterNormalTex, normalScale: new THREE.Vector2(0.35, 0.35),
+  depthWrite: false // 몸통(waterBody, depthWrite:true)과 거의 겹쳐 있어서 서로 깊이 순서를 다투는 걸 방지
 });
 const waveMesh = new THREE.Mesh(waveGeo, waveMat);
 waveMesh.rotation.x = -Math.PI / 2;
@@ -356,7 +361,11 @@ const waveBase = Float32Array.from(wavePosAttr.array);
 // pH가 낮아질수록(산성화) WATER_CLEAR → WATER_MURKY로 탁하게 변함
 const WATER_CLEAR = new THREE.Color(0x0e2c45);
 const WATER_MURKY = new THREE.Color(0x6b5a35);
-const waterH = Math.max(0.03, waveBaseY - OCEAN_BASE);
+// 파도(swell+chop)가 waveBaseY 기준 최대 약 ±0.17까지 출렁이므로, 몸통 윗면을 그보다
+// 확실히 높게 잡아야 파도가 내려갈 때 몸통의 평평한 윗면이 옆면 없는 "판"처럼 드러나지 않음
+const WATER_TOP_MARGIN = 0.2;
+const waterTopY = waveBaseY + WATER_TOP_MARGIN;
+const waterH = Math.max(0.03, waterTopY - OCEAN_BASE);
 // transmission(굴절 투과)을 표면(waveMat)과 몸통 둘 다에 쓰면 겹친 투과 재질끼리
 // 서로를 잘못 가려서 각도에 따라 옆면이 사라지는 문제가 생김 - 몸통은 transmission 없이
 // 색상+불투명도만으로 표현하고, depthWrite를 명시해 자기 자신의 면끼리 항상 올바르게 겹치게 함
@@ -393,19 +402,22 @@ const iceMeshes = [];
   ice.position.set(x, waveBaseY + s * 0.5, z);
   ice.castShadow = true;
   oceanGroup.add(ice);
-  iceMeshes.push({ mesh: ice, baseY: ice.position.y });
+  iceMeshes.push({ mesh: ice, baseY: ice.position.y, shrinkY: 0 });
 });
 
 // --- 습지·숲 ---
 const forestGroup = new THREE.Group();
 box.add(forestGroup);
 const MUD_X = -0.2, MUD_Z = 0.1, MUD_AVOID_R = 0.14;
+// 실제 녹지 전체 크기(TERRAIN_HALF_W/D)의 90%까지 써야 하는데, 이전엔 절반 정도(가로
+// 58%·세로 35%)밖에 안 되는 좁은 범위를 써서 중앙에만 몰려 보였음 - 범위를 바로잡음
+const GREEN_HALF_W = TERRAIN_HALF_W * 0.9, GREEN_HALF_D = TERRAIN_HALF_D * 0.9;
 // 녹지 전체 영역(풀 스캐터와 동일 범위)에서 진흙탕 근처를 피해 랜덤 좌표 하나를 뽑는다
 function scatterInGreenZone() {
   let x, z, tries = 0;
   do {
-    x = (Math.random() - 0.5) * 1.15;
-    z = (Math.random() - 0.5) * 1.05;
+    x = (Math.random() - 0.5) * 2 * GREEN_HALF_W;
+    z = (Math.random() - 0.5) * 2 * GREEN_HALF_D;
     tries++;
   } while (Math.hypot(x - MUD_X, z - MUD_Z) < MUD_AVOID_R && tries < 20);
   return [x, z];
@@ -481,8 +493,8 @@ grassMesh.castShadow = true;
   let placed = 0, attempts = 0;
   while (placed < GRASS_MAX && attempts < GRASS_MAX * 8) {
     attempts++;
-    const gx = (Math.random() - 0.5) * 1.15;
-    const gz = (Math.random() - 0.5) * 1.05;
+    const gx = (Math.random() - 0.5) * 2 * GREEN_HALF_W;
+    const gz = (Math.random() - 0.5) * 2 * GREEN_HALF_D;
     const dxMud = gx - wetlandPatch.position.x, dzMud = gz - wetlandPatch.position.z;
     if (Math.sqrt(dxMud * dxMud + dzMud * dzMud) < 0.14) continue; // 진흙 패치 근처는 비워둠
     dummy.position.set(gx, wetlandY(gx, gz), gz);
@@ -533,27 +545,63 @@ const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.
 const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
                    [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
                    [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
-// 저폴리 자동차: 차체+캐빈(지붕)+바퀴 4개. EV/가솔린 색 구분은 차체·캐빈에만 적용(바퀴는 항상 검정)
+// 저폴리 자동차: 차체 + 쐐기형 캐빈(뒤 수직→지붕→앞유리 경사) + 유리 + 바퀴 4개 + 펜더.
+// EV/가솔린 색 구분은 차체·캐빈·펜더에만 적용(바퀴·유리는 항상 고정 재질)
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd0e8, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide });
 function buildCarModel() {
   const group = new THREE.Group();
-  const wheelR = 0.011, bodyH = 0.03, cabinH = 0.022;
+  const wheelR = 0.011, bodyH = 0.028, cabinH = 0.024, cabinWidth = 0.038;
+  const bodyBottomY = wheelR * 2;
+
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, bodyH, 0.045), gasCarMat);
-  body.position.y = wheelR * 2 + bodyH / 2;
+  body.position.y = bodyBottomY + bodyH / 2;
   body.castShadow = true;
   group.add(body);
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.05, cabinH, 0.04), gasCarMat);
-  cabin.position.set(-0.006, body.position.y + bodyH / 2 + cabinH / 2, 0);
+
+  // 캐빈 옆면 프로파일(뒤 수직 -> 지붕 평평 -> 앞유리 경사)을 z축으로 압출해서 쐐기 모양으로
+  const cabinBaseY = body.position.y + bodyH / 2;
+  const profile = new THREE.Shape();
+  profile.moveTo(-0.022, 0);
+  profile.lineTo(-0.022, cabinH);
+  profile.lineTo(0.004, cabinH);
+  profile.lineTo(0.022, 0);
+  profile.lineTo(-0.022, 0);
+  const cabinGeo = new THREE.ExtrudeGeometry(profile, { depth: cabinWidth, bevelEnabled: false });
+  cabinGeo.translate(-0.004, 0, -cabinWidth / 2); // 살짝 뒤로 당기고 z축 중앙 정렬
+  const cabin = new THREE.Mesh(cabinGeo, gasCarMat);
+  cabin.position.y = cabinBaseY;
   cabin.castShadow = true;
   group.add(cabin);
+
+  // 앞유리: 캐빈의 경사면(로컬 (0,cabinH) -> (0.018,0))에 맞춘 반투명 유리 패널, 표면에서 살짝 띄워 겹침 방지
+  const halfGW = cabinWidth / 2 - 0.003;
+  const gx1 = 0.0012, gy1 = cabinBaseY + cabinH + 0.0008;
+  const gx2 = 0.0192, gy2 = cabinBaseY + 0.0008;
+  const glassGeo = new THREE.BufferGeometry();
+  glassGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+    gx1, gy1, -halfGW, gx1, gy1, halfGW, gx2, gy2, halfGW,
+    gx1, gy1, -halfGW, gx2, gy2, halfGW, gx2, gy2, -halfGW,
+  ]), 3));
+  glassGeo.computeVertexNormals();
+  group.add(new THREE.Mesh(glassGeo, glassMat));
+
   const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.008, 10);
+  const fenderGeo = new THREE.BoxGeometry(0.024, 0.01, 0.006);
+  const fenders = [];
   [[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]].forEach(([wx, wz]) => {
     const wheel = new THREE.Mesh(wheelGeo, wheelMat);
     wheel.rotation.x = Math.PI / 2; // 실린더 축을 z방향(차 옆면)으로 돌려서 옆에서 바퀴처럼 보이게
     wheel.position.set(wx, wheelR, wz);
     wheel.castShadow = true;
     group.add(wheel);
+
+    const fender = new THREE.Mesh(fenderGeo, gasCarMat); // 바퀴 위 펜더(휠아치) 돌출부
+    fender.position.set(wx, bodyBottomY, wz);
+    fender.castShadow = true;
+    group.add(fender);
+    fenders.push(fender);
   });
-  return { group, bodyParts: [body, cabin] };
+  return { group, bodyParts: [body, cabin, ...fenders] };
 }
 const carMeshes = [];
 carSpots.forEach((pos, i) => {
@@ -569,12 +617,14 @@ const factory = new THREE.Group();
 factory.position.set(0.6, CITY_BASE, 0.55);
 cityGroup.add(factory);
 // 굴뚝 전용 텍스처는 없어서 콘크리트 톤인 도시 바닥 텍스처를 작게 타일링해 재사용
+// 이전엔 repeat(1,4)라 좁은 원기둥 둘레에 이미지 전체가 눌려 들어가서 그라우트 선이
+// 서브픽셀로 뭉개져 안 보였음 - 반복 횟수를 확 늘리고 톤도 더 어둡게 낮춰 대비를 높임
 const stackTex = sharedTex.cityPavement.clone();
 stackTex.needsUpdate = true;
-stackTex.repeat.set(1, 4);
+stackTex.repeat.set(6, 10);
 const stack = new THREE.Mesh(
   new THREE.CylinderGeometry(0.03, 0.04, 0.35, 10),
-  new THREE.MeshStandardMaterial({ map: stackTex, color: 0x8a8682, roughness: 0.8 })
+  new THREE.MeshStandardMaterial({ map: stackTex, color: 0x5c5852, roughness: 0.85 })
 );
 stack.position.y = 0.175;
 stack.castShadow = true;
@@ -677,7 +727,8 @@ function applyState(S) {
   S.iceMeshes.forEach(o => {
     const shrink = 1 - iceIntensity * 0.5;
     o.mesh.scale.setScalar(shrink);
-    o.mesh.position.y = o.baseY - (1 - shrink) * 0.1;
+    // 실제 y좌표는 매 프레임 animate()에서 shrinkY + 파도 높이를 합쳐 계산하므로 여기선 오프셋만 저장
+    o.shrinkY = -(1 - shrink) * 0.1;
   });
 
   // 실측 습도 → 응결 물방울 농도·낙하 속도 (역시 co2 강도와 더 강한 쪽 반영)
@@ -759,6 +810,15 @@ function animate() {
   }
   S.wavePosAttr.needsUpdate = true;
   S.waveGeo.computeVertexNormals();
+
+  // 빙하도 표면과 동일한 수식으로 그 자리의 파도 높이를 계산해 매 프레임 함께 오르내리게 함
+  S.iceMeshes.forEach(o => {
+    const lx = o.mesh.position.x, ly = -o.mesh.position.z;
+    const frontT = Math.max(0, Math.min(1, (ly / halfD + 1) / 2));
+    const swell = Math.sin(lx * 1.5 + t * 0.7) * (0.05 + frontT * 0.09 + intensity * 0.02);
+    const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * 0.012 * frontT;
+    o.mesh.position.y = o.baseY + o.shrinkY + swell + chop;
+  });
 
   // 크레스트 포말 파티클: 살짝 흔들리며 부서지는 느낌
   const fp = S.foamGeo.attributes.position;
