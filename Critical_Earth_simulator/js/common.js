@@ -112,37 +112,53 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0015;
 scene.add(sun, sun.target);
-// 색공간 관리(ColorManagement)가 기본 활성화되면서 실내 벽면이 예전보다 어둡게 보여 소폭 보정
-scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+// 텍스처(특히 도시 바닥·건물 창문 패턴)의 명암 대비가 너무 밝아 안 보였어서
+// 색공간 보정용으로 올렸던 값을 다시 낮춤 - 실내가 살짝 어두워 보이는 것보다
+// 텍스처가 실제로 보이는 쪽이 우선
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 const rim = new THREE.DirectionalLight(0xdfe8f5, 0.35);
 rim.position.set(-5, 3, -4);
 scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.65));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.4));
 
-// 집게형 조명 스탠드 (사진 속 실제 조명 모형)
+// 집게형 조명 스탠드: 기둥 끝점 → 갓 위치를 잇는 벡터로 팔을 정렬해서
+// 기둥·팔·갓·전구가 서로 끊어져 보이지 않고 실제로 이어지게 배치
 const lampGroup = new THREE.Group();
 lampGroup.position.set(3.6, 0, 2.0);
 scene.add(lampGroup);
 const lampArmMat = new THREE.MeshStandardMaterial({ color: 0x2a2a28, roughness: 0.5, metalness: 0.4 });
-const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.05, 16), lampArmMat);
-lampBase.position.y = 2.5;
+
+const LAMP_POLE_H = 1.7;
+const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.04, 20), lampArmMat);
+lampBase.position.y = 0.02;
 lampGroup.add(lampBase);
-const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.2, 8), lampArmMat);
-lampArm.position.set(-0.2, 2.05, -0.1);
-lampArm.rotation.z = Math.PI / 3.4;
+const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, LAMP_POLE_H, 12), lampArmMat);
+lampPole.position.y = LAMP_POLE_H / 2;
+lampGroup.add(lampPole);
+
+const armStart = new THREE.Vector3(0, LAMP_POLE_H, 0); // 기둥 꼭대기
+const armEnd = new THREE.Vector3(-0.9, LAMP_POLE_H - 0.35, -1.1); // 박스 쪽으로 비스듬히 뻗은 팔 끝점(갓 꼭짓점)
+const armDir = new THREE.Vector3().subVectors(armEnd, armStart);
+const armLen = armDir.length();
+const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, armLen, 10), lampArmMat);
+lampArm.position.copy(armStart).addScaledVector(armDir, 0.5);
+lampArm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), armDir.clone().normalize());
 lampGroup.add(lampArm);
+
+const LAMP_SHADE_H = 0.22;
 const lampHead = new THREE.Mesh(
-  new THREE.ConeGeometry(0.16, 0.22, 20, 1, true),
+  new THREE.ConeGeometry(0.16, LAMP_SHADE_H, 20, 1, true),
   new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide })
 );
-lampHead.position.set(-0.72, 1.42, -0.42);
-lampHead.rotation.x = Math.PI * 0.62;
+// 원뿔은 로컬 +y가 꼭짓점이라, 꼭짓점이 정확히 팔 끝점(armEnd)에 닿도록 중심을 절반만큼 내림
+lampHead.position.copy(armEnd);
+lampHead.position.y -= LAMP_SHADE_H / 2;
 lampGroup.add(lampHead);
 const lampBulb = new THREE.Mesh(
-  new THREE.SphereGeometry(0.06, 16, 16),
+  new THREE.SphereGeometry(0.055, 16, 16),
   new THREE.MeshBasicMaterial({ color: 0xfff4d0 })
 );
-lampBulb.position.set(-0.72, 1.36, -0.42);
+lampBulb.position.set(armEnd.x, armEnd.y - LAMP_SHADE_H * 0.8, armEnd.z); // 갓 안쪽, 입구 근처
 lampGroup.add(lampBulb);
 
 const table = new THREE.Mesh(
@@ -341,9 +357,12 @@ const waveBase = Float32Array.from(wavePosAttr.array);
 const WATER_CLEAR = new THREE.Color(0x0e2c45);
 const WATER_MURKY = new THREE.Color(0x6b5a35);
 const waterH = Math.max(0.03, waveBaseY - OCEAN_BASE);
+// transmission(굴절 투과)을 표면(waveMat)과 몸통 둘 다에 쓰면 겹친 투과 재질끼리
+// 서로를 잘못 가려서 각도에 따라 옆면이 사라지는 문제가 생김 - 몸통은 transmission 없이
+// 색상+불투명도만으로 표현하고, depthWrite를 명시해 자기 자신의 면끼리 항상 올바르게 겹치게 함
 const waterBody = new THREE.Mesh(
   new THREE.BoxGeometry(waveW, waterH, waveD),
-  new THREE.MeshPhysicalMaterial({ color: WATER_CLEAR.clone(), transparent: true, opacity: 0.75, roughness: 0.15, transmission: 0.2 })
+  new THREE.MeshPhysicalMaterial({ color: WATER_CLEAR.clone(), transparent: true, opacity: 0.82, roughness: 0.15, transmission: 0, depthWrite: true })
 );
 waterBody.position.y = OCEAN_BASE + waterH / 2;
 oceanGroup.add(waterBody);
@@ -380,23 +399,39 @@ const iceMeshes = [];
 // --- 습지·숲 ---
 const forestGroup = new THREE.Group();
 box.add(forestGroup);
+const MUD_X = -0.2, MUD_Z = 0.1, MUD_AVOID_R = 0.14;
+// 녹지 전체 영역(풀 스캐터와 동일 범위)에서 진흙탕 근처를 피해 랜덤 좌표 하나를 뽑는다
+function scatterInGreenZone() {
+  let x, z, tries = 0;
+  do {
+    x = (Math.random() - 0.5) * 1.15;
+    z = (Math.random() - 0.5) * 1.05;
+    tries++;
+  } while (Math.hypot(x - MUD_X, z - MUD_Z) < MUD_AVOID_R && tries < 20);
+  return [x, z];
+}
+
 const rockMat = new THREE.MeshStandardMaterial({ color: 0x74705f, roughness: 0.95 });
-[[-0.6, 0.5], [0.5, -0.55], [-0.5, -0.35]].forEach(([x, z]) => {
+const ROCK_COUNT = 12;
+for (let i = 0; i < ROCK_COUNT; i++) {
+  const [x, z] = scatterInGreenZone();
   const s = 0.05 + Math.random() * 0.035;
   const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
   rock.position.set(x, wetlandY(x, z) + s * 0.5, z);
   rock.castShadow = true;
   forestGroup.add(rock);
-});
+}
+
 const trunkMat = new THREE.MeshStandardMaterial({ map: sharedTex.treeBark, color: 0xffffff, roughness: 0.9 });
 const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7433, roughness: 0.8 });
-const treeDefs = [[-0.3, -0.4], [0.4, 0.4], [0, 0.15], [0.55, -0.15], [-0.55, 0.35], [0.2, -0.55], [-0.15, 0.5]];
+const TREE_COUNT = 22;
 const treeMeshes = [];
-treeDefs.forEach(([x, z]) => {
+for (let i = 0; i < TREE_COUNT; i++) {
+  const [x, z] = scatterInGreenZone();
   const tree = new THREE.Group();
-  // 작은 모종/새싹 느낌: 가는 줄기 + 타원형 잎 여러 장
+  // 작은 모종/새싹 느낌: 두꺼운 줄기 + 타원형 잎 여러 장
   const h = 0.14 + Math.random() * 0.09;
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.009, h, 5), trunkMat);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, h, 6), trunkMat);
   stem.position.y = h / 2;
   stem.castShadow = true;
   tree.add(stem);
@@ -412,7 +447,7 @@ treeDefs.forEach(([x, z]) => {
   tree.position.set(x, wetlandY(x, z), z);
   forestGroup.add(tree);
   treeMeshes.push({ group: tree, baseX: x, baseZ: z });
-});
+}
 
 // 습지 진흙 패치: 일반 흙과 달리 어둡고 젖은 광택 + 얕은 물웅덩이
 const wetlandPatch = new THREE.Mesh(
@@ -420,12 +455,12 @@ const wetlandPatch = new THREE.Mesh(
   new THREE.MeshPhysicalMaterial({ map: sharedTex.wetlandSoil, color: 0xffffff, roughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2 })
 );
 wetlandPatch.rotation.x = -Math.PI / 2;
-wetlandPatch.position.set(-0.2, wetlandY(-0.2, 0.1) + 0.006, 0.1);
+wetlandPatch.position.set(MUD_X, wetlandY(MUD_X, MUD_Z) + 0.006, MUD_Z);
 forestGroup.add(wetlandPatch);
 const puddleMat = new THREE.MeshPhysicalMaterial({ color: 0x3a6a7a, transparent: true, opacity: 0.75, roughness: 0.05, transmission: 0.3, clearcoat: 1 });
 const puddles = [];
 [[-0.03, -0.02, 0.035], [0.025, 0.03, 0.028], [-0.02, 0.04, 0.02]].forEach(([px, pz, pr]) => {
-  const pux = -0.2 + px, puz = 0.1 + pz;
+  const pux = MUD_X + px, puz = MUD_Z + pz;
   const puddle = new THREE.Mesh(new THREE.CircleGeometry(pr, 16), puddleMat);
   puddle.rotation.x = -Math.PI / 2;
   puddle.position.set(pux, wetlandY(pux, puz) + 0.009, puz);
@@ -494,25 +529,52 @@ bldDefs.forEach(([x, z, w, h], i) => {
 
 const gasCarMat = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.4, metalness: 0.3 });
 const evCarMat = new THREE.MeshStandardMaterial({ color: 0x3fb0a0, roughness: 0.3, metalness: 0.4, emissive: 0x0d3a35, emissiveIntensity: 0.3 });
+const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.8 });
 const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
                    [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
                    [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
+// 저폴리 자동차: 차체+캐빈(지붕)+바퀴 4개. EV/가솔린 색 구분은 차체·캐빈에만 적용(바퀴는 항상 검정)
+function buildCarModel() {
+  const group = new THREE.Group();
+  const wheelR = 0.011, bodyH = 0.03, cabinH = 0.022;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, bodyH, 0.045), gasCarMat);
+  body.position.y = wheelR * 2 + bodyH / 2;
+  body.castShadow = true;
+  group.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.05, cabinH, 0.04), gasCarMat);
+  cabin.position.set(-0.006, body.position.y + bodyH / 2 + cabinH / 2, 0);
+  cabin.castShadow = true;
+  group.add(cabin);
+  const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.008, 10);
+  [[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]].forEach(([wx, wz]) => {
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.rotation.x = Math.PI / 2; // 실린더 축을 z방향(차 옆면)으로 돌려서 옆에서 바퀴처럼 보이게
+    wheel.position.set(wx, wheelR, wz);
+    wheel.castShadow = true;
+    group.add(wheel);
+  });
+  return { group, bodyParts: [body, cabin] };
+}
 const carMeshes = [];
 carSpots.forEach((pos, i) => {
-  const car = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.045, 0.05), gasCarMat);
-  car.position.set(pos[0], CITY_BASE + 0.02, pos[1]);
-  car.castShadow = true;
-  car.visible = false;
-  cityGroup.add(car);
-  carMeshes.push(car);
+  const { group, bodyParts } = buildCarModel();
+  group.position.set(pos[0], CITY_BASE, pos[1]);
+  group.visible = false;
+  group.userData.bodyParts = bodyParts;
+  cityGroup.add(group);
+  carMeshes.push(group);
 });
 
 const factory = new THREE.Group();
 factory.position.set(0.6, CITY_BASE, 0.55);
 cityGroup.add(factory);
+// 굴뚝 전용 텍스처는 없어서 콘크리트 톤인 도시 바닥 텍스처를 작게 타일링해 재사용
+const stackTex = sharedTex.cityPavement.clone();
+stackTex.needsUpdate = true;
+stackTex.repeat.set(1, 4);
 const stack = new THREE.Mesh(
   new THREE.CylinderGeometry(0.03, 0.04, 0.35, 10),
-  new THREE.MeshStandardMaterial({ color: 0x50524f, roughness: 0.7 })
+  new THREE.MeshStandardMaterial({ map: stackTex, color: 0x8a8682, roughness: 0.8 })
 );
 stack.position.y = 0.175;
 stack.castShadow = true;
@@ -602,8 +664,7 @@ function applyState(S) {
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
   S.waterBody.material.color.lerpColors(S.WATER_CLEAR, S.WATER_MURKY, phIntensity);
-  S.waterBody.material.transmission = 0.2 * (1 - phIntensity);   // 탁해질수록 투과 거의 0으로
-  S.waterBody.material.opacity = 0.75 + phIntensity * 0.24;
+  S.waterBody.material.opacity = 0.82 + phIntensity * 0.16;
   S.waterBody.material.roughness = 0.15 + phIntensity * 0.55;    // 탁해질수록 광택↓(진흙 느낌)
   S.waveMat.color.lerpColors(S.WAVE_CLEAR, S.WAVE_MURKY, phIntensity);
   S.waveMat.transmission = 0.25 * (1 - phIntensity);
@@ -630,7 +691,8 @@ function applyState(S) {
   const evCount = Math.round(carCount * (S.state.ev / 100));
   S.carMeshes.forEach((c, i) => {
     c.visible = i < carCount;
-    c.material = i < evCount ? S.evCarMat : S.gasCarMat;
+    const mat = i < evCount ? S.evCarMat : S.gasCarMat;
+    c.userData.bodyParts.forEach(p => { p.material = mat; });
   });
 
   // 화석연료 사용 비율 → 공장 연기 밀도
