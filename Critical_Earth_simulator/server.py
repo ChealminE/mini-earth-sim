@@ -19,6 +19,9 @@ Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리�
   python server.py --ble               # BLE 기기 이름으로 스캔해서 연결 (기본 이름: MiniEarth)
   python server.py --ble --ble-name MyBoard
   python server.py --ble --ble-address AA:BB:CC:DD:EE:FF   # 스캔 생략, 바로 연결
+  python server.py --no-browser        # 시작할 때 브라우저 자동으로 안 열리게
+
+서버가 시작되면 기본적으로 브라우저가 자동으로 열립니다 (http://127.0.0.1:8000).
 
 같은 와이파이에 ESP32와 노트북이 있어야 하고,
 우노는 USB 케이블로 노트북에 물려 있어야 하며,
@@ -31,6 +34,7 @@ import csv
 import json
 import socket
 import threading
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -125,6 +129,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
 app.mount("/js", StaticFiles(directory=BASE_DIR / "js"), name="js")
 app.mount("/texture_image", StaticFiles(directory=BASE_DIR / "texture_image"), name="textures")
+app.mount("/basic_experiments", StaticFiles(directory=BASE_DIR / "basic_experiments"), name="basic_experiments")
 
 
 @app.get("/style.css")
@@ -255,6 +260,7 @@ if __name__ == "__main__":
     parser.add_argument("--ble", action="store_true", help="BLE(ESP32 네이티브 BLE 또는 우노+HM-10) 입력 사용")
     parser.add_argument("--ble-name", type=str, default="MiniEarth", help="BLE 기기 이름에 포함될 문자열 (기본: MiniEarth)")
     parser.add_argument("--ble-address", type=str, default=None, help="BLE 기기 MAC/UUID 직접 지정 (스캔 생략, 더 빠름)")
+    parser.add_argument("--no-browser", action="store_true", help="서버 시작 시 브라우저 자동으로 열지 않음")
     args = parser.parse_args()
 
     import uvicorn
@@ -284,6 +290,8 @@ if __name__ == "__main__":
     async def start_inputs_if_needed():
         global main_loop
         main_loop = asyncio.get_running_loop()
+        if not args.no_browser:
+            webbrowser.open("http://127.0.0.1:8000")
         if not args.no_serial:
             port = args.serial or find_serial_port()
             if port:

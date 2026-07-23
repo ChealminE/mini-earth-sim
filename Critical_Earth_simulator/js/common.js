@@ -419,6 +419,25 @@ const foamMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transpar
 const foam = new THREE.Points(foamGeo, foamMat);
 oceanGroup.add(foam);
 
+// 메탄 기포: 바닥에서 올라와 수면 근처에서 리셋되는 파티클 (실측 메탄 농도가 높을수록 진하고 빠르게)
+// 기본 불투명도는 0 - 실시간 실험 탭에서 메탄 값이 들어와야만 보이고, 다른 탭에선 조용히 숨어있음
+const bubbleCount = 45;
+const bubbleGeo = new THREE.BufferGeometry();
+const bubblePos = new Float32Array(bubbleCount * 3);
+const bubbleSeed = new Float32Array(bubbleCount * 2); // [상승 속도, x 흔들림 위상]
+for (let i = 0; i < bubbleCount; i++) {
+  bubblePos[i * 3] = (Math.random() - 0.5) * waveW * 0.85;
+  bubblePos[i * 3 + 1] = OCEAN_BASE + Math.random() * (waveBaseY - OCEAN_BASE); // 처음부터 높이를 흩어놔 끊김 없이 이어지는 스트림처럼 보이게
+  bubblePos[i * 3 + 2] = (Math.random() - 0.5) * waveD * 0.85;
+  bubbleSeed[i * 2] = 0.4 + Math.random() * 0.6;
+  bubbleSeed[i * 2 + 1] = Math.random() * Math.PI * 2;
+}
+bubbleGeo.setAttribute('position', new THREE.BufferAttribute(bubblePos, 3));
+const bubbleBaseArr = Float32Array.from(bubblePos);
+const bubbleMat = new THREE.PointsMaterial({ color: 0xdff6ff, size: 0.014, transparent: true, opacity: 0 });
+const bubbles = new THREE.Points(bubbleGeo, bubbleMat);
+oceanGroup.add(bubbles);
+
 const iceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xf3fbff, roughness: 0.1, transmission: 0.25, clearcoat: 0.85, flatShading: true });
 const iceMeshes = [];
 [[-0.5, -0.4], [0.3, 0.3], [0.55, -0.5], [-0.15, 0.5]].forEach(([x, z]) => {
@@ -720,13 +739,15 @@ return {
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
+  bubbleGeo, bubbleCount, bubbleSeed, bubbleBaseArr, bubbleMat,
   waterBody, waterNominalH, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
   smokeMat, smokeGeo, smokeCount, smokeLife, factory,
   buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE, OCEAN_BASE,
   condensationSpeed: 1,
-  state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24, ph: 8.04, tmp: 24, hum: 55 }
+  bubbleSpeed: 1,
+  state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24, ph: 8.04, tmp: 24, hum: 55, methane: 200 }
 };
 } // buildAcrylicScene 끝
 
@@ -737,6 +758,7 @@ const CO2_MIN = 280, CO2_MAX = 600;
 const PH_MIN = 7.6, PH_MAX = 8.2;   // 해양 산성화 정상역
 const TMP_MIN = 15, TMP_MAX = 35;   // 기온(°C)
 const HUM_MIN = 30, HUM_MAX = 90;   // 습도(%)
+const CH4_MIN = 200, CH4_MAX = 4000; // 메탄(ppm, MQ-4류 센서 기준) - MIN 이하는 기포 효과 없음
 
 // ── Chart.js 다크 테마 공통 옵션 (현재/미래 탭 차트가 공유) ──────────────
 const gridColor = 'rgba(255,255,255,0.06)';
@@ -790,6 +812,11 @@ function applyState(S) {
   const dropIntensity = Math.max(intensity, humIntensity);
   S.dropMat.opacity = 0.45 + dropIntensity * 0.4;
   S.condensationSpeed = 1 + dropIntensity * 1.5;
+
+  // 실측 메탄 → 수조 바닥에서 올라오는 기포 농도·속도 (CH4_MIN 이하면 기포 자체를 숨김)
+  const ch4Intensity = Math.min(1, Math.max(0, (S.state.methane - CH4_MIN) / (CH4_MAX - CH4_MIN)));
+  S.bubbleMat.opacity = ch4Intensity > 0.02 ? 0.35 + ch4Intensity * 0.5 : 0;
+  S.bubbleSpeed = 0.6 + ch4Intensity * 1.8;
 
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
@@ -894,6 +921,16 @@ function animate() {
     dp.setY(i, y);
   }
   dp.needsUpdate = true;
+
+  // 메탄 기포: 바닥에서 수면 근처까지 올라오다 리셋, 살짝 좌우로 흔들리며 상승
+  const bp = S.bubbleGeo.attributes.position;
+  for (let i = 0; i < S.bubbleCount; i++) {
+    let y = bp.getY(i) + S.bubbleSeed[i * 2] * 0.012 * S.bubbleSpeed;
+    if (y > S.waveBaseY - 0.03) y = S.OCEAN_BASE + 0.01;
+    bp.setY(i, y);
+    bp.setX(i, S.bubbleBaseArr[i * 3] + Math.sin(t * 2.5 + S.bubbleSeed[i * 2 + 1]) * 0.008);
+  }
+  bp.needsUpdate = true;
 
   // 연기 파티클
   const sp = S.smokeGeo.attributes.position;

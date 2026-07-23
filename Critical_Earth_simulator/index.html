@@ -39,6 +39,30 @@
     background: #5DCAA5; color: #10231c; font-weight: 600; font-size: 13px;
   }
   .modal-close-btn:hover { background: #4fb890; }
+  .modal-close-btn.secondary { background: #2a2e35; color: #e7e9ec; margin-top: 8px; }
+  .modal-close-btn.secondary:hover { background: #3a3f47; }
+  .modal-actions-row { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-actions-row .modal-close-btn { margin-top: 0; flex: 1; text-align: center; text-decoration: none; box-sizing: border-box; }
+
+  .basic-exp-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px; }
+  .basic-exp-card {
+    background: #262626; border: 1px solid #333; border-radius: 8px;
+    padding: 12px 14px; cursor: pointer; text-align: left;
+  }
+  .basic-exp-card:hover { border-color: #5DCAA5; }
+  .basic-exp-card .title { font-size: 13.5px; font-weight: 600; color: #eee; margin-bottom: 4px; }
+  .basic-exp-card .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .basic-exp-badge {
+    font-size: 10.5px; padding: 2px 7px; border-radius: 10px;
+    background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
+  }
+  .basic-exp-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .circuit-wrap { background: #111; border-radius: 6px; overflow: hidden; }
+  .circuit-wrap img { display: block; width: 100%; }
+  .circuit-placeholder {
+    padding: 22px 10px; text-align: center; font-size: 12px; color: #7d838d;
+    background: #111; border-radius: 6px;
+  }
 </style>
 </head>
 <body>
@@ -119,7 +143,7 @@ Serial.println();</pre>
           <ul class="modal-notes">
             <li>센서 이름(키)은 자유롭게 지어도 됩니다. (temp, co2 외 다른 이름 가능)</li>
             <li>측정하는 센서만 넣으면 됩니다. 전부 다 있을 필요는 없습니다.</li>
-            <li>CO₂ 관련 3D 효과를 보려면 키 이름에 <code>co2</code>라는 글자를 포함하세요.</li>
+            <li>3D 효과 연동: 키 이름에 <code>co2</code>(대기·파도), <code>ph</code>(해양 산성화), <code>temp</code>(빙하), <code>hum</code>(응결 물방울), <code>methane</code>/<code>ch4</code>(기포)이 포함되면 자동으로 연결됩니다.</li>
             <li>USB(우노): 9600bps + <code>Serial.println(json)</code> / WiFi(ESP32): <code>/data</code>로 JSON POST</li>
           </ul>
 
@@ -130,8 +154,47 @@ Serial.println();</pre>
         </div>
       </div>
 
+      <div id="basicExpListModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>기본 실험 목록</h3>
+          <p>보드/연결 방식에 맞는 실험을 골라 회로도와 코드를 확인하세요.</p>
+          <div class="basic-exp-list" id="basicExpList"></div>
+          <button class="modal-close-btn secondary" id="basicExpListCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="basicExpDetailModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3 id="basicExpTitle"></h3>
+          <div class="basic-exp-meta" id="basicExpMeta"></div>
+          <p id="basicExpSummary"></p>
+
+          <div class="modal-example">
+            <div class="modal-label">회로도</div>
+            <div class="circuit-wrap">
+              <img id="basicExpCircuitImg" alt="회로도">
+              <div id="basicExpCircuitPlaceholder" class="circuit-placeholder" style="display:none">회로도 준비중입니다</div>
+            </div>
+          </div>
+
+          <ul class="modal-notes" id="basicExpNotes"></ul>
+
+          <div class="modal-example">
+            <div class="modal-label">코드 미리보기</div>
+            <pre id="basicExpCode"></pre>
+          </div>
+
+          <div class="modal-actions-row">
+            <a id="basicExpDownloadBtn" class="modal-close-btn" download>코드 다운로드</a>
+            <button id="basicExpCopyBtn" class="modal-close-btn secondary">코드 복사</button>
+          </div>
+          <button class="modal-close-btn secondary" id="basicExpDetailBackBtn">목록으로</button>
+        </div>
+      </div>
+
       <div class="live-status">
         <span class="live-dot" id="liveDot"></span><span id="liveStatusText">실험 대기중</span>
+        <button id="basicExperimentsBtn" class="experiment-btn end">기본 실험</button>
         <button id="startExperimentBtn" class="experiment-btn start">실험 시작</button>
         <button id="endExperimentBtn" class="experiment-btn end" disabled>실험 종료</button>
       </div>

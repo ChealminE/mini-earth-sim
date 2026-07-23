@@ -170,7 +170,13 @@ const sensorEffectMap = {
   hum: (value) => {
     sceneLive.state.hum = Math.max(HUM_MIN, Math.min(HUM_MAX, value));
   },
-  // methane: (value) => { sceneLive.state.methane = value; },// 예시: common.js에 아직 대응 로직 없음
+  // 학생들이 "methane"과 "ch4" 둘 다 자주 쓰므로 두 이름 다 인식
+  methane: (value) => {
+    sceneLive.state.methane = Math.max(CH4_MIN, Math.min(CH4_MAX, value));
+  },
+  ch4: (value) => {
+    sceneLive.state.methane = Math.max(CH4_MIN, Math.min(CH4_MAX, value));
+  },
 };
 
 function applyLiveSensorEffects() {
@@ -245,3 +251,84 @@ document.getElementById('modalCloseBtn').addEventListener('click', () => {
 
 document.getElementById('startExperimentBtn').addEventListener('click', startExperiment);
 document.getElementById('endExperimentBtn').addEventListener('click', endExperiment);
+
+// ── 기본 실험 목록/상세 (회로도·코드 제공) ──────────────────
+// basic_experiments/index.json → 목록, basic_experiments/<id>/info.json + code.ino → 상세
+let basicExpIndexCache = null;
+
+async function openBasicExpList() {
+  document.getElementById('basicExpListModal').classList.add('visible');
+  if (basicExpIndexCache) return;
+  try {
+    const res = await fetch('/basic_experiments/index.json');
+    basicExpIndexCache = await res.json();
+    renderBasicExpList();
+  } catch (e) {
+    document.getElementById('basicExpList').innerHTML =
+      '<div class="empty-hint">목록을 불러오지 못했습니다. server.py가 실행 중인지 확인하세요.</div>';
+  }
+}
+
+function renderBasicExpList() {
+  const wrap = document.getElementById('basicExpList');
+  wrap.innerHTML = basicExpIndexCache.map(exp => `
+    <button class="basic-exp-card" data-id="${exp.id}">
+      <div class="title">${exp.title}</div>
+      <div class="badges">
+        <span class="basic-exp-badge">${exp.board}</span>
+        <span class="basic-exp-badge">${exp.connection}</span>
+      </div>
+    </button>`).join('');
+  wrap.querySelectorAll('.basic-exp-card').forEach(card => {
+    card.addEventListener('click', () => openBasicExpDetail(card.dataset.id));
+  });
+}
+
+async function openBasicExpDetail(id) {
+  const [info, code] = await Promise.all([
+    fetch(`/basic_experiments/${id}/info.json`).then(r => r.json()),
+    fetch(`/basic_experiments/${id}/code.ino`).then(r => r.text()),
+  ]);
+
+  document.getElementById('basicExpTitle').textContent = info.title;
+  document.getElementById('basicExpMeta').innerHTML =
+    `<span class="basic-exp-badge">${info.board}</span><span class="basic-exp-badge">${info.connection}</span>`;
+  document.getElementById('basicExpSummary').textContent = info.summary;
+  document.getElementById('basicExpNotes').innerHTML = (info.notes || []).map(n => `<li>${n}</li>`).join('');
+  document.getElementById('basicExpCode').textContent = code;
+
+  const downloadBtn = document.getElementById('basicExpDownloadBtn');
+  downloadBtn.href = `/basic_experiments/${id}/${info.code_file}`;
+  downloadBtn.download = `${id}.ino`;
+
+  const circuitImg = document.getElementById('basicExpCircuitImg');
+  const circuitPlaceholder = document.getElementById('basicExpCircuitPlaceholder');
+  circuitImg.style.display = '';
+  circuitPlaceholder.style.display = 'none';
+  circuitImg.onerror = () => { circuitImg.style.display = 'none'; circuitPlaceholder.style.display = 'block'; };
+  circuitImg.src = `/basic_experiments/${id}/${info.circuit_file}`;
+
+  document.getElementById('basicExpListModal').classList.remove('visible');
+  document.getElementById('basicExpDetailModal').classList.add('visible');
+}
+
+document.getElementById('basicExpCopyBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('basicExpCopyBtn');
+  try {
+    await navigator.clipboard.writeText(document.getElementById('basicExpCode').textContent);
+    const original = btn.textContent;
+    btn.textContent = '복사됨!';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  } catch (e) {
+    btn.textContent = '복사 실패 (직접 선택해서 복사해주세요)';
+  }
+});
+
+document.getElementById('basicExperimentsBtn').addEventListener('click', openBasicExpList);
+document.getElementById('basicExpListCloseBtn').addEventListener('click', () => {
+  document.getElementById('basicExpListModal').classList.remove('visible');
+});
+document.getElementById('basicExpDetailBackBtn').addEventListener('click', () => {
+  document.getElementById('basicExpDetailModal').classList.remove('visible');
+  document.getElementById('basicExpListModal').classList.add('visible');
+});

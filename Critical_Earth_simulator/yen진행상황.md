@@ -16,31 +16,37 @@
 - [x] USB 시리얼 자동 포트 탐지 + 수신 스레드
 - [x] CSV 로깅 (필드 자동 확장)
 - [x] WebSocket 브로드캐스트
-- [ ] 실행 자동화 배치파일(`.bat`) 작성
-- [ ] 서버 구동 시 브라우저 자동 오픈 (`webbrowser.open`)
-- [ ] 최초 설치용 배치파일(가상환경 생성 + `pip install`)
-- [ ] requirements.txt 버전 오류 수정 (fastapi/uvicorn/websockets 실제 존재 버전으로) — Claude Code 세션에서 진행 중
+- [x] 실행 자동화 배치파일(`.bat`) 작성 (`run_server.bat`)
+- [x] 서버 구동 시 브라우저 자동 오픈 (`webbrowser.open`, `--no-browser`로 끌 수 있음)
+- [x] 최초 설치용 배치파일(가상환경 생성 + `pip install`) (`setup.bat`)
+- [x] requirements.txt 버전 오류 수정 (fastapi/uvicorn/websockets 실제 존재 버전으로) — .venv에 정상 설치 확인됨, 추가 수정 불필요
 
 ### 3. 프론트엔드 (tab-live.js / index.html)
 - [x] 센서 키 자동 인식 (하드코딩 없이 동적 처리)
 - [x] 센서 카드 그리드 표시
 - [x] 다중 그래프 (최대 4개, X/Y축 독립 선택)
 - [x] CO2 센서 → 3D 아크릴 효과 연동 (`sensorEffectMap` 구조)
-- [x] JSON 형식 안내 모달 (실시간 실험 탭 최초 진입 시 표시, "다시 보지 않기" 옵션)
-- [x] WebSocket 연결 상태 표시 + 자동 재연결
-- [ ] 온도 센서 → 3D 효과 매핑 추가
-- [ ] pH 센서 → 3D 효과 매핑 추가 (해양 산성화 표현 등)
-- [ ] 메탄 센서 → 3D 효과 매핑 추가 (기포 효과 등)
+- [x] 실험 시작/종료 버튼 + JSON 형식 안내 모달 (실험 시작 시마다 표시, "이번 실험에서 다시 보지 않기" 옵션은 실험 종료 시 초기화)
+- [x] WebSocket 연결 상태 표시 + 자동 재연결 (실험 종료 시 재연결 안 함)
+- [x] 온도 센서 → 3D 효과 매핑 추가 (동료가 원격에서 병합, 빙하 축소)
+- [x] pH 센서 → 3D 효과 매핑 추가 (동료가 원격에서 병합, 해양 산성화/물색)
+- [x] 습도 센서 → 3D 효과 매핑 추가 (동료가 원격에서 병합, 응결 물방울)
+- [x] 메탄 센서 → 3D 효과 매핑 추가 (수조 바닥에서 올라오는 기포 파티클, `common.js`의 `applyState()`/`animate()`에 로직 추가)
+- [x] "기본 실험" 목록/상세 모달 (보드·연결방식별 실험 설명 + 코드 미리보기/다운로드/복사) — `basic_experiments/` 폴더 구조로 관리, 콘텐츠는 GitHub/VSCode에서 폴더 하나에 `info.json`/`code.ino`/`circuit.png` 3개만 추가하면 확장 가능
+- [ ] 각 기본 실험의 회로도(`circuit.png`) 이미지 추가 (현재는 없으면 "회로도 준비중" 플레이스홀더로 대체됨)
+- [ ] 학생 노트북에 서버/파이썬 설치를 원클릭에 가깝게 하는 패키징 (설계 논의 중, 구현은 별도 진행 예정)
 
 ### 4. Three.js 버전 대응
 - [x] r128 → r160 업그레이드 반영
-- [ ] `outputEncoding`/`sRGBEncoding` → `outputColorSpace`/`SRGBColorSpace` 수정 (renderer)
-- [ ] `tex.encoding` → `tex.colorSpace` 수정 (createGroundTexture 내 텍스처)
+- [x] `outputEncoding`/`sRGBEncoding` → `outputColorSpace`/`SRGBColorSpace` 수정 (renderer) — 코드 확인 결과 이미 반영되어 있었음
+- [x] `tex.encoding` → `tex.colorSpace` 수정 (createGroundTexture 내 텍스처) — 코드 확인 결과 이미 반영되어 있었음
 - [ ] 색감 변화(Color Management) 육안 확인 및 필요 시 미세 조정
 
-### 5. 하드웨어 통신 확장 (검토 단계, 미착수)
-- [ ] ESP32-S3 + HM-10(BLE) 연동 방식 결정 여부 (Classic BT 아님 → GATT 방식 필요)
-- [ ] BLE 방식 채택 시 `server.py`에 `bleak` 기반 리더 추가 (또는 Web Bluetooth로 서버 자체를 대체)
+### 5. 하드웨어 통신 확장
+- [x] ESP32-S3 네이티브 BLE / 우노+HM-10 방식 결정 (GATT, 둘 다 0xFFE0/0xFFE1 UUID 공유)
+- [x] `esp32_ble_sketch.ino` / `uno_hm10_sketch.ino` 펌웨어 작성
+- [x] `server.py`에 `bleak` 기반 BLE 리더 추가 (`--ble`, `--ble-name`, `--ble-address`)
+- [ ] 실제 하드웨어(ESP32/우노+HM-10)로 연결 테스트 (하드웨어 준비되면 진행)
 
 ### 6. 문서화
 - [x] "실시간 실험" 탭 기능명세서 작성
@@ -61,11 +67,52 @@
 - 지능형과학실ON류 플랫폼의 "설치 없이 브라우저 연동" 원리가 Web Bluetooth API 기반임을 확인, 현재 프로젝트(WiFi/USB) 구조와의 차이점 정리
 - 실행 자동화(배치파일 + 브라우저 자동 오픈) 개념 설계 완료, 구현은 다음 세션으로 이월
 - "실시간 실험" 탭 기능명세서 작성
+- (Claude Code 세션) `esp32_ble_sketch.ino`(ESP32 네이티브 BLE) / `uno_hm10_sketch.ino`(우노+HM-10) 펌웨어 작성, 둘 다 0xFFE0/0xFFE1 UUID 공유
+- (Claude Code 세션) `server.py`에 `bleak` 기반 BLE 리더(`ble_reader_task`) 추가, `--ble`/`--ble-name`/`--ble-address` 옵션
+- (Claude Code 세션) "실시간 실험" 탭에 실험 시작/종료 버튼 추가 — 안내 모달을 localStorage 영구 저장 대신 "이번 실험 동안만" 메모리 플래그로 변경, 실험 종료 후 재시작하면 다시 뜨도록 수정. 소켓 연결도 페이지 로드 시 자동이 아니라 실험 시작 버튼에 종속되도록 변경
+- (Claude Code 세션) `setup.bat`(최초 설치: venv 생성 + pip install), `run_server.bat`(실행) 작성, `server.py`에 `webbrowser.open` 자동 오픈 추가 (`--no-browser`로 끌 수 있음)
+- (Claude Code 세션) requirements.txt 버전이 .venv에 정상 설치되는 것 확인 (별도 수정 불필요)
 
 **다음에 할 일:**
-- Three.js r160 관련 2곳 코드 수정 (`common.js`)
-- 실행 자동화 배치파일 실제 작성 및 `server.py`에 `webbrowser.open` 추가
-- (선택) 온도/pH/메탄 센서용 3D 효과 로직 설계
+- 실제 ESP32/우노+HM-10 하드웨어로 BLE 연결 테스트
+- 학생 배포용 실행 가이드(README) 작성
+- 색감 변화(Color Management) 육안 확인 및 필요 시 미세 조정
+
+---
+
+### 2026-07-23 (2)
+**완료한 작업:**
+- (Claude Code 세션) 메탄 센서 → 3D 기포 효과 구현: `common.js`에 기포 파티클 시스템(`bubbleGeo`/`bubbleMat`, 45개) 추가, `oceanGroup` 바닥에서 수면 근처까지 올라오다 리셋되는 애니메이션, `CH4_MIN`/`CH4_MAX`(200~4000ppm) 범위로 실측값 정규화해 농도가 높을수록 기포 밀도·속도 증가
+- (Claude Code 세션) `tab-live.js`의 `sensorEffectMap`에 `methane`/`ch4` 키 매핑 활성화 (두 이름 다 인식)
+- (Claude Code 세션) 실시간 실험 탭 안내 모달에 ph/temp/hum/methane 키워드 안내 추가 (기존엔 co2만 문서화되어 있었음)
+- Three.js r160 관련 항목 코드 확인 결과 이미 `outputColorSpace`/`tex.colorSpace`로 반영되어 있음을 확인, 체크리스트만 갱신
+
+**다음에 할 일:**
+- 실제 ESP32/우노+HM-10 하드웨어로 BLE 연결 테스트
+- 학생 배포용 실행 가이드(README) 작성
+- 색감 변화(Color Management) 육안 확인 및 필요 시 미세 조정
+- 기본 실험 회로도(`circuit.png`) 4종 추가
+
+---
+
+### 2026-07-23 (3)
+**완료한 작업 (Claude Code 세션, 실시간 실험 탭 범위):**
+- "기본 실험" 기능 신규 구현: 학생이 처음 접속했을 때 기본 제공 실험(보드/연결방식별)의 설명·회로도·코드를 보고 다운로드할 수 있는 목록/상세 모달
+- 콘텐츠 구조를 `basic_experiments/<실험id>/{info.json, code.ino, circuit.png}` 폴더 단위로 설계 — GitHub/VSCode에서 폴더 하나 추가하는 것만으로 새 실험 등록 가능 (`index.json`에 한 줄 추가 필요)
+- 초기 4개 실험은 `firmware/` 폴더에 이미 있던 4개 스케치(esp32_wifi/esp32_ble/uno_usb/uno_hm10_ble)를 그대로 코드 다운로드 콘텐츠로 사용
+- `server.py`에 `/basic_experiments` 정적 마운트 한 줄 추가 (다른 서버 로직은 안 건드림)
+- 코드 다운로드 UX: `.ino` 파일 다운로드 버튼(주 동선, 더블클릭하면 Arduino IDE가 바로 열림) + 모달 내 코드 미리보기/복사 버튼(보조 동선) 둘 다 제공
+- 회로도 이미지가 아직 없는 실험은 깨진 이미지 대신 "회로도 준비중" 플레이스홀더 표시 (`onerror` 처리)
+
+**다음에 할 일:**
+- 기본 실험 4종 회로도(`circuit.png`) 추가 (본인 담당)
+- 설치 자동화(서버 패키징) 설계/구현 (본인 담당, 3D 디자인·동료 구현 기능과 안 겹치는 선에서)
+- 화면 열람에 서버가 꼭 필요한지(정적 호스팅 분리 여부)는 동료와 논의 예정
+
+**다음에 할 일:**
+- 실제 ESP32/우노+HM-10 하드웨어로 BLE 연결 테스트
+- 학생 배포용 실행 가이드(README) 작성
+- 색감 변화(Color Management) 육안 확인 및 필요 시 미세 조정
 
 ---
 

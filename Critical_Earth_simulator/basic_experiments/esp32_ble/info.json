@@ -1,0 +1,15 @@
+{
+  "id": "esp32_ble",
+  "title": "ESP32 BLE 연결 실험",
+  "board": "ESP32",
+  "connection": "BLE (GATT notify)",
+  "summary": "와이파이가 없는 환경에서 ESP32 자체 블루투스(BLE)로 센서값을 방송합니다. 노트북의 server.py가 --ble 옵션으로 직접 연결해서 받습니다.",
+  "sensors": ["온도(예시, 아날로그)", "CO2(예시, 아날로그)", "메탄(예시, 아날로그)"],
+  "notes": [
+    "Arduino IDE 라이브러리 매니저에서 ArduinoJson 설치 필요 (BLE 라이브러리는 ESP32 보드 패키지에 기본 포함)",
+    "노트북에서 python server.py --ble 로 실행해야 연결됨",
+    "uno_hm10_ble 실험과 같은 UUID(0xFFE0/0xFFE1)를 사용"
+  ],
+  "code_file": "code.ino",
+  "circuit_file": "circuit.png"
+}
