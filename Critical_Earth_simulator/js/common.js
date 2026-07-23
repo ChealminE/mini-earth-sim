@@ -78,6 +78,28 @@ function buildEnvironmentTexture() {
 }
 const sharedEnvMap = buildEnvironmentTexture();
 
+// ================= AI 생성 텍스처 (texture_image/) - 3개 씬이 공유해서 한 번만 로드 =================
+const textureLoader = new THREE.TextureLoader();
+function loadColorTexture(path, repeatX, repeatY) {
+  const tex = textureLoader.load(path);
+  tex.colorSpace = THREE.SRGBColorSpace; // 색상(알베도) 맵만 sRGB, 노멀맵은 linear라 적용 안 함
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  return tex;
+}
+const sharedTex = {
+  oceanFloor: loadColorTexture('texture_image/ocean_floor.jpg', 3, 2),
+  wetlandSoil: loadColorTexture('texture_image/wetland_soil.jpg', 2, 2),
+  forestGrass: loadColorTexture('texture_image/forest_grass.jpg', 3, 2),
+  cityPavement: loadColorTexture('texture_image/city_pavement.jpg', 3, 2),
+  iceCrack: loadColorTexture('texture_image/ice_crack.jpg', 1, 1),
+  treeBark: loadColorTexture('texture_image/tree_bark.jpg', 1, 2),
+  buildingFacade: loadColorTexture('texture_image/building_facade.jpg', 2, 3),
+};
+const waterNormalTex = textureLoader.load('texture_image/water_normal.png');
+waterNormalTex.wrapS = waterNormalTex.wrapT = THREE.RepeatWrapping;
+waterNormalTex.repeat.set(4, 3);
+
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
 function buildAcrylicScene() {
 const scene = new THREE.Scene();
@@ -240,7 +262,7 @@ haze.position.y = TERRAIN_TOP + (BOX_H - TERRAIN_TOP) / 2;
 box.add(haze);
 
 // 4) 박스 위쪽 가장자리에 얹힌 얼음(구름 역할) 덩어리 클러스터
-const cloudIceMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
+const cloudIceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
 const cloudIcePositions = [[-1.6, -0.5], [-1.3, -0.15], [-1.0, -0.6], [-1.75, -0.1], [-1.15, -0.35]];
 cloudIcePositions.forEach(([x, z]) => {
   const s = 0.08 + Math.random() * 0.05;
@@ -267,53 +289,6 @@ const dropMat = new THREE.PointsMaterial({ color: 0xdff0ff, size: 0.018, transpa
 const drops = new THREE.Points(dropGeo, dropMat);
 box.add(drops);
 
-// --- 절차적 지표 텍스처 (흙/이끼/자갈 얼룩무늬) ---
-function createGroundTexture(opts) {
-  const cw = 256, ch = 256;
-  const c = document.createElement('canvas');
-  c.width = cw; c.height = ch;
-  const tctx = c.getContext('2d');
-  tctx.fillStyle = opts.base;
-  tctx.fillRect(0, 0, cw, ch);
-  opts.speckLayers.forEach(layer => {
-    for (let i = 0; i < layer.count; i++) {
-      const x = Math.random() * cw, y = Math.random() * ch;
-      const r = layer.minR + Math.random() * (layer.maxR - layer.minR);
-      tctx.fillStyle = layer.color;
-      tctx.globalAlpha = layer.alpha;
-      tctx.beginPath();
-      tctx.arc(x, y, r, 0, Math.PI * 2);
-      tctx.fill();
-    }
-  });
-  tctx.globalAlpha = 1;
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-const oceanFloorTex = createGroundTexture({
-  base: '#c9c2a8',
-  speckLayers: [
-    { count: 220, minR: 1, maxR: 3, color: '#a89f80', alpha: 0.5 },
-    { count: 60, minR: 2, maxR: 5, color: '#8f8567', alpha: 0.4 }
-  ]
-});
-const forestFloorTex = createGroundTexture({
-  base: '#3f4a2a',
-  speckLayers: [
-    { count: 260, minR: 1, maxR: 4, color: '#5a6e35', alpha: 0.55 }, // 이끼
-    { count: 160, minR: 1, maxR: 3, color: '#2c3520', alpha: 0.5 }, // 그늘진 흙
-    { count: 40, minR: 2, maxR: 5, color: '#6b7d42', alpha: 0.4 }
-  ]
-});
-const cityFloorTex = createGroundTexture({
-  base: '#4a4842',
-  speckLayers: [
-    { count: 300, minR: 1, maxR: 2.5, color: '#615e56', alpha: 0.6 }, // 자갈
-    { count: 80, minR: 1, maxR: 2, color: '#2e2c28', alpha: 0.5 }
-  ]
-});
-
 function zoneFloor(xOffset, groundTopY, texture, sideColor) {
   const h = Math.max(groundTopY, 0.01);
   const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.95 });
@@ -327,13 +302,13 @@ function zoneFloor(xOffset, groundTopY, texture, sideColor) {
   box.add(block);
   return block;
 }
-zoneFloor(-ZONE_W, OCEAN_BASE, oceanFloorTex, 0xa89f83);
-zoneFloor(0, WETLAND_BASE, forestFloorTex, 0x2c331c);
-zoneFloor(ZONE_W, CITY_BASE, cityFloorTex, 0x3a3832);
+zoneFloor(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, 0xa89f83);
+zoneFloor(0, WETLAND_BASE, sharedTex.forestGrass, 0x2c331c);
+zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832);
 // 해저·습지 바닥에만 절차적 지형 기복 적용. 도시는 실제로도 평평하게 포장된 땅이라
 // (건물·차 등 고정 좌표 소품도 많아 굴곡을 주면 오히려 붕 뜬 것처럼 보임) 그대로 둔다.
-createTerrainCap(-ZONE_W, OCEAN_BASE, oceanFloorTex, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
-createTerrainCap(0, WETLAND_BASE, forestFloorTex, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
+createTerrainCap(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
+createTerrainCap(0, WETLAND_BASE, sharedTex.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
 // 세 블록이 높이가 달라서 경계면(옆면)이 자연스럽게 계단 절벽처럼 드러남 - 별도 리저 불필요
 
 
@@ -350,7 +325,8 @@ const WAVE_CLEAR = new THREE.Color(0x123a55);
 const WAVE_MURKY = new THREE.Color(0x7a6a42);
 const waveMat = new THREE.MeshPhysicalMaterial({
   color: WAVE_CLEAR.clone(), transparent: true, opacity: 0.92, roughness: 0.1,
-  transmission: 0.25, clearcoat: 0.9, side: THREE.DoubleSide
+  transmission: 0.25, clearcoat: 0.9, side: THREE.DoubleSide,
+  normalMap: waterNormalTex, normalScale: new THREE.Vector2(0.35, 0.35)
 });
 const waveMesh = new THREE.Mesh(waveGeo, waveMat);
 waveMesh.rotation.x = -Math.PI / 2;
@@ -390,7 +366,7 @@ const foamMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transpar
 const foam = new THREE.Points(foamGeo, foamMat);
 oceanGroup.add(foam);
 
-const iceMat = new THREE.MeshPhysicalMaterial({ color: 0xf3fbff, roughness: 0.1, transmission: 0.25, clearcoat: 0.85, flatShading: true });
+const iceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xf3fbff, roughness: 0.1, transmission: 0.25, clearcoat: 0.85, flatShading: true });
 const iceMeshes = [];
 [[-0.5, -0.4], [0.3, 0.3], [0.55, -0.5], [-0.15, 0.5]].forEach(([x, z]) => {
   const s = 0.045 + Math.random() * 0.03;
@@ -412,7 +388,7 @@ const rockMat = new THREE.MeshStandardMaterial({ color: 0x74705f, roughness: 0.9
   rock.castShadow = true;
   forestGroup.add(rock);
 });
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
+const trunkMat = new THREE.MeshStandardMaterial({ map: sharedTex.treeBark, color: 0xffffff, roughness: 0.9 });
 const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7433, roughness: 0.8 });
 const treeDefs = [[-0.3, -0.4], [0.4, 0.4], [0, 0.15], [0.55, -0.15], [-0.55, 0.35], [0.2, -0.55], [-0.15, 0.5]];
 const treeMeshes = [];
@@ -441,7 +417,7 @@ treeDefs.forEach(([x, z]) => {
 // 습지 진흙 패치: 일반 흙과 달리 어둡고 젖은 광택 + 얕은 물웅덩이
 const wetlandPatch = new THREE.Mesh(
   new THREE.CircleGeometry(0.1, 32),
-  new THREE.MeshPhysicalMaterial({ color: 0x2b2318, roughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2 })
+  new THREE.MeshPhysicalMaterial({ map: sharedTex.wetlandSoil, color: 0xffffff, roughness: 0.25, clearcoat: 0.7, clearcoatRoughness: 0.2 })
 );
 wetlandPatch.rotation.x = -Math.PI / 2;
 wetlandPatch.position.set(-0.2, wetlandY(-0.2, 0.1) + 0.006, 0.1);
@@ -499,22 +475,18 @@ const bldDefs = [
 const buildingMeshes = [];
 bldDefs.forEach(([x, z, w, h], i) => {
   const bldGroup = new THREE.Group();
+  // 건물마다 크기가 달라서 텍스처를 복제해 반복 횟수를 따로 줘야 창문 크기가 일정해 보임
+  const facadeTex = sharedTex.buildingFacade.clone();
+  facadeTex.needsUpdate = true;
+  facadeTex.repeat.set(Math.max(1, Math.round(w * 10)), Math.max(1, Math.round(h * 8)));
   const bld = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, w),
-    new THREE.MeshStandardMaterial({ color: bldColors[i % bldColors.length], roughness: 0.5, metalness: 0.15 })
+    new THREE.MeshStandardMaterial({ map: facadeTex, color: bldColors[i % bldColors.length], roughness: 0.5, metalness: 0.15 })
   );
   bld.position.y = h / 2;
   bld.castShadow = true;
   bld.receiveShadow = true;
   bldGroup.add(bld);
-  for (let wy = 0.06; wy < h - 0.03; wy += 0.07) {
-    const win = new THREE.Mesh(
-      new THREE.PlaneGeometry(w * 0.75, 0.025),
-      new THREE.MeshStandardMaterial({ color: 0xcfe0ea, roughness: 0.2, metalness: 0.3 })
-    );
-    win.position.set(0, wy, w / 2 + 0.001);
-    bldGroup.add(win);
-  }
   bldGroup.position.set(x, CITY_BASE, z);
   cityGroup.add(bldGroup);
   buildingMeshes.push(bldGroup);
@@ -695,6 +667,10 @@ function animate() {
   requestAnimationFrame(animate);
   t += 0.016;
   const S = bundles[activeTab];
+
+  // 수면 노멀맵을 서서히 흘려서 잔물결이 흐르는 느낌을 줌 (3개 씬이 텍스처를 공유해서 한 번만 갱신하면 됨)
+  waterNormalTex.offset.x = (t * 0.015) % 1;
+  waterNormalTex.offset.y = (t * 0.008) % 1;
 
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
 
