@@ -120,17 +120,21 @@ Serial.println();</pre>
           </ul>
 
           <label class="modal-checkbox">
-            <input type="checkbox" id="dontShowAgain"> 다시 보지 않기
+            <input type="checkbox" id="dontShowAgain"> 이번 실험에서 다시 보지 않기
           </label>
-          <button id="modalCloseBtn" class="modal-close-btn">확인했어요</button>
+          <button id="modalCloseBtn" class="modal-close-btn">확인했어요 (실험 시작)</button>
         </div>
       </div>
 
-      <div class="live-status"><span class="live-dot" id="liveDot"></span><span id="liveStatusText">연결 대기중</span></div>
+      <div class="live-status">
+        <span class="live-dot" id="liveDot"></span><span id="liveStatusText">실험 대기중</span>
+        <button id="startExperimentBtn" class="experiment-btn start">실험 시작</button>
+        <button id="endExperimentBtn" class="experiment-btn end" disabled>실험 종료</button>
+      </div>
       <div id="liveGraphs"></div>
       <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
       <div class="sensor-grid" id="sensorGrid">
-        <div class="empty-hint">ESP32/우노 데이터 수신 대기중…<br>server.py가 실행 중이어야 연결됩니다.</div>
+        <div class="empty-hint">'실험 시작' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>
       </div>
     </div>
   </div>

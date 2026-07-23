@@ -114,15 +114,20 @@ function removeLiveGraph(id) {
 addLiveGraph();
 addLiveGraph();
 
+let liveSocket = null;
+let manualStop = false;   // '실험 종료'로 인한 정상 종료면 true (자동 재접속 안 함)
+
 function connectLiveSocket() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  liveSocket = ws;
   ws.onopen = () => {
     document.getElementById('liveDot').classList.add('on');
-    document.getElementById('liveStatusText').textContent = '연결됨';
+    document.getElementById('liveStatusText').textContent = '실험 진행중 (연결됨)';
   };
   ws.onclose = () => {
     document.getElementById('liveDot').classList.remove('on');
+    if (manualStop) return;   // 사용자가 '실험 종료'를 눌러서 끊은 거면 재접속 시도 안 함
     document.getElementById('liveStatusText').textContent = '재연결 시도중…';
     setTimeout(connectLiveSocket, 2000);
   };
@@ -180,16 +185,63 @@ function applyLiveSensorEffects() {
   if (matched) applyState(sceneLive);
 }
 
-// ── 실험 시작 전 JSON 형식 안내 팝업 ──────────────────────
+// ── 실험 시작/종료 + 안내 모달 ──────────────────────────
+// '다시 보지 않기'는 이번 실험(시작~종료) 동안에만 유효한 메모리 플래그.
+// '실험 종료'를 누르면 초기화되므로, 다음에 '실험 시작'을 누르면 안내 모달이 다시 뜬다.
+let experimentRunning = false;
+let modalDismissedThisRun = false;
+
+function resetLiveData() {
+  Object.keys(liveLatest).forEach(k => delete liveLatest[k]);
+  liveKnownKeys.clear();
+  liveScatterPoints = [];
+  document.getElementById('sensorGrid').innerHTML =
+    '<div class="empty-hint">\'실험 시작\' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>';
+  refreshLiveSelectOptions();
+  updateAllLiveCharts();
+}
+
 function showLiveFormatModal() {
-  if (localStorage.getItem('liveFormatModalDismissed') === 'true') return;
   document.getElementById('liveFormatModal').classList.add('visible');
+}
+
+function beginExperimentSession() {
+  resetLiveData();
+  manualStop = false;
+  connectLiveSocket();
+  experimentRunning = true;
+  document.getElementById('startExperimentBtn').disabled = true;
+  document.getElementById('endExperimentBtn').disabled = false;
+  document.getElementById('liveStatusText').textContent = '연결 시도중…';
+}
+
+function startExperiment() {
+  if (experimentRunning) return;
+  if (modalDismissedThisRun) {
+    beginExperimentSession();
+  } else {
+    showLiveFormatModal();
+  }
+}
+
+function endExperiment() {
+  if (!experimentRunning) return;
+  manualStop = true;
+  if (liveSocket) liveSocket.close();
+  experimentRunning = false;
+  modalDismissedThisRun = false;   // 다음 실험 시작 때 안내 모달이 다시 뜨도록 초기화
+  document.getElementById('liveDot').classList.remove('on');
+  document.getElementById('liveStatusText').textContent = '실험 종료됨';
+  document.getElementById('startExperimentBtn').disabled = false;
+  document.getElementById('endExperimentBtn').disabled = true;
 }
 
 document.getElementById('modalCloseBtn').addEventListener('click', () => {
   const dontShow = document.getElementById('dontShowAgain').checked;
-  if (dontShow) localStorage.setItem('liveFormatModalDismissed', 'true');
+  if (dontShow) modalDismissedThisRun = true;
   document.getElementById('liveFormatModal').classList.remove('visible');
+  beginExperimentSession();
 });
 
-connectLiveSocket(); // 서버가 꺼져 있어도 자동 재시도하므로 항상 연결 시도해둠
+document.getElementById('startExperimentBtn').addEventListener('click', startExperiment);
+document.getElementById('endExperimentBtn').addEventListener('click', endExperiment);
