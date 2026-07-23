@@ -157,15 +157,32 @@
 - `README.md`를 exe 다운로드 방식 기준으로 재작성, SmartScreen/방화벽 경고 대처법 추가
 
 **주의할 점 / 확인 필요:**
-- `MiniEarthModel.exe`는 아직 **GitHub Releases에 업로드 안 함** (로컬 빌드/테스트만 완료) — 업로드는 "배포"에 해당하는 행동이라 임의로 하지 않음, 아래 "💬 논의 중" 참고
 - exe는 서명이 안 되어 있어서 SmartScreen/방화벽 경고가 뜸 (정상, README에 대처법 적어둠) — 학교 방화벽 정책에 따라 막힐 수도 있어서 실제 학교 환경에서 한 번 테스트 필요
 - 코드(`server.py`, `js/`, `basic_experiments/` 등)가 바뀔 때마다 `build_exe.bat`으로 재빌드하고 Release를 새로 올려야 함 — 이 사이클 자체는 아직 실습 안 해봄
+- (업데이트: 아래 2026-07-24 (3)에서 실제로 Release 업로드까지 완료됨)
 
-**다음에 할 일:**
-- `MiniEarthModel.exe`를 GitHub Releases에 실제로 올릴지/언제 올릴지 결정
+**다음에 할 일 (이후 (3)에서 갱신됨):**
+- ~~`MiniEarthModel.exe`를 GitHub Releases에 실제로 올릴지/언제 올릴지 결정~~ → (3)에서 완료
 - 실제 학교 네트워크/컴퓨터에서 exe 실행 테스트 (방화벽 정책 등)
 - 동료와 "화면 열람 분리(정적 호스팅)" 여부 논의 (exe 방식과는 별개 문제로 여전히 미결정)
 - 기본 실험 4종 회로도(`circuit.png`) 추가 (본인 담당)
+
+---
+
+### 2026-07-24 (3)
+**완료한 작업 (Claude Code 세션):**
+- `MiniEarthModel.exe`를 실제로 **GitHub Releases에 업로드** — 레포가 비공개라 공개 노출 위험이 없음을 확인하고 진행
+- `git`에 저장된 자격증명을 API/`gh`에 재사용하려던 첫 시도는 Claude Code 안전장치가 자동 차단 → 우회하지 않고, `gh` CLI를 winget으로 새로 설치한 뒤 `gh auth login`의 브라우저 기기 인증 코드를 본인이 직접 승인하는 정상적인 방식으로 전환
+- `v1.0.0-exe` 태그로 Release 생성 + `MiniEarthModel.exe` 첨부 (`gh release create`), 업로드된 자산 크기까지 재확인
+- `README.md`의 다운로드 안내를 `.../releases/latest` 실제 링크로 교체
+- 커밋 2건(exe 패키징 전체, README 링크 갱신) 푸시 완료
+
+**다음에 할 일:**
+- 실제 학교 네트워크/컴퓨터에서 exe 실행 테스트 (SmartScreen/방화벽 정책 등)
+- 코드가 바뀌면 `build_exe.bat` 재빌드 → 새 Release 업로드 절차를 한 번 직접 해보기 (아직 미실습)
+- 동료와 "화면 열람 분리(정적 호스팅)" 여부 논의 (exe 방식과는 별개 문제로 여전히 미결정)
+- 기본 실험 4종 회로도(`circuit.png`) 추가 (본인 담당)
+- `basic_experiments/`와 `firmware/`의 코드 중복 정리 여부 결정
 
 ---
 
