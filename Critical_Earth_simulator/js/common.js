@@ -4,7 +4,7 @@ const glCanvas = document.getElementById('gl');
 const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
@@ -43,18 +43,20 @@ updateCamera();
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
 function buildAcrylicScene() {
 const scene = new THREE.Scene();
-const sun = new THREE.SpotLight(0xfff6e0, 3.2, 20, Math.PI / 5, 0.35, 1.2);
+// r160부터 물리기반(광도 단위) 조명만 지원해서 SpotLight 밝기 스케일이 달라짐(약 4π배 보정 필요)
+const sun = new THREE.SpotLight(0xfff6e0, 3.2 * 4 * Math.PI, 20, Math.PI / 5, 0.35, 1.2);
 sun.position.set(3.4, 3.6, 2.2);
 sun.target.position.set(0.6, 0.3, 0.3);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.bias = -0.0015;
 scene.add(sun, sun.target);
-scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+// 색공간 관리(ColorManagement)가 기본 활성화되면서 실내 벽면이 예전보다 어둡게 보여 소폭 보정
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 const rim = new THREE.DirectionalLight(0xdfe8f5, 0.35);
 rim.position.set(-5, 3, -4);
 scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.45));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.65));
 
 // 집게형 조명 스탠드 (사진 속 실제 조명 모형)
 const lampGroup = new THREE.Group();
@@ -212,7 +214,7 @@ function createGroundTexture(opts) {
   });
   tctx.globalAlpha = 1;
   const tex = new THREE.CanvasTexture(c);
-  tex.encoding = THREE.sRGBEncoding;
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 const oceanFloorTex = createGroundTexture({
