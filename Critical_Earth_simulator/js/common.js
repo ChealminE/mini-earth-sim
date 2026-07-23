@@ -40,9 +40,48 @@ glCanvas.addEventListener('wheel', e => {
 });
 updateCamera();
 
+// ================= 환경맵 (물/빙하 등 물리 재질의 반사·투과 품질 개선) =================
+// 외부 HDRI 파일 없이, RoomEnvironment 예제와 비슷한 절차적 "방" 장면을 만들어
+// PMREMGenerator로 구워낸 환경맵을 공유 사용한다. (r160 코어에 PMREMGenerator 포함,
+// 별도 ES 모듈 임포트 불필요 - 지금 프로젝트가 전역 <script> 구조를 유지하는 이유와 동일)
+function buildEnvironmentTexture() {
+  const envScene = new THREE.Scene();
+  const boxGeo = new THREE.BoxGeometry();
+  boxGeo.deleteAttribute('uv');
+
+  const room = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ side: THREE.BackSide }));
+  room.scale.set(12, 12, 12);
+  envScene.add(room);
+
+  // 위쪽 하늘빛 패널 (은은한 하늘색)
+  const sky = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xbfe0ff, emissive: 0xbfe0ff, emissiveIntensity: 2.2 }));
+  sky.position.set(0, 6, 0);
+  sky.scale.set(6, 0.1, 6);
+  envScene.add(sky);
+
+  // 따뜻한 보조광 패널 (스포트라이트 색과 맞춰 반사에 온기 부여)
+  const warm = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xfff2d6, emissive: 0xfff2d6, emissiveIntensity: 1.6 }));
+  warm.position.set(4, 1.5, 3);
+  warm.scale.set(0.1, 3, 3);
+  envScene.add(warm);
+
+  // 차가운 반대편 보조광 패널 (해양 쪽 반사에 쓰일 푸른 기)
+  const cool = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0x8fb8d9, emissive: 0x8fb8d9, emissiveIntensity: 1.2 }));
+  cool.position.set(-4, 1.5, -3);
+  cool.scale.set(0.1, 3, 3);
+  envScene.add(cool);
+
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  const renderTarget = pmremGenerator.fromScene(envScene, 0.035);
+  pmremGenerator.dispose();
+  return renderTarget.texture;
+}
+const sharedEnvMap = buildEnvironmentTexture();
+
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
 function buildAcrylicScene() {
 const scene = new THREE.Scene();
+scene.environment = sharedEnvMap;
 // r160부터 물리기반(광도 단위) 조명만 지원해서 SpotLight 밝기 스케일이 달라짐(약 4π배 보정 필요)
 const sun = new THREE.SpotLight(0xfff6e0, 3.2 * 4 * Math.PI, 20, Math.PI / 5, 0.35, 1.2);
 sun.position.set(3.4, 3.6, 2.2);
