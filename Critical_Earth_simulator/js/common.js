@@ -95,6 +95,7 @@ const sharedTex = {
   iceCrack: loadColorTexture('texture_image/ice_crack.jpg', 1, 1),
   treeBark: loadColorTexture('texture_image/tree_bark.jpg', 1, 2),
   buildingFacade: loadColorTexture('texture_image/building_facade.jpg', 2, 3),
+  cityRoad: loadColorTexture('texture_image/city_road.jpg', 1, 1), // 실제 repeat는 도로 길이별로 clone해서 따로 지정
 };
 const waterNormalTex = textureLoader.load('texture_image/water_normal.png');
 waterNormalTex.wrapS = waterNormalTex.wrapT = THREE.RepeatWrapping;
@@ -562,6 +563,35 @@ bldDefs.forEach(([x, z, w, h], i) => {
   cityGroup.add(bldGroup);
   buildingMeshes.push(bldGroup);
 });
+
+// 도시 도로: 블록을 가로지르는 큰길(가로) 하나 + 그것과 직각으로 교차하는 도로(세로) 하나로
+// 십자 교차로를 만듦. 두 좌표 모두 건물 발밑(bldDefs 좌표) 사이 빈틈을 골라서 겹치지 않게 배치
+const ROAD_W = 0.12;
+const MAIN_ROAD_Z = -0.01;          // 가로(X) 도로 - 블록 양끝까지 관통
+const CROSS_ROAD_X = 0.09;          // 세로(Z) 도로 - 위 도로와 직각으로 교차
+const cityRoadLenX = ZONE_W - 0.015; // zoneFloor와 동일한 블록 폭
+const cityRoadLenZ = BOX_D - 0.02;   // zoneFloor와 동일한 블록 깊이
+// 텍스처의 점선 차선은 U축(가로) 방향으로 그려져 있어서, 세로 도로는 완성된 평면을
+// 통째로 90도 더 돌려 차선이 세계 Z축을 향하게 함 (텍스처를 따로 만들 필요 없음)
+function buildRoadStrip(length, alongZ) {
+  const geo = new THREE.PlaneGeometry(length, ROAD_W);
+  geo.rotateX(-Math.PI / 2);
+  if (alongZ) geo.rotateY(Math.PI / 2);
+  const tex = sharedTex.cityRoad.clone();
+  tex.needsUpdate = true;
+  const tileSize = 0.22; // 이 간격마다 차선 무늬가 한 번씩 반복
+  tex.repeat.set(Math.max(1, Math.round(length / tileSize)), 1);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
+  mesh.receiveShadow = true;
+  return mesh;
+}
+const mainRoad = buildRoadStrip(cityRoadLenX, false);
+mainRoad.position.set(0, CITY_BASE + 0.002, MAIN_ROAD_Z);
+cityGroup.add(mainRoad);
+// 교차점에서 두 도로가 같은 높이면 z-fighting이 생겨서 살짝 더 띄움
+const crossRoad = buildRoadStrip(cityRoadLenZ, true);
+crossRoad.position.set(CROSS_ROAD_X, CITY_BASE + 0.0025, 0);
+cityGroup.add(crossRoad);
 
 const gasCarMat = new THREE.MeshStandardMaterial({ color: 0x5a5650, roughness: 0.4, metalness: 0.3 });
 const evCarMat = new THREE.MeshStandardMaterial({ color: 0x3fb0a0, roughness: 0.3, metalness: 0.4, emissive: 0x0d3a35, emissiveIntensity: 0.3 });

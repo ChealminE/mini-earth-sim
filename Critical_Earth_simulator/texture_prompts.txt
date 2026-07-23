@@ -28,3 +28,6 @@ Seamless tileable tree bark texture, vertical bark ridges, warm brown tones, fla
 
 # 8) 건물 외벽 창문 패턴 (선택 - 특정 건물 사진 말고 반복 패턴으로)
 Seamless tileable building facade pattern texture, simple grid of windows on flat wall, minimal stylized clean design, soft neutral gray and light blue tones, flat even lighting, no shadows, 1024x1024, PBR albedo map
+
+# 9) 도시 도로 (아스팔트 + 차선) - cityRoadTex, 차가 놓인 스트립에만 입혀서 인도/광장(city_pavement)과 구분
+Top-down seamless tileable texture of dark asphalt road running horizontally across the frame, single dashed white lane marking line centered along the road direction, subtle asphalt grain and faint tire wear marks, dark gray tones, flat even lighting, no shadows, no cars, no curbs, stylized clean game asset, 1024x1024, PBR albedo map
