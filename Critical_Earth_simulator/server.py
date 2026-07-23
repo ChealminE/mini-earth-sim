@@ -33,6 +33,7 @@ import asyncio
 import csv
 import json
 import socket
+import sys
 import threading
 import webbrowser
 from datetime import datetime, timezone
@@ -45,8 +46,18 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-BASE_DIR = Path(__file__).parent
-LOG_PATH = BASE_DIR / "data_log.csv"
+# PyInstaller로 exe로 묶으면 index.html/js/texture_image 등 번들된 리소스는 실행할 때마다
+# 임시 폴더(sys._MEIPASS)에 풀리므로 거기서 읽어야 하고, data_log.csv처럼 계속 남아있어야
+# 하는 파일은 그 임시 폴더가 아니라 exe가 실제로 놓인 위치(APP_DIR)에 써야 함.
+# `python server.py`로 그냥 실행할 때는 둘 다 이 파일이 있는 폴더로 동일하게 동작(기존과 같음).
+if getattr(sys, "frozen", False):
+    RESOURCE_DIR = Path(sys._MEIPASS)
+    APP_DIR = Path(sys.executable).parent
+else:
+    RESOURCE_DIR = Path(__file__).parent
+    APP_DIR = RESOURCE_DIR
+
+LOG_PATH = APP_DIR / "data_log.csv"
 
 clients: list[WebSocket] = []
 csv_fields: Optional[List[str]] = None
@@ -98,7 +109,7 @@ async def handle_incoming(payload: dict, source: str):
 # ── 1) WiFi 보드 경로: HTTP POST ─────────────────────────────
 @app.get("/")
 async def index():
-    return FileResponse(BASE_DIR / "index.html")
+    return FileResponse(RESOURCE_DIR / "index.html")
 
 
 @app.post("/data")
@@ -127,14 +138,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # style.css, js/*.js 등 정적 파일 서빙 (반드시 위의 라우트들 뒤에 등록해야
 # "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
-app.mount("/js", StaticFiles(directory=BASE_DIR / "js"), name="js")
-app.mount("/texture_image", StaticFiles(directory=BASE_DIR / "texture_image"), name="textures")
-app.mount("/basic_experiments", StaticFiles(directory=BASE_DIR / "basic_experiments"), name="basic_experiments")
+app.mount("/js", StaticFiles(directory=RESOURCE_DIR / "js"), name="js")
+app.mount("/texture_image", StaticFiles(directory=RESOURCE_DIR / "texture_image"), name="textures")
+app.mount("/basic_experiments", StaticFiles(directory=RESOURCE_DIR / "basic_experiments"), name="basic_experiments")
 
 
 @app.get("/style.css")
 async def style_css():
-    return FileResponse(BASE_DIR / "style.css")
+    return FileResponse(RESOURCE_DIR / "style.css")
 
 
 # ── 2) 시리얼 보드 경로: USB (우노 등) ─────────────────────────

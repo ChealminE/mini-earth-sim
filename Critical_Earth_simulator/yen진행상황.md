@@ -20,6 +20,9 @@
 - [x] 서버 구동 시 브라우저 자동 오픈 (`webbrowser.open`, `--no-browser`로 끌 수 있음)
 - [x] 최초 설치용 배치파일(가상환경 생성 + `pip install`) (`setup.bat`)
 - [x] requirements.txt 버전 오류 수정 (fastapi/uvicorn/websockets 실제 존재 버전으로) — .venv에 정상 설치 확인됨, 추가 수정 불필요
+- [x] `setup.bat` 완료 시 바탕화면에 실행 바로가기 자동 생성 (매번 폴더 찾아 들어갈 필요 없이 아이콘 더블클릭만 하면 되게) — 이후 PyInstaller exe 방식으로 대체, 아래 참고
+- [x] 학생 배포용 실행 가이드 작성 (`Critical_Earth_simulator/README.md`) — exe 다운로드 방식으로 갱신, SmartScreen/방화벽 경고 대처법 포함
+- [x] **파이썬 설치 자체를 없애는 단일 실행파일(exe) 패키징** — PyInstaller로 `server.py`+파이썬 인터프리터+라이브러리+웹 리소스(index.html/js/texture_image/basic_experiments)를 `MiniEarthModel.exe` 하나로 빌드. `server.spec`(빌드 설정) + `build_exe.bat`(빌드 실행) 작성. 실제 빌드해서 index/js/textures/basic_experiments 서빙, POST /data, CSV 로깅(exe 옆에 정상 기록)까지 동작 확인함. requirements.txt에 있던 `bleak`가 실제로는 venv에 설치가 안 되어 있던 걸 이번에 발견/설치함(있어야 BLE 관련 hidden import가 정상 처리됨)
 
 ### 3. 프론트엔드 (tab-live.js / index.html)
 - [x] 센서 키 자동 인식 (하드코딩 없이 동적 처리)
@@ -34,7 +37,8 @@
 - [x] 메탄 센서 → 3D 효과 매핑 추가 (수조 바닥에서 올라오는 기포 파티클, `common.js`의 `applyState()`/`animate()`에 로직 추가)
 - [x] "기본 실험" 목록/상세 모달 (보드·연결방식별 실험 설명 + 코드 미리보기/다운로드/복사) — `basic_experiments/` 폴더 구조로 관리, 콘텐츠는 GitHub/VSCode에서 폴더 하나에 `info.json`/`code.ino`/`circuit.png` 3개만 추가하면 확장 가능
 - [ ] 각 기본 실험의 회로도(`circuit.png`) 이미지 추가 (현재는 없으면 "회로도 준비중" 플레이스홀더로 대체됨)
-- [ ] 학생 노트북에 서버/파이썬 설치를 원클릭에 가깝게 하는 패키징 (설계 논의 중, 구현은 별도 진행 예정)
+- [x] 학생 노트북에 서버/파이썬 설치를 원클릭에 가깝게 하는 패키징 — exe 하나로 완료(위 항목). "화면 열람 분리(정적 호스팅)"는 여전히 별개 문제로 동료 논의 대기 중(아래 "💬 논의 중" 참고), exe 방식과는 무관하게 진행됨
+- [ ] `MiniEarthModel.exe`를 GitHub Releases에 실제로 업로드하기 (빌드는 완료, 배포는 아직 — 아래 "💬 논의 중" 참고)
 - [ ] `basic_experiments/`와 `firmware/`의 코드 중복 정리 — 맨 아래 "💬 논의 중" 섹션 참고, 미결정
 
 ### 4. Three.js 버전 대응
@@ -52,7 +56,7 @@
 ### 6. 문서화
 - [x] "실시간 실험" 탭 기능명세서 작성
 - [x] 진행상황 체크리스트 & 작업 로그 체계 수립 (본 문서)
-- [ ] 학생 배포용 실행 가이드(README) 작성
+- [x] 학생 배포용 실행 가이드(README) 작성 (`Critical_Earth_simulator/README.md`)
 
 ---
 
@@ -126,6 +130,45 @@
 
 ---
 
+### 2026-07-24
+**완료한 작업 (Claude Code 세션, "화면 열람 분리"는 건드리지 않는 범위):**
+- `setup.bat` 완료 시 바탕화면에 "미니 지구 모델 실행" 바로가기 자동 생성 (매번 클릭 자체는 없앨 수 없지만, 폴더 찾아 들어가는 수고는 줄임) — PowerShell `-EncodedCommand`(Base64/UTF-16LE)로 한글 포함 명령을 cmd에서 안전하게 넘기도록 처리
+- `Critical_Earth_simulator/README.md` 신규 작성 — GitHub Download ZIP부터 설치/실행/기본 실험 사용법/자주 겪는 문제까지, 학생이 이거 하나만 보고 따라할 수 있게 정리
+- Temp 폴더에서 발견한 별도 `basic_experiments` 설계안(스키마 다름, 출처 불확실) 기록 — 아래 "💬 논의 중" 참고
+
+**다음에 할 일:**
+- 동료와 "화면 열람 분리(정적 호스팅)" 여부 논의 → 결정되는 대로 남은 설치 자동화(원클릭 다운로드, 포터블 파이썬 등) 진행
+- 기본 실험 4종 회로도(`circuit.png`) 추가 (본인 담당)
+- `setup.bat`의 바탕화면 바로가기 생성이 실제 더블클릭 환경에서 잘 되는지 직접 1회 확인 (이 세션에서 자동화 테스트 환경 제약으로 완전히 검증 못함, 아래 참고)
+
+---
+
+### 2026-07-24 (2)
+**완료한 작업 (Claude Code 세션):**
+- 바탕화면 바로가기 방식 대신, **파이썬 설치 자체가 필요 없는 단일 실행파일(exe)**로 방향 전환 (본인 요청: "학생이 따로 뭔가 조작할 필요없이")
+- `server.py`의 `BASE_DIR`를 `RESOURCE_DIR`(번들된 읽기전용 리소스, exe일 땐 `sys._MEIPASS`)/`APP_DIR`(계속 남아야 하는 파일용, exe일 땐 exe가 있는 폴더)로 분리 — `python server.py`로 그냥 실행하는 기존 개발 방식은 동작 그대로 유지됨
+- `server.spec`(PyInstaller 빌드 설정) + `build_exe.bat`(빌드 실행 배치파일) 작성
+- 실제로 `MiniEarthModel.exe` 빌드 성공, 실행해서 아래 전부 확인함:
+  - index.html/style.css/js/texture_image/basic_experiments 전부 정상 서빙
+  - `POST /data` 정상 동작
+  - `data_log.csv`가 임시 폴더가 아니라 exe 옆에 정상적으로 쌓임 (RESOURCE_DIR/APP_DIR 분리가 제대로 동작한다는 뜻)
+- 빌드 과정에서 `requirements.txt`에 있는 `bleak`가 실제로는 `.venv`에 설치 안 되어 있던 걸 발견 — 설치해서 해결 (BLE 관련 기능이 지금까지 조용히 깨져있었을 가능성, `--ble` 옵션 실사용 전 재확인 필요)
+- `.gitignore`에 `Critical_Earth_simulator/build/`, `dist/` 추가 (exe는 git에 커밋하지 않고 GitHub Releases로 배포하는 걸 전제)
+- `README.md`를 exe 다운로드 방식 기준으로 재작성, SmartScreen/방화벽 경고 대처법 추가
+
+**주의할 점 / 확인 필요:**
+- `MiniEarthModel.exe`는 아직 **GitHub Releases에 업로드 안 함** (로컬 빌드/테스트만 완료) — 업로드는 "배포"에 해당하는 행동이라 임의로 하지 않음, 아래 "💬 논의 중" 참고
+- exe는 서명이 안 되어 있어서 SmartScreen/방화벽 경고가 뜸 (정상, README에 대처법 적어둠) — 학교 방화벽 정책에 따라 막힐 수도 있어서 실제 학교 환경에서 한 번 테스트 필요
+- 코드(`server.py`, `js/`, `basic_experiments/` 등)가 바뀔 때마다 `build_exe.bat`으로 재빌드하고 Release를 새로 올려야 함 — 이 사이클 자체는 아직 실습 안 해봄
+
+**다음에 할 일:**
+- `MiniEarthModel.exe`를 GitHub Releases에 실제로 올릴지/언제 올릴지 결정
+- 실제 학교 네트워크/컴퓨터에서 exe 실행 테스트 (방화벽 정책 등)
+- 동료와 "화면 열람 분리(정적 호스팅)" 여부 논의 (exe 방식과는 별개 문제로 여전히 미결정)
+- 기본 실험 4종 회로도(`circuit.png`) 추가 (본인 담당)
+
+---
+
 ## 💬 논의 중 / 결정 필요 (미결정 사항 모아두는 곳)
 
 ### `basic_experiments/`와 `firmware/`의 코드 중복 (2026-07-23 제기)
@@ -140,6 +183,18 @@
 - **완전히 해결하려면:** 정적 파일(`index.html`/`js`/`texture_image` 등)을 GitHub Pages 등에 따로 호스팅해서 서버 없이도 화면이 항상 뜨게 만들어야 함. 브라우저가 `localhost` 접속은 예외적으로 허용해서 기술적으론 가능(호스팅된 페이지 → `ws://localhost:8000`로 연결). 다만 `server.py`에 CORS 등을 추가로 손대야 하고, 이건 실시간 실험 탭 범위를 넘어 **프로젝트 전체 배포 방식**을 바꾸는 결정이라 동료와 상의가 필요함.
 - **임시 대안(보류 중엔 이걸로):** GitHub 저장소(README)를 다운로드 진입점으로 사용 — GitHub는 서버 없이도 누구나 접근 가능하므로 닭과 달걀 문제가 없음.
 - **결정 필요한 것:** 화면 열람을 분리할지 말지. → **2026-07-23, 동료와 논의 후 결정하기로 보류.** 그 전까지는 설치 자동화 구현을 시작하지 않음.
+- **2026-07-24 진행:** "화면 열람 분리"는 여전히 미결정(동료 논의 대기)이지만, 그것과 무관하게 할 수 있는 범위(위의 임시 대안 + 배치파일 개선)는 진행함 — `setup.bat`에 바탕화면 바로가기 자동 생성 추가, `README.md` 작성. 화면 열람 분리 자체는 아직 손 안 댐.
+- **2026-07-24 (2) 업데이트:** 본인이 "바탕화면 바로가기 말고, 파이썬 설치도 학생이 신경 안 쓰게" 요청 → PyInstaller 단일 exe(`MiniEarthModel.exe`) 방식으로 전환, 빌드/테스트 완료. **이건 "화면 열람 분리"와는 다른 문제라 그대로 진행함** — exe든 뭐든 `server.py`가 떠 있어야 화면이 보이는 건 동일하고, 단지 "그 server.py를 띄우는 과정"이 파이썬 설치 없이 exe 하나로 끝난다는 차이일 뿐. 그래서 동료 논의 없이 진행해도 되는 범위로 판단함.
+
+### `MiniEarthModel.exe`를 GitHub Releases에 언제 올릴지 (2026-07-24 제기, 미결정)
+- **현재 상태:** 로컬 빌드/실행 테스트까지 완료, 아직 GitHub Releases에는 업로드 안 함.
+- **왜 안 올렸는지:** Release 업로드는 "학생이 실제로 받게 될 배포판을 공개하는" 행동이라, 로컬 커밋/푸시보다 한 단계 더 "확정/공개"에 가까운 행동이라고 판단해서 임의로 하지 않음.
+- **결정 필요한 것:** 지금 바로 올릴지 / 실제 학교 컴퓨터·네트워크에서 한 번 테스트해보고 올릴지 / 동료 확인 후 올릴지.
+
+### 참고: `basic_experiments` 스키마가 다른 별도 설계안 발견 (2026-07-24, 출처 불확실)
+- Temp 폴더에서 `진행상황.md`/`실시간실험_기능명세서.md`의 다른 버전을 발견함 — `server.py`는 동일했지만 문서 내용이 다름. "기본 실험" 기능을 `meta.json`(우리는 `info.json`) + 실험 폴더 하나에 `esp32_sketch.ino`+`uno_sketch.ino` 같이 저장(우리는 보드/연결방식별로 폴더 분리) + 서버가 폴더 스캔해서 목록 자동 생성(우리는 `index.json` 수동 관리) 방식으로 독립적으로 설계해둠. 파이썬 포터블/임베디드 자동 설치, "웹페이지가 아니라 런처 파일이 진짜 진입점" 결론도 적혀 있었음.
+- **본인 확인:** "동료 결론은 아닐 것" — 출처/신뢰도 불확실. 실제 코드 구현은 없었음(문서만).
+- **왜 적어두는지:** 나중에 이 내용이 실제로 동료 쪽에서 다시 나오면, 지금 구현된 것(`info.json`/폴더 분리/`index.json`)과 스키마가 다르다는 걸 바로 알아볼 수 있게.
 
 ---
 
