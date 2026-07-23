@@ -417,6 +417,35 @@ const puddles = [];
   puddles.push(puddle);
 });
 
+// 풀 인스턴싱: 수백 개를 한 번의 draw call로 그려서 습지·숲 밀도감을 살림.
+// 실제로 몇 개나 "보이게"할지는 applyState()에서 습지 비율/습도에 맞춰 count를 조절.
+const GRASS_MAX = 240;
+const grassGeo = new THREE.ConeGeometry(0.006, 0.045, 5);
+grassGeo.translate(0, 0.0225, 0);
+const grassMat = new THREE.MeshStandardMaterial({ color: 0x5a9c4a, roughness: 0.85 });
+const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_MAX);
+grassMesh.castShadow = true;
+{
+  const dummy = new THREE.Object3D();
+  let placed = 0, attempts = 0;
+  while (placed < GRASS_MAX && attempts < GRASS_MAX * 8) {
+    attempts++;
+    const gx = (Math.random() - 0.5) * 1.15;
+    const gz = (Math.random() - 0.5) * 1.05;
+    const dxMud = gx - wetlandPatch.position.x, dzMud = gz - wetlandPatch.position.z;
+    if (Math.sqrt(dxMud * dxMud + dzMud * dzMud) < 0.14) continue; // 진흙 패치 근처는 비워둠
+    dummy.position.set(gx, WETLAND_BASE, gz);
+    dummy.rotation.y = Math.random() * Math.PI * 2;
+    const gs = 0.7 + Math.random() * 0.7;
+    dummy.scale.set(gs, gs * (0.8 + Math.random() * 0.5), gs);
+    dummy.updateMatrix();
+    grassMesh.setMatrixAt(placed, dummy.matrix);
+    placed++;
+  }
+  grassMesh.instanceMatrix.needsUpdate = true;
+}
+forestGroup.add(grassMesh);
+
 // --- 도시 ---
 const cityGroup = new THREE.Group();
 cityGroup.position.x = ZONE_W;
@@ -516,7 +545,7 @@ return {
   waterBody, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
   smokeMat, smokeGeo, smokeCount, smokeLife, factory,
-  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes,
+  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE,
   condensationSpeed: 1,
   state: { fossil: 50, cityRatio: 50, ev: 30, carbonRemoval: 20, wetlandRatio: 30, co2: 418.24, ph: 8.04, tmp: 24, hum: 55 }
@@ -614,6 +643,10 @@ function applyState(S) {
     const dist = Math.sqrt(dx * dx + dz * dz);
     t.group.visible = dist > wetRadius * 0.9;
   });
+
+  // 습지 비율/실측 습도 중 더 강한 쪽 → 풀 인스턴싱 밀도
+  const grassIntensity = Math.max(S.state.wetlandRatio / 100, humIntensity);
+  S.grassMesh.count = Math.max(20, Math.round(grassIntensity * S.grassMesh.instanceMatrix.count));
 }
 
 // ================= 애니메이션 =================
