@@ -18,6 +18,7 @@ function switchTab(name) {
   } else if (name === 'live') {
     liveGraphs.forEach(g => g.chart.resize());
     applyState(sceneLive);
+    showLiveFormatModal();
   } else {
     chartCo2.resize(); chartTempHist.resize(); chartPhHist.resize(); chartFossil.resize();
     sceneCurrent.state.co2 = histCo2[histCo2.length - 1]; // 2023 실측값
