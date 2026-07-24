@@ -3,12 +3,13 @@
   "title": "우노 USB 연결 실험",
   "board": "아두이노 우노 R3",
   "connection": "USB 시리얼",
-  "summary": "우노는 와이파이가 없어서 USB 케이블로 노트북에 연결한 상태로 실행합니다. 준비물이 가장 적고 안정적인 연결 방식입니다.",
-  "sensors": ["온도(예시, 아날로그)", "CO2(예시, 아날로그)", "메탄(예시, 아날로그)"],
+  "summary": "우노는 와이파이가 없어서 USB 케이블로 노트북에 연결한 상태로 실행합니다. MH-Z19B 적외선 CO2 센서를 UART로 읽어 실제 ppm 값을 전송합니다.",
+  "sensors": ["CO2 (MH-Z19B, 실측 ppm)"],
   "notes": [
-    "Arduino IDE 라이브러리 매니저에서 ArduinoJson 설치 필요",
+    "MH-Z19B VCC→5V, GND→GND, TX→우노 핀2, RX→우노 핀3 (SoftwareSerial 사용, ArduinoJson 라이브러리 불필요)",
     "보드레이트(9600bps)가 server.py의 --baud 옵션과 반드시 일치해야 함",
-    "코드 업로드 중에는 Arduino IDE 시리얼 모니터를 꺼둘 것 (포트 충돌 방지)"
+    "코드 업로드 중에는 Arduino IDE 시리얼 모니터를 꺼둘 것 (포트 충돌 방지)",
+    "전원 인가 직후엔 센서 예열 시간이 필요해서 처음 몇 초는 값이 안 들어올 수 있음"
   ],
   "code_file": "code.ino",
   "circuit_file": "circuit.png"
