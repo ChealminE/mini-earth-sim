@@ -1,0 +1,51 @@
+{
+  "id": "uno_hm10_dual_mhz19b",
+  "title": "우노 + HM-10 BLE - CO2 2채널(MH-Z19B)",
+  "board": "우노 R3 + HM-10 (BLE)",
+  "connection": "BLE (HM-10 경유)",
+  "sensors": ["MH-Z19B"],
+  "summary": "MH-Z19B CO2 센서 2채널(예: 탱크1/탱크2)을 동시에 측정해서 HM-10 BLE로 전송합니다. 우노는 SoftwareSerial을 3개(센서 2개 + HM-10) 선언하지만 수신은 한 번에 하나씩만 가능해서 listen()으로 전환해가며 읽습니다.",
+  "notes": [
+    "HM-10 RX는 반드시 분압저항으로 5V→3.3V 낮춰서 연결하세요 (안 그러면 모듈 손상 가능)",
+    "같은 종류 센서 2채널이라 키 이름이 co2_1/co2_2로 나뉩니다 - 3D CO2 효과에 연결하려면 실시간 실험 탭 센서 카드에서 드롭다운으로 역할을 지정하세요",
+    "esp32_ble/uno_hm10_ble 실험과 같은 UUID(0xFFE0/0xFFE1)를 사용",
+    "보드레이트(9600bps)가 HM-10 기본값과 반드시 일치해야 함"
+  ],
+  "codeInfo": {
+    "description": "MH-Z19B 2개(예: 탱크1/탱크2)를 각각 읽어서 HM-10을 통해 BLE로 전송합니다.",
+    "libraries": "없음 (SoftwareSerial만 사용, Arduino 기본 내장)",
+    "sendInterval": "30초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일",
+    "onFailure": "센서별로 독립적으로 실패를 추적합니다 - 한쪽이 실패해도 다른 쪽 값은 정상 전송됩니다. 각 센서는 연속 3회 실패 시 해당 SoftwareSerial만 자동 재시작합니다."
+  },
+  "pinmap": [
+    {
+      "device": "CO2 센서 MH-Z19B #1",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀2 (RX)", "device": "TX" },
+        { "board": "핀3 (TX)", "device": "RX" }
+      ]
+    },
+    {
+      "device": "CO2 센서 MH-Z19B #2",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀4 (RX)", "device": "TX" },
+        { "board": "핀5 (TX)", "device": "RX" }
+      ]
+    },
+    {
+      "device": "HM-10 블루투스",
+      "pins": [
+        { "board": "5V 또는 3.3V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀6 (RX)", "device": "TX" },
+        { "board": "핀7 (TX, 분압저항 필수)", "device": "RX" }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
+}

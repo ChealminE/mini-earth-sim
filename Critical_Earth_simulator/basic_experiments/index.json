@@ -1,6 +1,0 @@
-[
-  { "id": "esp32_wifi", "title": "ESP32 WiFi 연결 실험", "board": "ESP32", "connection": "WiFi (HTTP POST)" },
-  { "id": "esp32_ble", "title": "ESP32 BLE 연결 실험", "board": "ESP32", "connection": "BLE (GATT notify)" },
-  { "id": "uno_usb", "title": "우노 USB 연결 실험", "board": "아두이노 우노 R3", "connection": "USB 시리얼" },
-  { "id": "uno_hm10_ble", "title": "우노 + HM-10 BLE 연결 실험", "board": "아두이노 우노 R3 + HM-10", "connection": "BLE (HM-10 경유)" }
-]

@@ -1,16 +1,32 @@
 {
   "id": "uno_usb",
   "title": "우노 USB 연결 실험",
-  "board": "아두이노 우노 R3",
+  "board": "우노 R3 (USB)",
   "connection": "USB 시리얼",
+  "sensors": ["MH-Z19B"],
   "summary": "우노는 와이파이가 없어서 USB 케이블로 노트북에 연결한 상태로 실행합니다. MH-Z19B 적외선 CO2 센서를 UART로 읽어 실제 ppm 값을 전송합니다.",
-  "sensors": ["CO2 (MH-Z19B, 실측 ppm)"],
   "notes": [
-    "MH-Z19B VCC→5V, GND→GND, TX→우노 핀2, RX→우노 핀3 (SoftwareSerial 사용, ArduinoJson 라이브러리 불필요)",
     "보드레이트(9600bps)가 server.py의 --baud 옵션과 반드시 일치해야 함",
     "코드 업로드 중에는 Arduino IDE 시리얼 모니터를 꺼둘 것 (포트 충돌 방지)",
     "전원 인가 직후엔 센서 예열 시간이 필요해서 처음 몇 초는 값이 안 들어올 수 있음"
   ],
-  "code_file": "code.ino",
-  "circuit_file": "circuit.png"
+  "codeInfo": {
+    "description": "MH-Z19B에 CO2 측정 명령을 보내고 응답을 받아 ppm 값을 계산해서 JSON으로 전송합니다.",
+    "libraries": "SoftwareSerial (Arduino 기본 내장, 별도 설치 불필요)",
+    "sendInterval": "2초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일 (전송 직전에 바로 측정)",
+    "onFailure": "체크섬이 안 맞거나 응답이 없으면 그 회차는 전송을 건너뜁니다. 연속 3회 실패하면 SoftwareSerial을 자동으로 재시작합니다."
+  },
+  "pinmap": [
+    {
+      "device": "CO2 센서 MH-Z19B",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀2 (RX)", "device": "TX" },
+        { "board": "핀3 (TX)", "device": "RX" }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
 }

@@ -1,15 +1,20 @@
 {
   "id": "esp32_wifi",
   "title": "ESP32 WiFi 연결 실험",
-  "board": "ESP32",
+  "board": "ESP32 (WiFi)",
   "connection": "WiFi (HTTP POST)",
+  "sensors": [],
   "summary": "ESP32가 같은 와이파이에 있는 노트북의 server.py로 2초마다 센서값을 HTTP POST로 전송합니다. 와이파이가 있는 환경에서 가장 간단하게 시작할 수 있는 방식입니다.",
-  "sensors": ["온도(예시, 아날로그)", "CO2(예시, 아날로그)", "메탄(예시, 아날로그)"],
   "notes": [
-    "Arduino IDE 라이브러리 매니저에서 ArduinoJson 설치 필요",
     "코드 안의 WIFI_SSID / WIFI_PASSWORD / SERVER_IP를 실제 환경에 맞게 수정",
     "SERVER_IP는 server.py 실행 시 터미널에 출력되는 IP 주소"
   ],
-  "code_file": "code.ino",
-  "circuit_file": "circuit.png"
+  "codeInfo": {
+    "description": "센서가 아직 정해지지 않은 상태의 예시 코드입니다. readSensors() 함수 안의 더미 값을 실제 센서 코드로 교체해서 사용하세요.",
+    "libraries": "ArduinoJson (Arduino IDE 라이브러리 매니저에서 설치)",
+    "sendInterval": "2초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일",
+    "onFailure": "WiFi 연결이 끊기면 재연결을 시도하고, 재연결되기 전까지는 전송을 건너뜁니다."
+  },
+  "code_file": "code.ino"
 }

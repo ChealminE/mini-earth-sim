@@ -44,6 +44,30 @@
   .modal-actions-row { display: flex; gap: 8px; margin-top: 14px; }
   .modal-actions-row .modal-close-btn { margin-top: 0; flex: 1; text-align: center; text-decoration: none; box-sizing: border-box; }
 
+  /* ── 그래프 상세 설정 모달 (실시간 실험 탭, tab-live.js에서 열고 닫음) ── */
+  .modal-input {
+    width: 100%; box-sizing: border-box; background: #111; border: 1px solid #333; color: #eee;
+    font-size: 12.5px; padding: 7px 9px; border-radius: 6px;
+  }
+  .modal-input::placeholder { color: #6b7178; }
+  .gs-axis-row { display: flex; gap: 6px; }
+  .gs-axis-row .modal-input { flex: 1; width: auto; min-width: 0; }
+  .gs-series-list { display: flex; flex-direction: column; gap: 8px; }
+  .gs-series-row {
+    display: flex; align-items: center; gap: 6px; background: #262626; border: 1px solid #333;
+    border-radius: 8px; padding: 8px;
+  }
+  .gs-series-row .series-color {
+    width: 24px; height: 24px; padding: 0; border: 1px solid #333; border-radius: 5px;
+    background: none; cursor: pointer; flex-shrink: 0;
+  }
+  .gs-series-row .modal-input { flex: 1; width: auto; min-width: 0; font-size: 11.5px; padding: 6px 7px; }
+  .gs-remove-series-btn {
+    background: none; border: none; color: #7d838d; font-size: 13px; cursor: pointer;
+    padding: 0 4px; flex-shrink: 0;
+  }
+  .gs-remove-series-btn:hover { color: #E24B4A; }
+
   .basic-exp-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px; }
   .basic-exp-card {
     background: #262626; border: 1px solid #333; border-radius: 8px;
@@ -57,12 +81,20 @@
     background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
   }
   .basic-exp-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .circuit-wrap { background: #111; border-radius: 6px; overflow: hidden; }
-  .circuit-wrap img { display: block; width: 100%; }
-  .circuit-placeholder {
-    padding: 22px 10px; text-align: center; font-size: 12px; color: #7d838d;
-    background: #111; border-radius: 6px;
+  .basic-exp-sensor-checks { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+  .basic-exp-sensor-check {
+    display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #ccc;
+    background: #262626; border: 1px solid #333; border-radius: 16px; padding: 5px 12px; cursor: pointer;
   }
+  .basic-exp-sensor-check:has(input:checked) { border-color: #5DCAA5; color: #eee; }
+  .pinmap-device-title { font-size: 12.5px; font-weight: 600; color: #ccc; margin: 10px 0 4px; }
+  .pinmap-device-title:first-child { margin-top: 0; }
+  .pinmap-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 12px; }
+  .pinmap-table th, .pinmap-table td {
+    border: 1px solid #333; padding: 6px 10px; text-align: center;
+  }
+  .pinmap-table th { background: #262626; color: #eee; }
+  .pinmap-table td { background: #161616; color: #ccc; }
 </style>
 </head>
 <body>
@@ -124,27 +156,29 @@
       <div id="liveFormatModal" class="modal-overlay">
         <div class="modal-box">
           <h3>실시간 실험 연동 전 확인사항</h3>
-          <p>아두이노에서 이 <b>JSON 형식</b>으로 값을 보내야 대시보드에 표시됩니다.</p>
+          <p>보드에서 이 <b>JSON 형식</b>으로 값을 보내야 대시보드에 표시됩니다. 어떤 보드든, 어떤 통신 방식(WiFi/USB 시리얼/BLE)이든 이 형식으로만 보내면 자동 인식됩니다.</p>
 
           <div class="modal-example">
             <div class="modal-label">예시 (센서 이름은 자유롭게 정해도 됨)</div>
-            <pre>{"temp": 23.4, "co2": 812.3}</pre>
+            <pre>{"temp": 24.8, "ph": 7.21, "co2": 735}</pre>
           </div>
 
           <div class="modal-example">
             <div class="modal-label">아두이노 코드 (마지막 출력 부분, ArduinoJson 사용)</div>
             <pre>JsonDocument doc;
 doc["temp"] = tempValue;
+doc["ph"]   = phValue;
 doc["co2"]  = co2Value;
 serializeJson(doc, Serial);
 Serial.println();</pre>
           </div>
 
           <ul class="modal-notes">
-            <li>센서 이름(키)은 자유롭게 지어도 됩니다. (temp, co2 외 다른 이름 가능)</li>
+            <li>센서 이름(키)은 자유롭게 지어도 됩니다. (temp, ph, co2 외 다른 이름 가능)</li>
             <li>측정하는 센서만 넣으면 됩니다. 전부 다 있을 필요는 없습니다.</li>
-            <li>3D 효과 연동: 키 이름에 <code>co2</code>(대기·파도), <code>ph</code>(해양 산성화), <code>temp</code>(빙하), <code>hum</code>(응결 물방울), <code>methane</code>/<code>ch4</code>(기포)이 포함되면 자동으로 연결됩니다.</li>
-            <li>USB(우노): 9600bps + <code>Serial.println(json)</code> / WiFi(ESP32): <code>/data</code>로 JSON POST</li>
+            <li>3D 효과 연동: 키 이름이 <code>temp</code>, <code>ph</code>, <code>co2</code>와 정확히 일치할 때만 자동으로 연결됩니다. (예: <code>water_temp</code>처럼 이름이 다르면 카드/그래프에는 뜨지만 3D 효과는 연결되지 않습니다)</li>
+            <li>이름이 안 맞거나 같은 종류 센서가 여러 개면(예: 온도 센서 2개), 센서 카드 아래 드롭다운에서 "기온"/"수온" 등 역할을 직접 지정하면 그 값이 3D 효과에 연결됩니다.</li>
+            <li>어떤 보드든 이 JSON 형식으로 보내면 자동 인식됩니다 (WiFi POST / USB 시리얼 / BLE 전부 지원)</li>
           </ul>
 
           <label class="modal-checkbox">
@@ -154,12 +188,23 @@ Serial.println();</pre>
         </div>
       </div>
 
-      <div id="basicExpListModal" class="modal-overlay">
+      <div id="basicExpBoardModal" class="modal-overlay">
         <div class="modal-box">
-          <h3>기본 실험 목록</h3>
-          <p>보드/연결 방식에 맞는 실험을 골라 회로도와 코드를 확인하세요.</p>
-          <div class="basic-exp-list" id="basicExpList"></div>
-          <button class="modal-close-btn secondary" id="basicExpListCloseBtn">닫기</button>
+          <h3>1. 사용할 보드 선택</h3>
+          <p>연결하려는 보드/통신 방식을 고르세요.</p>
+          <div class="basic-exp-list" id="basicExpBoardList"></div>
+          <button class="modal-close-btn secondary" id="basicExpBoardCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="basicExpSensorModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>2. 사용할 센서 선택</h3>
+          <p id="basicExpSensorBoardLabel"></p>
+          <p class="hint" style="margin-bottom:6px">실제로 연결한 센서를 전부 체크하세요 (동시에 여러 개 가능). 센서 없이 통신 연결만 확인하려면 아무것도 체크하지 마세요.</p>
+          <div class="basic-exp-sensor-checks" id="basicExpSensorChecks"></div>
+          <div class="basic-exp-list" id="basicExpSensorList"></div>
+          <button class="modal-close-btn secondary" id="basicExpSensorBackBtn">← 보드 다시 선택</button>
         </div>
       </div>
 
@@ -169,15 +214,16 @@ Serial.println();</pre>
           <div class="basic-exp-meta" id="basicExpMeta"></div>
           <p id="basicExpSummary"></p>
 
-          <div class="modal-example">
-            <div class="modal-label">회로도</div>
-            <div class="circuit-wrap">
-              <img id="basicExpCircuitImg" alt="회로도">
-              <div id="basicExpCircuitPlaceholder" class="circuit-placeholder" style="display:none">회로도 준비중입니다</div>
-            </div>
+          <div class="modal-example" id="basicExpPinmapSection" style="display:none">
+            <div class="modal-label">핀맵</div>
+            <div id="basicExpPinmaps"></div>
           </div>
 
-          <ul class="modal-notes" id="basicExpNotes"></ul>
+          <div class="modal-actions-row">
+            <button class="modal-close-btn secondary" id="basicExpSpecBtn" style="display:none">센서 사양</button>
+            <button class="modal-close-btn secondary" id="basicExpCodeInfoBtn" style="display:none">코드 설명</button>
+            <button class="modal-close-btn secondary" id="basicExpNotesBtn" style="display:none">연결 유의사항</button>
+          </div>
 
           <div class="modal-example">
             <div class="modal-label">코드 미리보기</div>
@@ -188,7 +234,94 @@ Serial.println();</pre>
             <a id="basicExpDownloadBtn" class="modal-close-btn" download>코드 다운로드</a>
             <button id="basicExpCopyBtn" class="modal-close-btn secondary">코드 복사</button>
           </div>
-          <button class="modal-close-btn secondary" id="basicExpDetailBackBtn">목록으로</button>
+          <button class="modal-close-btn secondary" id="basicExpDetailBackBtn">센서 목록으로</button>
+        </div>
+      </div>
+
+      <div id="basicExpSpecModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>센서 사양</h3>
+          <div id="basicExpSpecModalContent"></div>
+          <button class="modal-close-btn secondary" id="basicExpSpecCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="basicExpCodeInfoModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>코드 설명</h3>
+          <div id="basicExpCodeInfoContent"></div>
+          <button class="modal-close-btn secondary" id="basicExpCodeInfoCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="basicExpNotesModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>연결 유의사항</h3>
+          <ul class="modal-notes" id="basicExpNotesModalList"></ul>
+          <button class="modal-close-btn secondary" id="basicExpNotesCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="graphSettingsModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>그래프 설정</h3>
+
+          <div class="modal-example">
+            <div class="modal-label">제목</div>
+            <input type="text" id="gsTitleInput" class="modal-input" placeholder="그래프 제목 넣기 (사용자 설정)"
+              oninput="setGraphTitle(gsCurrentGraphId, this.value)">
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">계열 (변인 · 색상) — 다른 그래프를 드래그해서 합치면 여기 계열이 늘어납니다</div>
+            <div id="gsSeriesList" class="gs-series-list"></div>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">X축 (최소 · 최대 · 단위)</div>
+            <div class="gs-axis-row">
+              <input type="number" class="modal-input" id="gsXMin" placeholder="최소" oninput="setAxisConfig(gsCurrentGraphId, 'xMin', this.value)">
+              <input type="number" class="modal-input" id="gsXMax" placeholder="최대" oninput="setAxisConfig(gsCurrentGraphId, 'xMax', this.value)">
+              <input type="text" class="modal-input" id="gsXUnit" placeholder="단위" oninput="setAxisConfig(gsCurrentGraphId, 'xUnit', this.value)">
+            </div>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">Y축 (최소 · 최대 · 단위)</div>
+            <div class="gs-axis-row">
+              <input type="number" class="modal-input" id="gsYMin" placeholder="최소" oninput="setAxisConfig(gsCurrentGraphId, 'yMin', this.value)">
+              <input type="number" class="modal-input" id="gsYMax" placeholder="최대" oninput="setAxisConfig(gsCurrentGraphId, 'yMax', this.value)">
+              <input type="text" class="modal-input" id="gsYUnit" placeholder="단위" oninput="setAxisConfig(gsCurrentGraphId, 'yUnit', this.value)">
+            </div>
+          </div>
+
+          <div class="modal-example">
+            <label class="modal-checkbox">
+              <input type="checkbox" id="gsTrendToggle" onchange="setTrendVisible(gsCurrentGraphId, this.checked)">
+              추세선(선형 회귀) 표시 — 기울기·R² 자동 계산
+            </label>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">내보내기</div>
+            <div class="modal-actions-row">
+              <button class="modal-close-btn secondary" onclick="downloadGraphImage(gsCurrentGraphId)">이미지 다운로드 (PNG)</button>
+              <button class="modal-close-btn secondary" onclick="downloadGraphData(gsCurrentGraphId)">데이터 다운로드 (CSV)</button>
+            </div>
+          </div>
+
+          <button class="modal-close-btn secondary" id="graphSettingsCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="graphMergeConfirmModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>그래프 합치기</h3>
+          <p id="mergeConfirmText"></p>
+          <div class="modal-actions-row">
+            <button class="modal-close-btn" id="mergeConfirmYesBtn">합치기</button>
+            <button class="modal-close-btn secondary" id="mergeConfirmNoBtn">취소</button>
+          </div>
         </div>
       </div>
 

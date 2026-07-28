@@ -1,21 +1,21 @@
 """
 Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리얼 + BLE 겸용)
 ==========================================================================
-세 가지 입력 방식을 동시에 지원합니다:
+세 가지 통신 방식을 동시에 지원합니다 (어떤 보드를 쓰든 무관, 방식만 맞으면 됨):
 
-  1) WiFi 보드 (ESP32 등) -> HTTP POST로 /data 에 JSON 전송
-  2) USB 시리얼 보드 (아두이노 우노 등) -> 케이블로 연결, JSON 한 줄씩 Serial.println
-  3) BLE 보드 (ESP32 네이티브 BLE, 또는 우노+HM-10 모듈) -> notify로 JSON 한 줄씩 방송
-     (firmware/esp32_ble_sketch, firmware/uno_hm10_sketch 참고)
+  1) WiFi 방식 -> HTTP POST로 /data 에 JSON 전송
+  2) USB 시리얼 방식 -> 케이블로 연결, JSON 한 줄씩 Serial.println
+  3) BLE 방식 -> notify로 JSON 한 줄씩 방송
+     (basic_experiments/esp32_ble, basic_experiments/uno_hm10_ble 참고)
 
 셋 다 결국 같은 파이프라인(handle_incoming)을 타기 때문에,
-보드를 섞어 써도(탱크1=ESP32 WiFi, 탱크2=우노+HM-10 BLE) 대시보드는 구분 없이 동작합니다.
+보드/통신 방식을 섞어 써도(탱크1=WiFi, 탱크2=BLE) 대시보드는 구분 없이 동작합니다.
 
 실행 방법:
   python server.py                     # 시리얼 자동 감지 시도
   python server.py --serial COM5       # 포트 직접 지정 (Windows 예시)
   python server.py --serial /dev/ttyUSB0
-  python server.py --no-serial         # 시리얼 아예 안 쓸 때 (ESP32만 사용)
+  python server.py --no-serial         # 시리얼 아예 안 쓸 때 (WiFi/BLE만 사용)
   python server.py --ble               # BLE 기기 이름으로 스캔해서 연결 (기본 이름: MiniEarth)
   python server.py --ble --ble-name MyBoard
   python server.py --ble --ble-address AA:BB:CC:DD:EE:FF   # 스캔 생략, 바로 연결
@@ -23,9 +23,9 @@ Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리�
 
 서버가 시작되면 기본적으로 브라우저가 자동으로 열립니다 (http://127.0.0.1:8000).
 
-같은 와이파이에 ESP32와 노트북이 있어야 하고,
-우노는 USB 케이블로 노트북에 물려 있어야 하며,
-BLE 보드는 노트북의 블루투스가 켜져 있어야 합니다 (별도 페어링 불필요, bleak가 직접 스캔/연결).
+WiFi 방식은 같은 와이파이에 보드와 노트북이 있어야 하고,
+USB 시리얼 방식은 케이블로 노트북에 물려 있어야 하며,
+BLE 방식은 노트북의 블루투스가 켜져 있어야 합니다 (별도 페어링 불필요, bleak가 직접 스캔/연결).
 """
 
 import argparse
@@ -106,7 +106,7 @@ async def handle_incoming(payload: dict, source: str):
         clients.remove(ws)
 
 
-# ── 1) WiFi 보드 경로: HTTP POST ─────────────────────────────
+# ── 1) WiFi 방식 경로: HTTP POST ─────────────────────────────
 @app.get("/")
 async def index():
     return FileResponse(RESOURCE_DIR / "index.html")
@@ -114,7 +114,7 @@ async def index():
 
 @app.post("/data")
 async def receive_data(request: Request):
-    """ESP32 등 WiFi 보드가 여기로 센서 JSON을 POST.
+    """WiFi로 통신하는 보드가 여기로 센서 JSON을 POST.
     예: {"tank1_co2": 812.3, "tank1_temp": 23.4}
     """
     payload = await request.json()
@@ -136,6 +136,33 @@ async def websocket_endpoint(websocket: WebSocket):
             clients.remove(websocket)
 
 
+# "기본 실험" 목록은 파일로 관리하지 않고 basic_experiments/ 폴더를 직접 스캔해서 만든다.
+# info.json이 있는 폴더만 자동으로 목록에 뜨므로, 새 실험을 추가하려면
+# basic_experiments/<새폴더>/{info.json, code.ino}만 넣으면 끝 (index.json 수정 불필요).
+# 아래 mount보다 먼저 등록해야 이 경로가 정적 파일 서빙에 가로채이지 않는다.
+@app.get("/basic_experiments/index.json")
+async def basic_experiments_index():
+    base = RESOURCE_DIR / "basic_experiments"
+    items = []
+    for entry in sorted(base.iterdir()):
+        if not entry.is_dir():
+            continue
+        info_path = entry / "info.json"
+        if not info_path.exists():
+            continue
+        try:
+            info = json.loads(info_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue  # info.json이 깨져 있으면 목록에서 조용히 제외
+        items.append({
+            "id": entry.name,
+            "title": info.get("title", entry.name),
+            "board": info.get("board", "기타"),
+            "sensors": info.get("sensors", []),
+        })
+    return items
+
+
 # style.css, js/*.js 등 정적 파일 서빙 (반드시 위의 라우트들 뒤에 등록해야
 # "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
 app.mount("/js", StaticFiles(directory=RESOURCE_DIR / "js"), name="js")
@@ -148,7 +175,7 @@ async def style_css():
     return FileResponse(RESOURCE_DIR / "style.css")
 
 
-# ── 2) 시리얼 보드 경로: USB (우노 등) ─────────────────────────
+# ── 2) USB 시리얼 방식 경로 ─────────────────────────
 def find_serial_port() -> Optional[str]:
     """연결된 시리얼 포트 중 그럴듯한 것을 자동으로 찾아본다."""
     import serial.tools.list_ports
@@ -196,8 +223,8 @@ def serial_reader_thread(port: str, baud: int):
             break
 
 
-# ── 3) BLE 보드 경로: ESP32 네이티브 BLE / 우노+HM-10 ─────────────
-# esp32_ble_sketch.ino와 uno_hm10_sketch.ino가 같은 UUID를 쓰기 때문에
+# ── 3) BLE 방식 경로 ─────────────────────────
+# basic_experiments/esp32_ble, basic_experiments/uno_hm10_ble가 같은 UUID를 쓰기 때문에
 # 보드 종류를 몰라도 이 코드 하나로 둘 다 처리됨.
 BLE_CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
 
@@ -279,14 +306,14 @@ if __name__ == "__main__":
     ip = get_local_ip()
     print("=" * 55)
     print(f"  브라우저 접속:        http://{ip}:8000")
-    print(f"  ESP32(WiFi) 전송 주소: http://{ip}:8000/data")
+    print(f"  WiFi 전송 주소:        http://{ip}:8000/data")
 
     if not args.no_serial:
         port = args.serial or find_serial_port()
         if port:
-            print(f"  우노(USB 시리얼) 포트: {port} @ {args.baud}bps")
+            print(f"  USB 시리얼 포트: {port} @ {args.baud}bps")
         else:
-            print("  우노(USB 시리얼): 연결된 포트를 찾지 못함 (연결 후 --serial 로 직접 지정 가능)")
+            print("  USB 시리얼: 연결된 포트를 찾지 못함 (연결 후 --serial 로 직접 지정 가능)")
     else:
         print("  시리얼 입력: 비활성화 (--no-serial)")
 

@@ -1,0 +1,43 @@
+{
+  "id": "uno_hc06_mhz19b",
+  "title": "우노 + HC-06 클래식 블루투스 - CO2(MH-Z19B)",
+  "board": "우노 R3 + HC-06 (클래식 블루투스)",
+  "connection": "클래식 블루투스(SPP, 페어링 후 가상 COM 포트로 --serial 지정)",
+  "sensors": ["MH-Z19B"],
+  "summary": "MH-Z19B CO2 센서를 HC-06 클래식 블루투스로 전송합니다. HC-06은 BLE가 아니라서 server.py의 --ble 옵션이 아니라, 윈도우에서 먼저 페어링한 뒤 생성되는 가상 COM 포트를 USB 시리얼처럼 --serial로 지정해서 받습니다.",
+  "notes": [
+    "윈도우 블루투스 설정에서 HC-06과 먼저 페어링 (기본 PIN 보통 1234 또는 0000)",
+    "페어링 후 장치 관리자 > 포트(COM & LPT)에서 생성된 COM 번호 확인",
+    "python server.py --serial COM포트번호 로 실행 (자동탐지가 블루투스 포트를 못 찾을 수 있어 직접 지정 권장)",
+    "HC-06 RX는 반드시 분압저항으로 5V→3.3V 낮춰서 연결하세요 (안 그러면 모듈 손상 가능)",
+    "보드레이트(9600bps)가 --baud 옵션과 반드시 일치해야 함"
+  ],
+  "codeInfo": {
+    "description": "MH-Z19B로 CO2를 읽어서 HC-06 클래식 블루투스로 전송합니다.",
+    "libraries": "없음 (SoftwareSerial만 사용, Arduino 기본 내장)",
+    "sendInterval": "2초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일",
+    "onFailure": "체크섬이 안 맞거나 응답이 없으면 그 회차는 전송을 건너뜁니다. 연속 3회 실패하면 SoftwareSerial을 자동으로 재시작합니다."
+  },
+  "pinmap": [
+    {
+      "device": "CO2 센서 MH-Z19B",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀10 (RX)", "device": "TX" },
+        { "board": "핀11 (TX)", "device": "RX" }
+      ]
+    },
+    {
+      "device": "HC-06 블루투스",
+      "pins": [
+        { "board": "5V 또는 3.3V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀2 (RX)", "device": "TX" },
+        { "board": "핀3 (TX, 분압저항 필수)", "device": "RX" }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
+}

@@ -1,0 +1,54 @@
+{
+  "id": "uno_mhz19b_ds18b20",
+  "title": "우노 USB - CO2(MH-Z19B) + 온도 2채널(DS18B20)",
+  "board": "우노 R3 (USB)",
+  "connection": "USB 시리얼",
+  "sensors": ["MH-Z19B", "DS18B20"],
+  "summary": "MH-Z19B로 CO2 농도를, DS18B20 2개로 서로 다른 두 지점의 온도를 동시에 측정해서 USB로 전송합니다. DS18B20은 데이터 핀 하나에 여러 개를 병렬로 연결할 수 있는 원와이어(One-Wire) 방식입니다.",
+  "notes": [
+    "보드레이트(9600bps)가 server.py의 --baud 옵션과 반드시 일치해야 함",
+    "코드 업로드 중에는 Arduino IDE 시리얼 모니터를 꺼둘 것 (포트 충돌 방지)",
+    "temp1/temp2는 DS18B20이 인식된 순서대로 배정됩니다 - 어느 센서가 temp1/temp2인지 구분하려면 배선 시 표시해두는 걸 추천합니다",
+    "DS18B20은 병렬 연결 시 데이터 핀에 4.7kΩ 풀업 저항이 반드시 필요합니다 (안 그러면 값이 안 읽힘)"
+  ],
+  "codeInfo": {
+    "description": "MH-Z19B로 CO2를, DS18B20 2개로 서로 다른 두 지점의 온도를 함께 읽어서 JSON으로 전송합니다.",
+    "libraries": "OneWire, DallasTemperature (Arduino IDE 라이브러리 매니저에서 설치)",
+    "sendInterval": "30초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일",
+    "onFailure": "CO2 체크섬 실패 시 co2 키만 빼고 온도는 그대로 전송합니다(부분 실패 허용). DS18B20 연결이 끊기면 해당 temp 값이 DEVICE_DISCONNECTED_C로 감지되어 그 키도 빠집니다."
+  },
+  "specs": [
+    {
+      "device": "온도 센서 DS18B20",
+      "items": [
+        { "label": "크기", "value": "4 × 20 × 4mm" },
+        { "label": "용도", "value": "주변의 온도 측정에 사용" },
+        { "label": "입력 전압", "value": "2.7V ~ 5.5V" },
+        { "label": "제어 측정 범위", "value": "-40°C ~ 125°C" },
+        { "label": "핀 구성", "value": "3핀 (VCC/GND/SIG)" },
+        { "label": "특징", "value": "온도가 1도 변할 때 출력 전압이 10mV 변화하며 영하의 온도를 측정할 수 있도록 500mV가 섭씨 0도에 해당하도록 제작됨" }
+      ]
+    }
+  ],
+  "pinmap": [
+    {
+      "device": "CO2 센서 MH-Z19B",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀6 (RX)", "device": "TX" },
+        { "board": "핀7 (TX)", "device": "RX" }
+      ]
+    },
+    {
+      "device": "온도 센서 DS18B20 (2개, 병렬)",
+      "pins": [
+        { "board": "5V", "device": "VCC" },
+        { "board": "GND", "device": "GND" },
+        { "board": "핀2 (+4.7kΩ 풀업 저항)", "device": "DATA" }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
+}

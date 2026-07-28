@@ -1,16 +1,21 @@
 {
   "id": "uno_hm10_ble",
   "title": "우노 + HM-10 BLE 연결 실험",
-  "board": "아두이노 우노 R3 + HM-10 모듈",
+  "board": "우노 R3 + HM-10 (BLE)",
   "connection": "BLE (HM-10 경유)",
+  "sensors": [],
   "summary": "USB 케이블 없이 무선으로 연결하고 싶을 때, HM-10 블루투스 모듈을 우노에 붙여서 사용합니다. 배선 시 전압(HM-10 RX 핀)에 주의가 필요합니다.",
-  "sensors": ["온도(예시, 아날로그)", "CO2(예시, 아날로그)", "메탄(예시, 아날로그)"],
   "notes": [
-    "Arduino IDE 라이브러리 매니저에서 ArduinoJson 설치 필요",
     "HM-10 TX → 우노 핀 2, HM-10 RX ← 우노 핀 3 (분압저항 필수, 5V→3.3V)",
     "노트북에서 python server.py --ble 로 실행해야 연결됨",
     "esp32_ble 실험과 같은 UUID(0xFFE0/0xFFE1)를 사용"
   ],
-  "code_file": "code.ino",
-  "circuit_file": "circuit.png"
+  "codeInfo": {
+    "description": "센서가 아직 정해지지 않은 상태의 예시 코드입니다. readSensors() 함수 안의 더미 값을 실제 센서 코드로 교체해서 사용하세요.",
+    "libraries": "ArduinoJson (Arduino IDE 라이브러리 매니저에서 설치)",
+    "sendInterval": "2초 (SEND_INTERVAL_MS)",
+    "measureInterval": "출력 간격과 동일",
+    "onFailure": "HM-10이 연결 여부와 무관하게 그대로 전송합니다 (BLE로 연결 안 돼있으면 그냥 유실되고, 별도 재시도 로직은 없음)."
+  },
+  "code_file": "code.ino"
 }
