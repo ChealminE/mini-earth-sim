@@ -331,22 +331,31 @@ function bindInput(P, canvas) {
     P.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, P.pitch - dy * LOOK));
   }
 
-  // (1) 드래그로 시점 조작 - 요청받은 기본 조작
-  let dragging = false, px = 0, py = 0;
-  canvas.addEventListener('pointerdown', e => {
-    if (document.pointerLockElement === canvas) return;
-    dragging = true; px = e.clientX; py = e.clientY;
-    canvas.setPointerCapture(e.pointerId);
-  });
-  window.addEventListener('pointerup', () => { dragging = false; });
-  window.addEventListener('pointermove', e => {
-    if (document.pointerLockElement === canvas) {
-      look(e.movementX, e.movementY);           // (2) 포인터락: 드래그 없이 마우스만 움직여도 회전
-    } else if (dragging) {
-      look(e.clientX - px, e.clientY - py);
-      px = e.clientX; py = e.clientY;
+  // 마인크래프트식 조작: 전체화면 + 포인터락. 마우스 커서가 화면에 갇혀서
+  // 버튼을 누르지 않아도 마우스를 움직이는 것만으로 시점이 돈다(드래그 방식 폐지).
+  const overlay = document.getElementById('startOverlay');
+  function enterGame() {
+    const root = document.documentElement;
+    if (!document.fullscreenElement && root.requestFullscreen) {
+      // 실패해도(권한/브라우저 정책) 포인터락만으로 플레이는 가능해야 하므로 무시하고 진행
+      root.requestFullscreen().catch(() => {});
     }
+    if (canvas.requestPointerLock) canvas.requestPointerLock();
+  }
+  P.enterGame = enterGame;
+  overlay.addEventListener('click', enterGame);
+  canvas.addEventListener('click', () => {
+    if (document.pointerLockElement !== canvas) enterGame();
   });
-  // 더블클릭하면 마우스를 화면에 가둬서 진짜 게임처럼 조작 (ESC로 해제)
-  canvas.addEventListener('dblclick', () => canvas.requestPointerLock());
+
+  window.addEventListener('pointermove', e => {
+    if (document.pointerLockElement === canvas) look(e.movementX, e.movementY);
+  });
+
+  // 포인터락이 풀리면(ESC) 다시 안내 오버레이를 띄우고 입력을 비운다
+  document.addEventListener('pointerlockchange', () => {
+    const locked = document.pointerLockElement === canvas;
+    overlay.classList.toggle('hidden', locked);
+    if (!locked) P.keys = Object.create(null);
+  });
 }

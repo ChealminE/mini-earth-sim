@@ -2,8 +2,27 @@ html, body {
   margin: 0; height: 100%; overflow: hidden;
   font-family: system-ui, -apple-system, sans-serif; background: #0d1014;
 }
-canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
-canvas#gl:active { cursor: grabbing; }
+canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+
+/* 포인터락이 풀려 있을 때만 보이는 시작 안내 */
+#startOverlay {
+  position: fixed; inset: 0; z-index: 50; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 12, 18, 0.55); backdrop-filter: blur(2px);
+}
+#startOverlay.hidden { display: none; }
+.start-box {
+  text-align: center; color: #eef3f8;
+  background: rgba(16,21,28,0.86); border: 1px solid #333c48;
+  padding: 28px 40px; border-radius: 14px;
+}
+.start-box h2 { margin: 0 0 12px; font-size: 19px; font-weight: 600; }
+.start-box p { margin: 0 0 6px; font-size: 13px; color: #b8c3cf; }
+.start-box p.sub { color: #8c96a2; font-size: 12px; }
+.start-btn {
+  margin-top: 16px; display: inline-block; padding: 10px 26px; border-radius: 8px;
+  background: #5DCAA5; color: #10231c; font-weight: 700; font-size: 14px;
+}
 
 /* 수중 틴트 - 화면 전체를 덮되 마우스 이벤트는 통과시킴 */
 #waterOverlay {

@@ -37,6 +37,7 @@ brightness.addEventListener('input', () => {
 // ── CO2 슬라이더: 걸어다니면서 하늘이 흐려지는 걸 실시간으로 보게 하는 게 목적 ──
 const co2Slider = document.getElementById('co2Slider');
 const co2Out = document.getElementById('co2Out');
+const hudCars = document.getElementById('hudCars');
 co2Slider.addEventListener('input', () => {
   co2Out.textContent = co2Slider.value;
   applyWorldCO2(Number(co2Slider.value));
@@ -51,6 +52,7 @@ let hudTimer = 0;
 
 // ── 프레임 루프 ─────────────────────────────────────────────────────────────
 let t = 0, last = performance.now();
+const _wn = [0, 0, 0];   // 파도 법선 임시 버퍼 (프레임마다 새로 할당하지 않으려고 밖에 둠)
 function animate() {
   requestAnimationFrame(animate);
   const now = performance.now();
@@ -61,23 +63,36 @@ function animate() {
   FPPlayer.update(dt, t);
   updateSunShadow(FPPlayer.pos.x, FPPlayer.pos.z);
 
-  // 수면 파도 (원본과 동일한 수식 - 1인칭에선 눈앞에서 출렁이는 게 보임)
-  const intensity = Math.min(1, Math.max(0, (FPWorld.co2 - 280) / 320));
+  // 수면 파도: 잔물결까지 형상으로 만들고 매 프레임 법선을 다시 계산해야
+  // 환경맵 반사가 물결 기울기를 따라 잘게 반짝인다 (반사가 보이는 핵심)
+  const intensity = FPWorld.co2k;
   const halfD = FPWorld.waveD / 2;
   const pa = FPWorld.wavePosAttr, base = FPWorld.waveBase;
-  for (let i = 0; i < pa.count; i++) {
-    pa.setZ(i, FPWorld.waveHeightAt(base[i * 3], base[i * 3 + 1], t, intensity, halfD));
+  const na = FPWorld.waveGeo.attributes.normal;
+  // setZ()/setXYZ()는 정점 7천 개 × 매 프레임이면 호출 오버헤드만으로도 무시 못 할 비용이라
+  // 타입드 배열에 직접 쓴다 (needsUpdate만 세워주면 결과는 동일)
+  const parr = pa.array, narr = na.array;
+  for (let i = 0, p = 0; i < pa.count; i++, p += 3) {
+    const lx = base[p], ly = base[p + 1];
+    parr[p + 2] = FPWorld.waveHeightAt(lx, ly, t, intensity, halfD);
+    FPWorld.waveNormalAt(lx, ly, t, intensity, _wn);
+    narr[p] = _wn[0]; narr[p + 1] = _wn[1]; narr[p + 2] = _wn[2];
   }
   pa.needsUpdate = true;
-  FPWorld.waveGeo.computeVertexNormals();
-  FPWorld.waterNormal.offset.x = (t * 0.012) % 1;
-  FPWorld.waterNormal.offset.y = (t * 0.007) % 1;
+  na.needsUpdate = true;
+  // 미세 법선맵을 서로 다른 속도로 흘려서 정지된 무늬처럼 보이지 않게
+  FPWorld.waterNormal.offset.x = (t * 0.02) % 1;
+  FPWorld.waterNormal.offset.y = (t * 0.013) % 1;
 
-  // 공장 연기
+  updateClouds(dt);
+  updateAnimals(dt, t);
+  updateExhaust(dt);
+
+  // 공장 연기 (양·속도는 CO2에 따라 applyWorldCO2가 정한 rate를 따름)
   const sm = FPWorld.smoke;
   const sp = sm.geo.attributes.position;
   for (let i = 0; i < sm.count; i++) {
-    sm.life[i] += dt * (0.12 + (i % 7) * 0.012);
+    sm.life[i] += dt * (sm.rate + (i % 7) * 0.012);
     if (sm.life[i] > 1) sm.life[i] = 0;
     const life = sm.life[i];
     sp.setXYZ(i,
@@ -106,6 +121,8 @@ function animate() {
     else if (FPPlayer.crouching) mode.push('앉기');
     else if (FPPlayer.sprinting) mode.push('달리기');
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
+    const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
+    hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
   }
 
   renderer.render(FPWorld.scene, camera);

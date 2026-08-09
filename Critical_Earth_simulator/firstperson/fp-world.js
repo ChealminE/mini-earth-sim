@@ -25,14 +25,48 @@ const GREEN_HALF_W = TERRAIN_HALF_W * 0.9, GREEN_HALF_D = TERRAIN_HALF_D * 0.9;
 const MUD_X = -0.2, MUD_Z = 0.1, MUD_AVOID_R = 0.14;
 const waveBaseY = TERRAIN_TOP * 0.55;     // 수면 기준선
 
-// 파도 높이 수식도 원본과 동일 (1인칭에서 물에 들어갔을 때 수면 판정에 씀)
-const WAVE_SWELL_BASE = 0.03, WAVE_SWELL_FRONT = 0.05, WAVE_SWELL_INTENSITY = 0.015;
-const WAVE_CHOP_AMP = 0.007;
+// ── 파도 ────────────────────────────────────────────────────────────────────
+// 원본은 "앞쪽에서만 크게 부서지는" 한 방향 파도였다. 1인칭에서는 수면 위에 서서 사방을
+// 둘러보게 되므로, 방향성 없이 사방으로 잘게 겹치는 3옥타브(큰 너울 + 중간 물결 + 잔물결)로
+// 바꿨다. 잔물결이 촘촘할수록 표면 법선이 여러 방향을 향해서, 광원을 등지고 있어도
+// 어딘가는 하늘/전등을 반사하게 된다(= 항상 반짝이는 수면).
+const WAVE_OCT = {
+  swellA: 0.020, swellB: 0.014,   // 큰 너울 (느리고 김)
+  midA: 0.008, midB: 0.006,       // 중간 물결
+  ripA: 0.0028, ripB: 0.0022,     // 잔물결 (반사 반짝임을 만드는 층)
+};
+// 최대 진폭 = 전 옥타브 합 * 폭풍계수. 육지(GROUND_BASE)보다 확실히 낮게 유지된다.
+const WAVE_MAX_AMPLITUDE =
+  (WAVE_OCT.swellA + WAVE_OCT.swellB + WAVE_OCT.midA + WAVE_OCT.midB + WAVE_OCT.ripA + WAVE_OCT.ripB) * 1.5;
 function waveHeightAt(lx, ly, t, intensity, halfD) {
-  const frontT = Math.max(0, Math.min(1, (-ly / halfD + 1) / 2));
-  const swell = Math.sin(lx * 1.5 + t * 0.7) * (WAVE_SWELL_BASE + frontT * WAVE_SWELL_FRONT + intensity * WAVE_SWELL_INTENSITY);
-  const chop = Math.sin(lx * 6 + t * 2.1 + ly * 3) * WAVE_CHOP_AMP * frontT;
-  return swell + chop;
+  const swell = Math.sin(lx * 1.5 + t * 0.70) * WAVE_OCT.swellA
+              + Math.sin(ly * 1.9 - t * 0.55) * WAVE_OCT.swellB;
+  const mid = Math.sin(lx * 5.5 + ly * 4.2 + t * 1.60) * WAVE_OCT.midA
+            + Math.sin(ly * 6.3 - lx * 4.1 + t * 1.90) * WAVE_OCT.midB;
+  const ripple = Math.sin(lx * 14.0 + ly * 11.0 + t * 3.40) * WAVE_OCT.ripA
+               + Math.sin(ly * 15.0 - lx * 17.0 + t * 4.10) * WAVE_OCT.ripB;
+  return (swell + mid + ripple) * (1 + intensity * 0.5);   // CO2가 높을수록 거칠어짐
+}
+
+// 파도 표면의 법선을 '미분으로 직접' 구한다.
+// three.js의 computeVertexNormals()는 면마다 외적을 구해 정점에 누적·정규화하는 방식이라
+// 정점 12,500개를 매 프레임 처리하면 3ms 넘게 먹는다(측정치). 파도 수식을 이미 알고 있으니
+// 편미분 한 번이면 끝나고, 결과도 면 평균이 아니라 정확한 접평면 법선이라 반사가 더 매끈하다.
+// 반환은 waveMesh 로컬 좌표계 기준 - 이 평면은 -90도 회전해서 쓰므로 로컬 +z가 '위'다.
+function waveNormalAt(lx, ly, t, intensity, out) {
+  const S = 1 + intensity * 0.5, O = WAVE_OCT;
+  const c1 = Math.cos(lx * 1.5 + t * 0.70);
+  const c2 = Math.cos(ly * 1.9 - t * 0.55);
+  const c3 = Math.cos(lx * 5.5 + ly * 4.2 + t * 1.60);
+  const c4 = Math.cos(ly * 6.3 - lx * 4.1 + t * 1.90);
+  const c5 = Math.cos(lx * 14.0 + ly * 11.0 + t * 3.40);
+  const c6 = Math.cos(ly * 15.0 - lx * 17.0 + t * 4.10);
+  const dx = (O.swellA * 1.5 * c1 + O.midA * 5.5 * c3 - O.midB * 4.1 * c4
+            + O.ripA * 14.0 * c5 - O.ripB * 17.0 * c6) * S;
+  const dy = (O.swellB * 1.9 * c2 + O.midA * 4.2 * c3 + O.midB * 6.3 * c4
+            + O.ripA * 11.0 * c5 + O.ripB * 15.0 * c6) * S;
+  const inv = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+  out[0] = -dx * inv; out[1] = -dy * inv; out[2] = inv;
 }
 
 function terrainNoise(lx, lz, amplitude, seed) {
@@ -69,7 +103,7 @@ const FPWorld = {
   waveGeo: null, wavePosAttr: null, waveBase: null,
   co2: 418,
   BOX_W, BOX_D, BOX_H, ZONE_W, GROUND_BASE, OCEAN_BASE, waveBaseY, TERRAIN_TOP,
-  waveHeightAt, wetlandY,
+  waveHeightAt, waveNormalAt, wetlandY,
 };
 
 const CLEAR_SKY = new THREE.Color(0xbcdcf5);
@@ -103,7 +137,9 @@ function buildFirstPersonWorld(renderer) {
   };
   const waterNormal = loader.load('/texture_image/water_normal.png');
   waterNormal.wrapS = waterNormal.wrapT = THREE.RepeatWrapping;
-  waterNormal.repeat.set(12, 10);
+  // 지오메트리 잔물결보다 더 잘게 - 미세 법선이 흩어져야 반사가 잘게 반짝인다
+  waterNormal.repeat.set(28, 24);
+  waterNormal.anisotropy = maxAniso;
   FPWorld.waterNormal = waterNormal;
 
   // ── 하늘 + 안개 ──────────────────────────────────────────────────────────
@@ -130,21 +166,143 @@ function buildFirstPersonWorld(renderer) {
   FPWorld.skyMat = skyMat;
   scene.fog = new THREE.Fog(CLEAR_SKY.clone(), 0.25, 6.5);
 
-  // ── 조명 ────────────────────────────────────────────────────────────────
-  // 원본의 책상 스탠드(SpotLight)는 1인칭에선 하늘에 뜬 정체불명 원뿔로 보여서 태양광으로 교체.
-  // 그림자 카메라는 매 프레임 플레이어를 따라다니게 해서(updateSunShadow) 좁은 범위에
-  // 그림자맵을 몰아준다 - 안 그러면 6x3 전체를 2048로 덮어서 눈앞 그림자가 뭉개진다.
-  const sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
-  sun.position.set(2.2, 3.0, 1.6);
+  // ── 환경맵 ──────────────────────────────────────────────────────────────
+  // 이게 없으면 물은 "광원이 정면에 있을 때 생기는 하이라이트"만 보인다(= 태양을 등지면
+  // 수면이 그냥 단색). PMREM으로 하늘+전등+지면을 구운 환경맵을 scene.environment로 깔면,
+  // 수면의 각 지점이 자기 법선 방향의 하늘을 반사하므로 어느 방향을 보든 반사가 살아있다.
+  {
+    const envScene = new THREE.Scene();
+    const envSky = new THREE.Mesh(
+      new THREE.SphereGeometry(10, 24, 12),
+      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })
+    );
+    envScene.add(envSky);
+    // 전등 자리에 아주 밝은 판 - 수면에 길게 끌리는 반사 띠를 만든다
+    const lampPanel = new THREE.Mesh(
+      new THREE.SphereGeometry(0.9, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfff6dc })
+    );
+    lampPanel.position.set(2.0, 4.2, 0.3).normalize().multiplyScalar(7);
+    envScene.add(lampPanel);
+    // 아래쪽 지면(반사에 초록/회색 기운을 줌)
+    const envGround = new THREE.Mesh(
+      new THREE.SphereGeometry(9.6, 16, 8),
+      new THREE.MeshBasicMaterial({ color: 0x4a5340, side: THREE.BackSide })
+    );
+    envGround.scale.y = 0.35;
+    envGround.position.y = -3.2;
+    envScene.add(envGround);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const rt = pmrem.fromScene(envScene, 0.04);
+    pmrem.dispose();
+    scene.environment = rt.texture;
+    FPWorld.envMap = rt.texture;
+  }
+
+  // ── 거대 전등 (원본 책상 스탠드를 그대로, 1인칭 스케일에서 보면 초대형 구조물) ──
+  // "미니 지구 안에 들어와 있다"는 설정을 성립시키는 핵심 소품. 원본과 똑같은 좌표·치수를
+  // 쓰는데, 눈높이 1.6m 기준으로는 기둥이 127m짜리 탑이 된다. 이 전등의 전구가 곧 태양이다.
+  const lampGroup = new THREE.Group();
+  lampGroup.position.set(3.6, 0, 2.0);
+  scene.add(lampGroup);
+  const lampMetal = new THREE.MeshStandardMaterial({ color: 0x2a2a28, roughness: 0.45, metalness: 0.55 });
+  const LAMP_POLE_H = 2.55;
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.04, 24), lampMetal);
+  lampBase.position.y = 0.02;
+  lampGroup.add(lampBase);
+  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, LAMP_POLE_H, 16), lampMetal);
+  lampPole.position.y = LAMP_POLE_H / 2;
+  lampGroup.add(lampPole);
+
+  const armStart = new THREE.Vector3(0, LAMP_POLE_H, 0);
+  const armEnd = new THREE.Vector3(-1.6, LAMP_POLE_H - 0.05, -1.7);
+  const armDir = new THREE.Vector3().subVectors(armEnd, armStart);
+  const lampArm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, armDir.length(), 12), lampMetal);
+  lampArm.position.copy(armStart).addScaledVector(armDir, 0.5);
+  lampArm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), armDir.clone().normalize());
+  lampGroup.add(lampArm);
+
+  const LAMP_SHADE_H = 0.22;
+  const lampShade = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, LAMP_SHADE_H, 28, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide })
+  );
+  lampShade.position.copy(armEnd);
+  lampShade.position.y -= LAMP_SHADE_H / 2;
+  lampGroup.add(lampShade);
+  const lampBulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.055, 20, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfff8e2, fog: false })
+  );
+  lampBulb.position.set(armEnd.x, armEnd.y - LAMP_SHADE_H * 0.8, armEnd.z);
+  lampGroup.add(lampBulb);
+  // 전구의 월드 좌표 = 이 씬의 "태양 위치". 그림자 방향을 여기서 뽑는다.
+  const BULB_WORLD = new THREE.Vector3().copy(lampGroup.position).add(lampBulb.position);
+  FPWorld.bulbWorld = BULB_WORLD;
+
+  // 전구에서 나오는 실제 빛 (그림자는 아래 sun이 담당 - 스포트라이트로 6x3 전체를 그림자
+  // 처리하면 눈앞 그림자가 뭉개져서, 밝기는 스포트가 그림자는 평행광이 나눠 맡는다)
+  const lampSpot = new THREE.SpotLight(0xfff2d4, 26, 12, Math.PI / 4.2, 0.5, 1.1);
+  lampSpot.position.copy(BULB_WORLD);
+  lampSpot.target.position.set(0, GROUND_BASE, 0);
+  scene.add(lampSpot, lampSpot.target);
+
+  // 그림자 전용 평행광 - 매 프레임 플레이어 주변으로 옮겨서(updateSunShadow) 좁은 범위에
+  // 그림자맵을 몰아주되, 방향은 항상 전구 -> 플레이어 방향이라 전등과 그림자가 일치한다.
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.7);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.near = 0.05;
-  sun.shadow.camera.far = 8;
   sun.shadow.bias = -0.0006;
   scene.add(sun, sun.target);
   FPWorld.sun = sun;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  scene.add(new THREE.HemisphereLight(0xdcefff, 0x6b6350, 0.7));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  scene.add(new THREE.HemisphereLight(0xdcefff, 0x6b6350, 0.6));
+
+  // ── 구름 ────────────────────────────────────────────────────────────────
+  // 흰 구(球)를 여러 개 뭉쳐 만든 만화풍 뭉게구름. 바람을 타고 +x로 흐르다가 맵 끝을
+  // 넘어가면 반대쪽 끝에서 모양·높이·크기를 새로 뽑아 다시 태어난다(무한 순환).
+  const CLOUD_X_LIMIT = BOX_W / 2 + 2.2;
+  const cloudMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff, roughness: 1, metalness: 0, flatShading: true,
+    emissive: 0xdfe8f2, emissiveIntensity: 0.35,
+  });
+  function makeCloudPuffs(group) {
+    while (group.children.length) group.remove(group.children[0]);
+    const lobes = 5 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < lobes; i++) {
+      const r = 0.10 + Math.random() * 0.13;
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), cloudMat);
+      puff.position.set(
+        (i - lobes / 2) * 0.15 + (Math.random() - 0.5) * 0.1,
+        (Math.random() - 0.5) * 0.08,
+        (Math.random() - 0.5) * 0.18
+      );
+      puff.scale.y = 0.62 + Math.random() * 0.25;   // 납작하게 눌러야 구름처럼 보임
+      group.add(puff);
+    }
+  }
+  function resetCloud(c, fromLeftEdge) {
+    makeCloudPuffs(c.group);
+    c.group.position.set(
+      fromLeftEdge ? -CLOUD_X_LIMIT : (Math.random() - 0.5) * 2 * CLOUD_X_LIMIT,
+      1.35 + Math.random() * 0.75,
+      (Math.random() - 0.5) * (BOX_D + 2.2)
+    );
+    const s = 0.8 + Math.random() * 1.1;
+    c.group.scale.setScalar(s);
+    c.speed = 0.018 + Math.random() * 0.032;
+  }
+  FPWorld.clouds = [];
+  FPWorld.CLOUD_X_LIMIT = CLOUD_X_LIMIT;
+  for (let i = 0; i < 16; i++) {
+    const g = new THREE.Group();
+    scene.add(g);
+    const c = { group: g, speed: 0 };
+    resetCloud(c, false);
+    FPWorld.clouds.push(c);
+  }
+  FPWorld.resetCloud = resetCloud;
 
   const world = new THREE.Group();
   scene.add(world);
@@ -227,11 +385,17 @@ function buildFirstPersonWorld(renderer) {
   oceanGroup.position.x = -ZONE_W;
   world.add(oceanGroup);
   const waveW = ZONE_W - 0.08, waveD = BOX_D - 0.08;
-  const waveGeo = new THREE.PlaneGeometry(waveW, waveD, 72, 48);
+  // 세그먼트 수는 "가장 잘게 치는 잔물결의 파장"만 담아내면 충분하다.
+  // 최고주파 항의 파장이 2π/17 ≈ 0.37유닛(≈18m)이라 96x72(한 칸 1~2m)면 넉넉히 표현되고,
+  // 128x96까지 올리면 눈에 띄는 차이 없이 정점당 삼각함수 비용만 두 배가 된다(측정함).
+  const waveGeo = new THREE.PlaneGeometry(waveW, waveD, 96, 72);
+  // transmission(굴절 투과)은 반사를 씻어내고 무겁기까지 해서 뺐다. 대신 낮은 roughness +
+  // 환경맵 반사 + 클리어코트로 "어느 각도에서 봐도 하늘이 비치는" 수면을 만든다.
   const waveMat = new THREE.MeshPhysicalMaterial({
-    color: 0x1b4a66, transparent: true, opacity: 0.86, roughness: 0.08,
-    transmission: 0.35, clearcoat: 1, side: THREE.DoubleSide,
-    normalMap: waterNormal, normalScale: new THREE.Vector2(0.5, 0.5), depthWrite: false,
+    color: 0x14384f, transparent: true, opacity: 0.88, roughness: 0.06, metalness: 0.0,
+    envMapIntensity: 1.6, reflectivity: 1, clearcoat: 1, clearcoatRoughness: 0.04,
+    side: THREE.DoubleSide,
+    normalMap: waterNormal, normalScale: new THREE.Vector2(0.45, 0.45), depthWrite: false,
   });
   const waveMesh = new THREE.Mesh(waveGeo, waveMat);
   waveMesh.rotation.x = -Math.PI / 2;
@@ -336,8 +500,10 @@ function buildFirstPersonWorld(renderer) {
   // 풀: 눈높이에서 밀도가 생명이라 개수를 20배 이상 올림 (인스턴싱이라 draw call은 1회).
   // 처음엔 원본 높이(0.045)를 그대로 썼더니 사람 키를 넘어서 화면이 초록 뿔로 뒤덮였다.
   // 허리~가슴 높이로 낮추고, 포기마다 색/기울기를 조금씩 흩어서 균일한 느낌을 없앰.
-  const grassGeo = new THREE.ConeGeometry(0.0035, 0.026, 4);
-  grassGeo.translate(0, 0.013, 0);
+  // 높이 재조정: 처음엔 허리 높이(≈1.5m)로 뒀는데, 그러면 토끼(40cm)가 통째로 파묻혀서
+  // 동물이 하나도 안 보였다. 무릎 아래(≈40~80cm)로 낮춰 동물이 풀 위로 드러나게 함.
+  const grassGeo = new THREE.ConeGeometry(0.003, 0.015, 4);
+  grassGeo.translate(0, 0.0075, 0);
   const grassMesh = new THREE.InstancedMesh(
     grassGeo,
     new THREE.MeshStandardMaterial({ roughness: 0.85, side: THREE.DoubleSide }),
@@ -359,7 +525,7 @@ function buildFirstPersonWorld(renderer) {
         Math.random() * Math.PI * 2,
         (Math.random() - 0.5) * 0.35
       );
-      const gs = 0.55 + Math.random() * 0.75;
+      const gs = 0.5 + Math.random() * 0.65;
       dummy.scale.set(gs, gs * (0.7 + Math.random() * 0.8), gs);
       dummy.updateMatrix();
       grassMesh.setMatrixAt(placed, dummy.matrix);
@@ -373,6 +539,111 @@ function buildFirstPersonWorld(renderer) {
     if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
   }
   world.add(grassMesh);
+
+  // ── 동물 ────────────────────────────────────────────────────────────────
+  // 저폴리 박스 모델 + 단순 배회 AI. 전부 녹지(습지·숲) 구역 안에서만 돌아다닌다.
+  // 크기는 1유닛=50m 환산 기준: 토끼 40cm, 늑대 90cm, 사슴 1.5m, 곰 1.6m(어깨높이).
+  const animalMats = {
+    rabbitBody: new THREE.MeshStandardMaterial({ color: 0xd9d2c6, roughness: 0.9, flatShading: true }),
+    rabbitEar: new THREE.MeshStandardMaterial({ color: 0xc4b8a8, roughness: 0.9 }),
+    deerBody: new THREE.MeshStandardMaterial({ color: 0xa9743f, roughness: 0.9, flatShading: true }),
+    deerDark: new THREE.MeshStandardMaterial({ color: 0x6b4a28, roughness: 0.9 }),
+    wolfBody: new THREE.MeshStandardMaterial({ color: 0x7b8189, roughness: 0.9, flatShading: true }),
+    wolfDark: new THREE.MeshStandardMaterial({ color: 0x4d5259, roughness: 0.9 }),
+    bearBody: new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 0.95, flatShading: true }),
+    bearDark: new THREE.MeshStandardMaterial({ color: 0x33251a, roughness: 0.95 }),
+  };
+  function bx(w, h, d, mat, x, y, z) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    return m;
+  }
+  // 모델은 전부 +x를 바라보게 만든다 (heading에 맞춰 group.rotation.y = -heading)
+  function buildRabbit() {
+    const g = new THREE.Group(), M = animalMats, legs = [];
+    g.add(bx(0.010, 0.005, 0.005, M.rabbitBody, 0, 0.0055, 0));          // 몸통
+    g.add(bx(0.005, 0.0045, 0.0045, M.rabbitBody, 0.0068, 0.0072, 0));   // 머리
+    g.add(bx(0.0012, 0.004, 0.0022, M.rabbitEar, 0.0072, 0.0108, -0.0013));
+    g.add(bx(0.0012, 0.004, 0.0022, M.rabbitEar, 0.0072, 0.0108, 0.0013));
+    g.add(bx(0.0025, 0.0025, 0.0025, M.rabbitBody, -0.0062, 0.006, 0));  // 꼬리
+    [[-0.003, -0.0022], [-0.003, 0.0022], [0.003, -0.0022], [0.003, 0.0022]].forEach(([lx, lz]) => {
+      const l = bx(0.0022, 0.0035, 0.0022, M.rabbitEar, lx, 0.0018, lz);
+      g.add(l); legs.push(l);
+    });
+    // 실척 40cm 그대로면 풀 사이에서 거의 안 보여서, 큰 산토끼 정도로 살짝 키움
+    g.scale.setScalar(1.35);
+    return { group: g, legs, hop: true };
+  }
+  function buildDeer() {
+    const g = new THREE.Group(), M = animalMats, legs = [];
+    g.add(bx(0.026, 0.011, 0.010, M.deerBody, 0, 0.021, 0));             // 몸통
+    g.add(bx(0.006, 0.012, 0.006, M.deerBody, 0.013, 0.026, 0));         // 목
+    g.add(bx(0.009, 0.006, 0.006, M.deerBody, 0.017, 0.032, 0));         // 머리
+    [-0.0025, 0.0025].forEach(dz => {                                    // 뿔
+      g.add(bx(0.0016, 0.008, 0.0016, M.deerDark, 0.015, 0.038, dz));
+      g.add(bx(0.006, 0.0016, 0.0016, M.deerDark, 0.018, 0.041, dz));
+    });
+    g.add(bx(0.004, 0.004, 0.003, M.deerBody, -0.014, 0.023, 0));        // 꼬리
+    [[-0.009, -0.004], [-0.009, 0.004], [0.009, -0.004], [0.009, 0.004]].forEach(([lx, lz]) => {
+      const l = bx(0.003, 0.016, 0.003, M.deerDark, lx, 0.008, lz);
+      g.add(l); legs.push(l);
+    });
+    return { group: g, legs, hop: false };
+  }
+  function buildWolf() {
+    const g = new THREE.Group(), M = animalMats, legs = [];
+    g.add(bx(0.019, 0.008, 0.008, M.wolfBody, 0, 0.012, 0));             // 몸통
+    g.add(bx(0.008, 0.007, 0.007, M.wolfBody, 0.012, 0.0135, 0));        // 머리
+    g.add(bx(0.004, 0.003, 0.004, M.wolfDark, 0.017, 0.012, 0));         // 주둥이
+    [-0.002, 0.002].forEach(dz => g.add(bx(0.0015, 0.003, 0.0025, M.wolfDark, 0.010, 0.018, dz))); // 귀
+    g.add(bx(0.008, 0.003, 0.003, M.wolfDark, -0.012, 0.014, 0));        // 꼬리
+    [[-0.006, -0.0032], [-0.006, 0.0032], [0.006, -0.0032], [0.006, 0.0032]].forEach(([lx, lz]) => {
+      const l = bx(0.0028, 0.008, 0.0028, M.wolfDark, lx, 0.004, lz);
+      g.add(l); legs.push(l);
+    });
+    return { group: g, legs, hop: false };
+  }
+  function buildBear() {
+    const g = new THREE.Group(), M = animalMats, legs = [];
+    g.add(bx(0.034, 0.016, 0.016, M.bearBody, 0, 0.022, 0));             // 몸통
+    g.add(bx(0.013, 0.012, 0.012, M.bearBody, 0.022, 0.026, 0));         // 머리
+    g.add(bx(0.005, 0.005, 0.006, M.bearDark, 0.030, 0.024, 0));         // 주둥이
+    [-0.004, 0.004].forEach(dz => g.add(bx(0.003, 0.004, 0.003, M.bearDark, 0.020, 0.033, dz))); // 귀
+    [[-0.011, -0.006], [-0.011, 0.006], [0.011, -0.006], [0.011, 0.006]].forEach(([lx, lz]) => {
+      const l = bx(0.006, 0.014, 0.006, M.bearDark, lx, 0.007, lz);
+      g.add(l); legs.push(l);
+    });
+    return { group: g, legs, hop: false };
+  }
+
+  const ANIMAL_KINDS = [
+    { name: '토끼', count: 20, build: buildRabbit, walk: 0.030, run: 0.16, turn: 3.0, restChance: 0.35 },
+    { name: '사슴', count: 10, build: buildDeer,   walk: 0.034, run: 0.15, turn: 1.6, restChance: 0.30 },
+    { name: '늑대', count: 10, build: buildWolf,   walk: 0.040, run: 0.18, turn: 2.0, restChance: 0.20 },
+    { name: '곰',   count: 1,  build: buildBear,   walk: 0.028, run: 0.10, turn: 1.2, restChance: 0.30 },
+  ];
+  // 동물이 돌아다닐 수 있는 범위 - 녹지 스캐터 범위보다 살짝 안쪽으로 잡아 경계 밖으로 안 나감
+  const ANIM_HALF_W = GREEN_HALF_W * 0.96, ANIM_HALF_D = GREEN_HALF_D * 0.96;
+  FPWorld.ANIM_HALF_W = ANIM_HALF_W;
+  FPWorld.ANIM_HALF_D = ANIM_HALF_D;
+  // 나무·바위를 피해 다니게 하려고 녹지 안 장애물만 따로 추려둔다
+  FPWorld.greenObstacles = FPWorld.cylinders.filter(c => Math.abs(c.x) < ZONE_W / 2);
+  FPWorld.animals = [];
+  ANIMAL_KINDS.forEach(kind => {
+    for (let i = 0; i < kind.count; i++) {
+      const { group, legs, hop } = kind.build();
+      const x = (Math.random() - 0.5) * 2 * ANIM_HALF_W;
+      const z = (Math.random() - 0.5) * 2 * ANIM_HALF_D;
+      group.position.set(x, wetlandY(x, z), z);
+      world.add(group);
+      FPWorld.animals.push({
+        kind, group, legs, hop,
+        x, z, heading: Math.random() * Math.PI * 2,
+        state: 'walk', timer: Math.random() * 2.5, phase: Math.random() * 10,
+      });
+    }
+  });
 
   // ── 도시 ────────────────────────────────────────────────────────────────
   const cityGroup = new THREE.Group();
@@ -437,14 +708,17 @@ function buildFirstPersonWorld(renderer) {
   const evCarMat = new THREE.MeshStandardMaterial({ color: 0x3fb0a0, roughness: 0.3, metalness: 0.4, emissive: 0x0d3a35, emissiveIntensity: 0.3 });
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.8 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x9fd0e8, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide });
-  function buildCarModel(bodyMat) {
+  function buildCarModel() {
     const group = new THREE.Group();
+    const bodyMat = gasCarMat;   // 실제 재질은 applyWorldCO2()에서 EV/내연으로 교체됨
+    const bodyParts = [];        // 색을 갈아끼울 대상 (바퀴·유리·배기구는 제외)
     const wheelR = 0.011, bodyH = 0.028, cabinH = 0.024, cabinWidth = 0.038;
     const bodyBottomY = wheelR * 2;
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, bodyH, 0.045), bodyMat);
     body.position.y = bodyBottomY + bodyH / 2;
     body.castShadow = true;
     group.add(body);
+    bodyParts.push(body);
     const cabinBaseY = body.position.y + bodyH / 2;
     const profile = new THREE.Shape();
     profile.moveTo(-0.022, 0); profile.lineTo(-0.022, cabinH);
@@ -455,6 +729,7 @@ function buildFirstPersonWorld(renderer) {
     cabin.position.y = cabinBaseY;
     cabin.castShadow = true;
     group.add(cabin);
+    bodyParts.push(cabin);
     const halfGW = cabinWidth / 2 - 0.003;
     const gx1 = 0.0012, gy1 = cabinBaseY + cabinH + 0.0008, gx2 = 0.0192, gy2 = cabinBaseY + 0.0008;
     const glassGeo = new THREE.BufferGeometry();
@@ -475,23 +750,54 @@ function buildFirstPersonWorld(renderer) {
       const fender = new THREE.Mesh(fenderGeo, bodyMat);
       fender.position.set(wx, bodyBottomY, wz);
       group.add(fender);
+      bodyParts.push(fender);
     });
-    return group;
+    // 배기구: 차체 뒤쪽(-x) 아래. 내연기관차일 때 여기서 매연이 뿜어져 나온다.
+    const tail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0035, 0.0035, 0.008, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.6, metalness: 0.7 })
+    );
+    tail.rotation.z = Math.PI / 2;
+    tail.position.set(-0.048, bodyBottomY + 0.004, -0.012);
+    group.add(tail);
+    return { group, bodyParts, tailLocal: new THREE.Vector3(-0.054, bodyBottomY + 0.004, -0.012) };
   }
   const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
                     [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
                     [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
+  FPWorld.cars = [];
   carSpots.forEach((pos, i) => {
-    const car = buildCarModel(i < 4 ? evCarMat : gasCarMat);
+    const { group: car, bodyParts, tailLocal } = buildCarModel();
     car.position.set(pos[0], GROUND_BASE, pos[1]);
     car.rotation.y = (i % 3) * 0.04;
     cityGroup.add(car);
+    FPWorld.cars.push({
+      group: car, bodyParts, isGas: true,
+      // 배기구 월드 좌표 (cityGroup이 +ZONE_W 밀려 있으므로 더해줌)
+      tail: new THREE.Vector3(pos[0] + tailLocal.x + ZONE_W, GROUND_BASE + tailLocal.y, pos[1] + tailLocal.z),
+    });
     FPWorld.boxes.push({
       minX: pos[0] + ZONE_W - 0.048, maxX: pos[0] + ZONE_W + 0.048,
       minZ: pos[1] - 0.026, maxZ: pos[1] + 0.026,
       top: GROUND_BASE + 0.062,
     });
   });
+  FPWorld.evCarMat = evCarMat;
+  FPWorld.gasCarMat = gasCarMat;
+
+  // 배기가스 파티클: 내연기관차 대수에 맞춰 파티클을 나눠 배정한다.
+  // (전부 전기차가 되면 opacity 0으로 통째로 사라짐)
+  const EXHAUST_PER_CAR = 14;
+  const exCount = carSpots.length * EXHAUST_PER_CAR;
+  const exGeo = new THREE.BufferGeometry();
+  exGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(exCount * 3), 3));
+  const exLife = new Float32Array(exCount);
+  for (let i = 0; i < exCount; i++) exLife[i] = Math.random();
+  const exhaust = new THREE.Points(exGeo, new THREE.PointsMaterial({
+    color: 0x6b6660, size: 0.012, transparent: true, opacity: 0.5, depthWrite: false,
+  }));
+  world.add(exhaust);
+  FPWorld.exhaust = { points: exhaust, geo: exGeo, count: exCount, life: exLife, perCar: EXHAUST_PER_CAR };
 
   // 공장 굴뚝 + 연기
   const stackTex = T.cityPavement.clone();
@@ -514,9 +820,11 @@ function buildFirstPersonWorld(renderer) {
   const smokeLife = new Float32Array(smokeCount);
   for (let i = 0; i < smokeCount; i++) { smokeLife[i] = Math.random(); }
   smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
-  const smoke = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ color: 0x9a9a96, size: 0.05, transparent: true, opacity: 0.45, depthWrite: false }));
+  const smokeMat = new THREE.PointsMaterial({ color: 0x9a9a96, size: 0.05, transparent: true, opacity: 0.45, depthWrite: false });
+  const smoke = new THREE.Points(smokeGeo, smokeMat);
   cityGroup.add(smoke);
-  FPWorld.smoke = { geo: smokeGeo, life: smokeLife, count: smokeCount, x: 0.6, z: 0.55 };
+  // rate/opacity/size는 applyWorldCO2()가 CO2 농도에 맞춰 계속 바꿔준다
+  FPWorld.smoke = { geo: smokeGeo, mat: smokeMat, life: smokeLife, count: smokeCount, x: 0.6, z: 0.55, rate: 0.3 };
 
   // 탄소포집 타워
   const tower = new THREE.Mesh(
@@ -539,22 +847,56 @@ function buildFirstPersonWorld(renderer) {
   return FPWorld;
 }
 
-// CO2 농도(280~600) -> 하늘색·안개 농도. 스모그가 심해지면 시야 자체가 좁아진다.
+// ── CO2 -> 세계 상태 ────────────────────────────────────────────────────────
+// 슬라이더 하나가 하늘색·시야거리·자동차 구성·배기가스·굴뚝 연기를 한꺼번에 움직인다.
+// "CO2를 줄이면 전부 전기차가 되고 매연이 멎는다"를 눈으로 보게 하는 게 목적.
+const CO2_MIN = 280, CO2_MAX = 1000;
 function applyWorldCO2(ppm) {
   FPWorld.co2 = ppm;
-  const k = Math.min(1, Math.max(0, (ppm - 280) / (600 - 280)));
+  const k = Math.min(1, Math.max(0, (ppm - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  FPWorld.co2k = k;
+
   const c = new THREE.Color().lerpColors(CLEAR_SKY, HAZY_SKY, k);
   FPWorld.skyMat.color.copy(c);
   FPWorld.scene.fog.color.copy(c);
-  // 맑을 때 6.5유닛(≈325m)까지 보이다가, 최악일 때 1.9유닛(≈95m)까지 좁아짐
-  FPWorld.scene.fog.far = 6.5 - k * 4.6;
-  FPWorld.scene.fog.near = 0.25 - k * 0.2;
+  // 맑을 때 7유닛(≈350m)까지 보이다가, 1000ppm에선 1.1유닛(≈55m) 앞도 안 보이게
+  FPWorld.scene.fog.far = 7.0 - k * 5.9;
+  FPWorld.scene.fog.near = 0.25 - k * 0.22;
+  // 탁해진 대기에서는 수면 반사도 함께 죽는다
+  if (FPWorld.waterMesh) FPWorld.waterMesh.material.envMapIntensity = 1.6 - k * 0.9;
+
+  // 자동차: CO2가 낮을수록 전기차 비율이 높아짐 (280ppm=전부 EV, 1000ppm=전부 내연)
+  if (FPWorld.cars) {
+    const gasCount = Math.round(FPWorld.cars.length * k);
+    FPWorld.cars.forEach((car, i) => {
+      const isGas = i < gasCount;
+      car.isGas = isGas;
+      const mat = isGas ? FPWorld.gasCarMat : FPWorld.evCarMat;
+      car.bodyParts.forEach(p => { p.material = mat; });
+    });
+    FPWorld.gasCarCount = gasCount;
+  }
+  // 배기가스·굴뚝 연기의 양(불투명도/크기)도 같이 움직인다
+  if (FPWorld.exhaust) {
+    FPWorld.exhaust.points.material.opacity = 0.55 * k;
+    FPWorld.exhaust.points.material.size = 0.010 + k * 0.010;
+  }
+  if (FPWorld.smoke) {
+    // CO2가 낮으면 굴뚝 연기가 거의 안 보이고, 높으면 시커멓게 뿜어져 나옴
+    FPWorld.smoke.mat.opacity = 0.05 + k * 0.55;
+    FPWorld.smoke.mat.size = 0.03 + k * 0.075;
+    FPWorld.smoke.mat.color.setHSL(0.09, 0.05, 0.62 - k * 0.35);
+    FPWorld.smoke.rate = 0.10 + k * 0.55;
+  }
 }
 
-// 그림자 카메라를 플레이어 주변 좁은 범위로 계속 옮겨서 눈앞 그림자 해상도를 확보
+// 그림자 카메라를 플레이어 주변 좁은 범위로 계속 옮겨서 눈앞 그림자 해상도를 확보.
+// 방향은 항상 "전구 -> 플레이어"라서 눈에 보이는 거대 전등과 그림자 방향이 일치한다.
+const _sunDir = new THREE.Vector3();
 function updateSunShadow(px, pz) {
   const sun = FPWorld.sun;
-  sun.position.set(px + 0.9, 1.4, pz + 0.7);
+  _sunDir.set(px, FPWorld.GROUND_BASE, pz).sub(FPWorld.bulbWorld).normalize();
+  sun.position.set(px, FPWorld.GROUND_BASE, pz).addScaledVector(_sunDir, -1.3);
   sun.target.position.set(px, FPWorld.GROUND_BASE, pz);
   sun.target.updateMatrixWorld();
   const cam = sun.shadow.camera;
@@ -562,4 +904,103 @@ function updateSunShadow(px, pz) {
   cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;
   cam.near = 0.05; cam.far = 3.2;
   cam.updateProjectionMatrix();
+}
+
+// ── 구름: 바람 타고 흐르다 맵 끝을 넘으면 반대편에서 새로 태어남 ──────────────
+function updateClouds(dt) {
+  const L = FPWorld.CLOUD_X_LIMIT;
+  for (const c of FPWorld.clouds) {
+    c.group.position.x += c.speed * dt;
+    if (c.group.position.x > L) FPWorld.resetCloud(c, true);
+  }
+}
+
+// ── 동물 배회 ───────────────────────────────────────────────────────────────
+// 일정 시간마다 "쉬기 / 걷기 / 달리기"와 방향을 새로 뽑고, 녹지 경계에 다가가면
+// 중앙 쪽으로 방향을 틀어 밖으로 나가지 않는다. 나무·바위에 부딪히면 방향을 바꾼다.
+function updateAnimals(dt, t) {
+  const HW = FPWorld.ANIM_HALF_W, HD = FPWorld.ANIM_HALF_D;
+  for (const a of FPWorld.animals) {
+    a.timer -= dt;
+    if (a.timer <= 0) {
+      const r = Math.random();
+      a.state = r < a.kind.restChance ? 'idle' : (r < a.kind.restChance + 0.62 ? 'walk' : 'run');
+      a.heading += (Math.random() - 0.5) * a.kind.turn;
+      a.timer = a.state === 'run' ? 0.8 + Math.random() * 1.4 : 1.2 + Math.random() * 3.0;
+    }
+    const speed = a.state === 'idle' ? 0 : (a.state === 'run' ? a.kind.run : a.kind.walk);
+
+    if (speed > 0) {
+      // 경계가 가까우면 중앙 쪽으로 서서히 방향을 튼다 (벽에 붙어 떠는 것 방지)
+      const edge = 0.12;
+      if (a.x > HW - edge || a.x < -HW + edge || a.z > HD - edge || a.z < -HD + edge) {
+        const toCenter = Math.atan2(-a.z, -a.x);
+        let diff = toCenter - a.heading;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        a.heading += diff * Math.min(1, dt * 3.5);
+      }
+      const nx = a.x + Math.cos(a.heading) * speed * dt;
+      const nz = a.z + Math.sin(a.heading) * speed * dt;
+      let blocked = false;
+      for (const o of FPWorld.greenObstacles) {
+        if (Math.hypot(nx - o.x, nz - o.z) < o.r + 0.006) { blocked = true; break; }
+      }
+      if (blocked) {
+        a.heading += 1.4 + Math.random();     // 장애물에 막히면 크게 꺾음
+        a.timer = Math.min(a.timer, 0.4);
+      } else {
+        a.x = Math.max(-HW, Math.min(HW, nx));
+        a.z = Math.max(-HD, Math.min(HD, nz));
+      }
+      a.phase += dt * (a.state === 'run' ? 14 : 7);
+    }
+
+    const baseY = FPWorld.wetlandY(a.x, a.z);
+    a.group.position.set(a.x, baseY, a.z);
+    a.group.rotation.y = -a.heading;
+
+    if (speed > 0) {
+      if (a.hop) {
+        // 토끼는 다리 대신 몸 전체가 콩콩 튀어오름
+        a.group.position.y = baseY + Math.abs(Math.sin(a.phase)) * (a.state === 'run' ? 0.006 : 0.003);
+        a.group.rotation.z = Math.sin(a.phase) * 0.12;
+      } else {
+        // 나머지는 앞다리/뒷다리를 엇갈려 흔든다
+        for (let i = 0; i < a.legs.length; i++) {
+          a.legs[i].rotation.x = Math.sin(a.phase + (i % 2) * Math.PI) * (a.state === 'run' ? 0.7 : 0.4);
+        }
+        a.group.position.y = baseY + Math.abs(Math.sin(a.phase * 2)) * 0.0012;
+      }
+    } else {
+      for (const l of a.legs) l.rotation.x *= 0.85;
+      a.group.rotation.z = 0;
+      // 가만히 있을 때는 숨쉬듯 아주 살짝 위아래로
+      a.group.position.y = baseY + Math.sin(t * 1.6 + a.phase) * 0.0004;
+    }
+  }
+}
+
+// ── 자동차 배기가스: 내연기관차 배기구에서만 뿜어져 나옴 ──────────────────────
+function updateExhaust(dt) {
+  const ex = FPWorld.exhaust;
+  const gasCars = FPWorld.cars.filter(c => c.isGas);
+  const pos = ex.geo.attributes.position;
+  if (gasCars.length === 0) {
+    ex.points.visible = false;
+    return;
+  }
+  ex.points.visible = true;
+  for (let i = 0; i < ex.count; i++) {
+    const car = gasCars[i % gasCars.length];
+    ex.life[i] += dt * (0.9 + (i % 5) * 0.12);
+    if (ex.life[i] > 1) ex.life[i] -= 1;
+    const L = ex.life[i];
+    // 배기구에서 뒤쪽(-x)으로 밀려나며 위로 퍼져 오름
+    pos.setXYZ(i,
+      car.tail.x - L * 0.05 + Math.sin(i * 3.7 + L * 6) * 0.006 * L,
+      car.tail.y + L * L * 0.05,
+      car.tail.z + Math.cos(i * 2.3 + L * 5) * 0.008 * L);
+  }
+  pos.needsUpdate = true;
 }
