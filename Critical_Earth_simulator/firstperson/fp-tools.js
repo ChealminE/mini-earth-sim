@@ -30,11 +30,10 @@ function measureTemperature(zone, x, z, k) {
   const jitter = Math.sin(x * 37.1 + z * 21.7) * 0.5 + Math.sin(x * 11.3 - z * 53.9) * 0.35;
   return T.base + k * T.rise + jitter;
 }
-// 해양 pH: 이 프로젝트 본편이 쓰는 실측 회귀식을 그대로 사용
-//   해양pH = -0.000942 x CO2농도 + 8.441  (R^2=0.946)
-// CO2가 오를수록 pH가 내려간다(해양 산성화).
+// 해양 pH: 산호 백화·생물 감소와 반드시 같은 값을 써야 하므로
+// fp-world.js의 oceanPH() 하나만 쓴다 (측정값과 세계 상태가 어긋나지 않게)
 function measurePH(ppm) {
-  return -0.000942 * ppm + 8.441;
+  return oceanPH(ppm);
 }
 // 대기 CO2: 기본 농도 + 굴뚝·내연기관차 배기구 근처의 국소 상승분
 function measureCO2(ppm, x, z) {
@@ -210,7 +209,7 @@ FPTools.init = function (camera) {
 
   this.handGroup = new THREE.Group();
   // 화면 우하단. 뷰카메라(원점)에서 0.05유닛 떨어뜨려 화면 높이의 1/3쯤 차지하게 배치.
-  this.handGroup.position.set(0.024, -0.030, -0.050);
+  this.handGroup.position.set(0.024, -0.023, -0.050);
   this.handGroup.rotation.set(-0.16, 0.32, 0.10);
   this.handGroup.visible = false;
   this.viewScene.add(this.handGroup);
@@ -224,8 +223,9 @@ FPTools.init = function (camera) {
   this.slots.forEach(t => {
     if (!t) return;
     t.group.visible = false;
-    // 손보다 위에 본체를 두고, 탐침이 손 앞을 지나 아래로 빠지게 한다
-    t.group.position.set(0, 0.017, 0.003);
+    // 표시창이 달린 본체를 손끝(손 윗면)에 딱 얹고, 탐침은 거기서 아래로 내려가
+    // 손 앞쪽(+z)을 스치며 빠진다. 예전엔 본체가 손에서 한참 떠 있었다.
+    t.group.position.set(0, 0.010, 0.003);
     this.handGroup.add(t.group);
   });
 

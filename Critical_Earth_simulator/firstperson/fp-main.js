@@ -40,6 +40,7 @@ brightness.addEventListener('input', () => {
 const co2Slider = document.getElementById('co2Slider');
 const co2Out = document.getElementById('co2Out');
 const hudCars = document.getElementById('hudCars');
+const hudSea = document.getElementById('hudSea');
 co2Slider.addEventListener('input', () => {
   co2Out.textContent = co2Slider.value;
   applyWorldCO2(Number(co2Slider.value));
@@ -88,6 +89,7 @@ function animate() {
 
   updateClouds(dt);
   updateAnimals(dt, t);
+  updateOceanLife(dt, t);
   updateExhaust(dt);
 
   // 공장 연기 (양·속도는 CO2에 따라 applyWorldCO2가 정한 rate를 따름)
@@ -125,6 +127,7 @@ function animate() {
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
+    hudSea.textContent = `pH ${oceanPH(FPWorld.co2).toFixed(2)} · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plants.length}`;
   }
 
   renderer.render(FPWorld.scene, camera);

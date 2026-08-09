@@ -674,6 +674,159 @@ function buildFirstPersonWorld(renderer) {
     }
   });
 
+  // ── 바다 생태계 (어류 / 산호 / 수초) ─────────────────────────────────────
+  // 지상 동물과 같은 테마: 저폴리 박스 + 동그란 눈. 전부 oceanGroup에 넣어서
+  // 로컬 x가 곧 해양 구역 좌표가 되게 한다(월드 x = 로컬 x - ZONE_W).
+  // 해저 높이는 해저 지형 캡과 같은 노이즈를 쓴다.
+  function seabedY(lx, lz) {
+    return OCEAN_BASE + terrainNoise(lx, lz, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
+  }
+  const SEA_HALF_X = 0.86, SEA_HALF_Z = 1.34;      // 생물이 돌아다니는 범위(로컬)
+  const SEA_CEIL = waveBaseY - 0.058;              // 파도 골보다 아래 = 수면 밖으로 안 튀어나감
+  FPWorld.seabedY = seabedY;
+
+  const fishMats = {
+    small: new THREE.MeshStandardMaterial({ color: 0x8fc9e6, roughness: 0.55, flatShading: true }),
+    smallFin: new THREE.MeshStandardMaterial({ color: 0x5f9fc4, roughness: 0.6 }),
+    mid: new THREE.MeshStandardMaterial({ color: 0xe8944f, roughness: 0.55, flatShading: true }),
+    midFin: new THREE.MeshStandardMaterial({ color: 0xc26a2c, roughness: 0.6 }),
+    big: new THREE.MeshStandardMaterial({ color: 0x53728f, roughness: 0.55, flatShading: true }),
+    bigFin: new THREE.MeshStandardMaterial({ color: 0x35506a, roughness: 0.6 }),
+  };
+  // 물고기는 +x를 바라보게 만든다 (지상 동물과 동일 규칙)
+  function buildFish(size, bodyMat, finMat, withEyes) {
+    const g = new THREE.Group();
+    g.add(bx(size * 1.0, size * 0.5, size * 0.28, bodyMat, 0, 0, 0));            // 몸통
+    g.add(bx(size * 0.34, size * 0.34, size * 0.22, bodyMat, size * 0.56, 0, 0)); // 머리
+    const tail = bx(size * 0.28, size * 0.46, size * 0.05, finMat, -size * 0.62, 0, 0);
+    g.add(tail);
+    g.add(bx(size * 0.3, size * 0.16, size * 0.04, finMat, 0, size * 0.31, 0));   // 등지느러미
+    if (withEyes) addEyes(g, size * 0.68, size * 0.07, 0, size * 0.1, size * 0.062);
+    // 물속이라 그림자는 거의 안 보이는데 비용은 그대로 들어서 끈다
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return { group: g, tail };
+  }
+
+  const FISH_KINDS = [
+    { n: 20, size: 0.005, body: fishMats.small, fin: fishMats.smallFin, eyes: false, speed: 0.045 },
+    { n: 12, size: 0.010, body: fishMats.mid,   fin: fishMats.midFin,   eyes: true,  speed: 0.034 },
+    { n: 5,  size: 0.017, body: fishMats.big,   fin: fishMats.bigFin,   eyes: true,  speed: 0.026 },
+  ];
+  FPWorld.fish = [];
+  FISH_KINDS.forEach(k => {
+    for (let i = 0; i < k.n; i++) {
+      const { group, tail } = buildFish(k.size, k.body, k.fin, k.eyes);
+      const lx = (Math.random() - 0.5) * 2 * SEA_HALF_X;
+      const lz = (Math.random() - 0.5) * 2 * SEA_HALF_Z;
+      const floor = seabedY(lx, lz);
+      const ly = floor + 0.012 + Math.random() * Math.max(0.004, SEA_CEIL - floor - 0.02);
+      group.position.set(lx, ly, lz);
+      oceanGroup.add(group);
+      FPWorld.fish.push({
+        group, tail, lx, ly, lz,
+        heading: Math.random() * Math.PI * 2, pitch: 0,
+        speed: k.speed, baseSpeed: k.speed,
+        timer: Math.random() * 3, phase: Math.random() * 10,
+      });
+    }
+  });
+
+  // 산호 2종: 가지산호(여러 갈래로 뻗음) / 뇌산호(납작한 돔).
+  // pH가 내려가면 두 재질 색을 흰색으로 보간해 백화현상을 표현한다.
+  const CORAL_BRANCH_HEALTHY = new THREE.Color(0xe8724f);
+  const CORAL_BRAIN_HEALTHY = new THREE.Color(0xa06fc4);
+  const CORAL_BLEACHED = new THREE.Color(0xf4f2ec);
+  const coralBranchMat = new THREE.MeshStandardMaterial({ color: CORAL_BRANCH_HEALTHY.clone(), roughness: 0.85, flatShading: true });
+  const coralBrainMat = new THREE.MeshStandardMaterial({ color: CORAL_BRAIN_HEALTHY.clone(), roughness: 0.8, flatShading: true });
+
+  function buildBranchCoral() {
+    const g = new THREE.Group();
+    const h = 0.016 + Math.random() * 0.014;
+    g.add(bx(0.008, h * 0.45, 0.008, coralBranchMat, 0, h * 0.22, 0));   // 밑동
+    const arms = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < arms; i++) {
+      const ang = (i / arms) * Math.PI * 2 + Math.random() * 0.6;
+      const len = h * (0.5 + Math.random() * 0.5);
+      const arm = bx(0.0045, len, 0.0045, coralBranchMat,
+        Math.cos(ang) * 0.006, h * 0.45 + len * 0.4, Math.sin(ang) * 0.006);
+      arm.rotation.z = -Math.cos(ang) * 0.5;
+      arm.rotation.x = Math.sin(ang) * 0.5;
+      g.add(arm);
+    }
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return g;
+  }
+  function buildBrainCoral() {
+    const g = new THREE.Group();
+    const r = 0.010 + Math.random() * 0.008;
+    const dome = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), coralBrainMat);
+    dome.scale.y = 0.55;
+    dome.position.y = r * 0.35;
+    g.add(dome);
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return g;
+  }
+
+  // 수초 2종: 다시마(길게 흔들리는 띠) / 잘피(짧은 잎 다발)
+  const kelpMat = new THREE.MeshStandardMaterial({ color: 0x487038, roughness: 0.9, side: THREE.DoubleSide, flatShading: true });
+  const grassSeaMat = new THREE.MeshStandardMaterial({ color: 0x6aa84f, roughness: 0.9, side: THREE.DoubleSide });
+  function buildKelp() {
+    const g = new THREE.Group();
+    const segs = 4 + Math.floor(Math.random() * 3);
+    const segH = 0.013 + Math.random() * 0.006;
+    const blades = [];
+    let parent = g;
+    for (let i = 0; i < segs; i++) {
+      // 마디를 사슬처럼 이어 붙여서 위로 갈수록 크게 휘도록(해류에 흔들리는 느낌)
+      const seg = new THREE.Group();
+      seg.position.y = i === 0 ? 0 : segH;
+      const blade = bx(0.010, segH, 0.0012, kelpMat, 0, segH / 2, 0);
+      seg.add(blade);
+      parent.add(seg);
+      parent = seg;
+      blades.push(seg);
+    }
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return { group: g, segs: blades };
+  }
+  function buildSeagrass() {
+    const g = new THREE.Group();
+    const n = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < n; i++) {
+      const h = 0.009 + Math.random() * 0.008;
+      const blade = bx(0.0035, h, 0.0009, grassSeaMat,
+        (Math.random() - 0.5) * 0.012, h / 2, (Math.random() - 0.5) * 0.012);
+      blade.rotation.z = (Math.random() - 0.5) * 0.5;
+      g.add(blade);
+    }
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return g;
+  }
+
+  function scatterOnSeabed(makeFn, count, store) {
+    for (let i = 0; i < count; i++) {
+      const lx = (Math.random() - 0.5) * 2 * SEA_HALF_X;
+      const lz = (Math.random() - 0.5) * 2 * SEA_HALF_Z;
+      const made = makeFn();
+      const g = made.group || made;
+      g.position.set(lx, seabedY(lx, lz) - 0.001, lz);
+      g.rotation.y = Math.random() * Math.PI * 2;
+      oceanGroup.add(g);
+      store.push(made.segs ? { group: g, segs: made.segs, phase: Math.random() * 10 } : { group: g });
+    }
+  }
+  FPWorld.corals = [];
+  FPWorld.plants = [];
+  scatterOnSeabed(buildBranchCoral, 10, FPWorld.corals);
+  scatterOnSeabed(buildBrainCoral, 8, FPWorld.corals);
+  scatterOnSeabed(buildKelp, 14, FPWorld.plants);
+  scatterOnSeabed(buildSeagrass, 12, FPWorld.plants);
+  FPWorld.coralMats = { branch: coralBranchMat, brain: coralBrainMat };
+  FPWorld.CORAL_COLORS = { branch: CORAL_BRANCH_HEALTHY, brain: CORAL_BRAIN_HEALTHY, bleached: CORAL_BLEACHED };
+  FPWorld.SEA_HALF_X = SEA_HALF_X;
+  FPWorld.SEA_HALF_Z = SEA_HALF_Z;
+  FPWorld.SEA_CEIL = SEA_CEIL;
+
   // ── 도시 ────────────────────────────────────────────────────────────────
   const cityGroup = new THREE.Group();
   cityGroup.position.x = ZONE_W;
@@ -926,6 +1079,23 @@ function buildFirstPersonWorld(renderer) {
 // 슬라이더 하나가 하늘색·시야거리·자동차 구성·배기가스·굴뚝 연기를 한꺼번에 움직인다.
 // "CO2를 줄이면 전부 전기차가 되고 매연이 멎는다"를 눈으로 보게 하는 게 목적.
 const CO2_MIN = 280, CO2_MAX = 1000;
+
+// ── 해양 pH ─────────────────────────────────────────────────────────────────
+// 본편의 실측 회귀식(-0.000942·ppm + 8.441)은 1000ppm에서도 7.5까지밖에 안 내려가서
+// 1인칭에서 산호 백화·생물 감소를 눈으로 보기엔 변화폭이 너무 작다. 그래서 여기서는
+// "현재(418ppm)에서는 실측값 8.05에 맞추되, 고농도에서 훨씬 가파르게 떨어지는" 곡선으로
+// 과장했다. 지수 1.6은 418ppm에서 실측과 일치하도록 역산한 값.
+//   280ppm -> 8.20 / 418ppm -> 8.05 / 640ppm -> 7.52 / 1000ppm -> 6.15
+// 실측 재현이 아니라 교육용 연출이라는 점에 유의.
+const PH_CLEAN = 8.20, PH_DROP = 2.05, PH_CURVE = 1.6;
+function oceanPH(ppm) {
+  const k = Math.min(1, Math.max(0, (ppm - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  return PH_CLEAN - PH_DROP * Math.pow(k, PH_CURVE);
+}
+// pH를 0(최악)~1(건강) 생태 건강도로 환산 - 산호 백화율·개체수 감소에 함께 쓰인다
+function oceanHealth(ph) {
+  return Math.min(1, Math.max(0, (ph - (PH_CLEAN - PH_DROP)) / PH_DROP));
+}
 function applyWorldCO2(ppm) {
   FPWorld.co2 = ppm;
   const k = Math.min(1, Math.max(0, (ppm - CO2_MIN) / (CO2_MAX - CO2_MIN)));
@@ -958,6 +1128,8 @@ function applyWorldCO2(ppm) {
     FPWorld.exhaust.points.material.opacity = 0.55 * k;
     FPWorld.exhaust.points.material.size = 0.010 + k * 0.010;
   }
+  // 해양 산성화 -> 산호 백화 + 수초·어류 개체수 감소
+  applyOceanHealth(oceanPH(ppm));
   if (FPWorld.smoke) {
     // CO2가 낮으면 굴뚝 연기가 거의 안 보이고, 높으면 시커멓게 뿜어져 나옴
     FPWorld.smoke.mat.opacity = 0.05 + k * 0.55;
@@ -981,6 +1153,76 @@ function updateSunShadow(px, pz) {
   cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;
   cam.near = 0.05; cam.far = 3.2;
   cam.updateProjectionMatrix();
+}
+
+// ── 해양 생태 반응 ──────────────────────────────────────────────────────────
+// pH가 내려갈수록: 산호는 색을 잃어 하얗게(백화), 수초와 어류는 개체수가 줄어든다.
+// 살아남는 개체를 앞에서부터 세는 방식이라 CO2를 되돌리면 그대로 복원된다.
+function applyOceanHealth(ph) {
+  if (!FPWorld.fish) return;
+  const h = oceanHealth(ph);
+  FPWorld.oceanHealth = h;
+
+  // 산호 백화: 건강할 때 고유색 -> 최악일 때 표백된 흰색
+  const C = FPWorld.CORAL_COLORS;
+  FPWorld.coralMats.branch.color.lerpColors(C.bleached, C.branch, h);
+  FPWorld.coralMats.brain.color.lerpColors(C.bleached, C.brain, h);
+
+  // 수초: 최악이어도 10%는 남겨서 바다가 완전히 텅 비어 보이지 않게
+  const plantCount = Math.round(FPWorld.plants.length * (0.10 + 0.90 * h));
+  FPWorld.plants.forEach((p, i) => { p.group.visible = i < plantCount; });
+
+  // 어류: 최악이면 15%만 남음
+  const fishCount = Math.round(FPWorld.fish.length * (0.15 + 0.85 * h));
+  FPWorld.fish.forEach((f, i) => { f.group.visible = i < fishCount; });
+  FPWorld.aliveFish = fishCount;
+  FPWorld.alivePlants = plantCount;
+}
+
+// ── 어류 유영 + 수초 흔들림 ─────────────────────────────────────────────────
+function updateOceanLife(dt, t) {
+  const HX = FPWorld.SEA_HALF_X, HZ = FPWorld.SEA_HALF_Z, CEIL = FPWorld.SEA_CEIL;
+  for (const f of FPWorld.fish) {
+    if (!f.group.visible) continue;
+    f.timer -= dt;
+    if (f.timer <= 0) {
+      f.heading += (Math.random() - 0.5) * 2.2;
+      f.pitch = (Math.random() - 0.5) * 0.5;
+      f.speed = f.baseSpeed * (0.5 + Math.random() * 1.1);
+      f.timer = 1.0 + Math.random() * 2.4;
+    }
+    // 벽·바닥·수면에 가까워지면 중앙으로 부드럽게 선회
+    if (Math.abs(f.lx) > HX - 0.1 || Math.abs(f.lz) > HZ - 0.1) {
+      const toCenter = Math.atan2(-f.lz, -f.lx);
+      let d = toCenter - f.heading;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      f.heading += d * Math.min(1, dt * 3);
+    }
+    const floor = FPWorld.seabedY(f.lx, f.lz) + 0.010;
+    if (f.ly < floor + 0.006) f.pitch += dt * 1.6;        // 바닥에 닿기 전에 위로
+    if (f.ly > CEIL - 0.006) f.pitch -= dt * 1.6;         // 수면 밖으로 안 나가게
+    f.pitch = Math.max(-0.6, Math.min(0.6, f.pitch));
+
+    f.lx += Math.cos(f.heading) * f.speed * dt;
+    f.lz += Math.sin(f.heading) * f.speed * dt;
+    f.ly += Math.sin(f.pitch) * f.speed * dt;
+    f.lx = Math.max(-HX, Math.min(HX, f.lx));
+    f.lz = Math.max(-HZ, Math.min(HZ, f.lz));
+    f.ly = Math.max(floor, Math.min(CEIL, f.ly));
+
+    f.phase += dt * (6 + f.speed * 90);
+    f.group.position.set(f.lx, f.ly, f.lz);
+    f.group.rotation.set(0, -f.heading, f.pitch * 0.8);
+    f.tail.rotation.y = Math.sin(f.phase) * 0.65;          // 꼬리 흔들기
+  }
+  // 다시마: 마디마다 위상을 조금씩 늦춰 해류에 물결치듯 휘게
+  for (const p of FPWorld.plants) {
+    if (!p.segs || !p.group.visible) continue;
+    for (let i = 0; i < p.segs.length; i++) {
+      p.segs[i].rotation.z = Math.sin(t * 0.9 + p.phase + i * 0.55) * 0.16;
+    }
+  }
 }
 
 // ── 구름: 바람 타고 흐르다 맵 끝을 넘으면 반대편에서 새로 태어남 ──────────────
