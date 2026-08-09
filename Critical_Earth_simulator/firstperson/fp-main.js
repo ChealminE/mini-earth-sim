@@ -22,6 +22,7 @@ function fit() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  FPTools.resize(w / h);
 }
 window.addEventListener('resize', fit);
 fit();
@@ -127,5 +128,6 @@ function animate() {
   }
 
   renderer.render(FPWorld.scene, camera);
+  FPTools.render(renderer);   // 손·도구는 깊이 버퍼를 비우고 맨 위에 덧그림
 }
 animate();

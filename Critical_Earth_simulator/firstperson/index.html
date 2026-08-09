@@ -29,9 +29,11 @@
   <div class="hud-line dim" id="hudPos">X 0m · Z 0m · 고도 0m</div>
   <div class="hud-line dim">상태: <span id="hudMode">걷기</span></div>
   <div class="hud-line dim">자동차: <span id="hudCars">-</span></div>
+  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>1~3</b> 도구</div>
 </div>
 
-<div id="helpPanel">
+<!-- 기본은 숨김: 펼쳐두면 우하단 도구의 표시창을 가려서 측정값을 못 읽는다 (H로 토글) -->
+<div id="helpPanel" class="hidden">
   <h3>조작법 <span class="key">H</span> 로 열고 닫기</h3>
   <table>
     <tr><td><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></td><td>이동</td></tr>

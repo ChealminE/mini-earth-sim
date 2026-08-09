@@ -559,6 +559,17 @@ function buildFirstPersonWorld(renderer) {
     m.castShadow = true;
     return m;
   }
+  // 다리: 기하를 아래로 밀어 원점을 '고관절'(다리 윗끝)에 둔다.
+  // 박스 중심을 기준으로 돌리면 다리가 통째로 앞뒤로 미끄러지듯 움직여서 어색한데,
+  // 윗끝을 축으로 돌리면 실제로 관절에서 흔들리는 모양이 나온다.
+  function legBox(w, h, d, mat, x, hipY, z) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    geo.translate(0, -h / 2, 0);
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, hipY, z);
+    m.castShadow = true;
+    return m;
+  }
   // 눈: 흰자 구 + 그 앞에 살짝 튀어나온 눈동자 구. 머리 좌우 두 쪽에 붙인다.
   // 각진 박스 몸통에 동그란 눈만 얹으면 저폴리인데도 인상이 확 순해진다.
   const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
@@ -583,7 +594,7 @@ function buildFirstPersonWorld(renderer) {
     addEyes(g, 0.0090, 0.0080, 0, 0.0016, 0.0011);
     g.add(bx(0.0025, 0.0025, 0.0025, M.rabbitBody, -0.0062, 0.006, 0));  // 꼬리
     [[-0.003, -0.0022], [-0.003, 0.0022], [0.003, -0.0022], [0.003, 0.0022]].forEach(([lx, lz]) => {
-      const l = bx(0.0022, 0.0035, 0.0022, M.rabbitEar, lx, 0.0018, lz);
+      const l = legBox(0.0022, 0.0035, 0.0022, M.rabbitEar, lx, 0.00355, lz);
       g.add(l); legs.push(l);
     });
     // 실척 40cm 그대로면 풀 사이에서 거의 안 보여서, 큰 산토끼 정도로 살짝 키움
@@ -602,7 +613,7 @@ function buildFirstPersonWorld(renderer) {
     addEyes(g, 0.0205, 0.0335, 0, 0.0022, 0.0013);
     g.add(bx(0.004, 0.004, 0.003, M.deerBody, -0.014, 0.023, 0));        // 꼬리
     [[-0.009, -0.004], [-0.009, 0.004], [0.009, -0.004], [0.009, 0.004]].forEach(([lx, lz]) => {
-      const l = bx(0.003, 0.016, 0.003, M.deerDark, lx, 0.008, lz);
+      const l = legBox(0.003, 0.016, 0.003, M.deerDark, lx, 0.016, lz);
       g.add(l); legs.push(l);
     });
     return { group: g, legs, hop: false };
@@ -616,7 +627,7 @@ function buildFirstPersonWorld(renderer) {
     addEyes(g, 0.0152, 0.0150, 0, 0.0024, 0.0014);
     g.add(bx(0.008, 0.003, 0.003, M.wolfDark, -0.012, 0.014, 0));        // 꼬리
     [[-0.006, -0.0032], [-0.006, 0.0032], [0.006, -0.0032], [0.006, 0.0032]].forEach(([lx, lz]) => {
-      const l = bx(0.0028, 0.008, 0.0028, M.wolfDark, lx, 0.004, lz);
+      const l = legBox(0.0028, 0.008, 0.0028, M.wolfDark, lx, 0.008, lz);
       g.add(l); legs.push(l);
     });
     return { group: g, legs, hop: false };
@@ -629,7 +640,7 @@ function buildFirstPersonWorld(renderer) {
     [-0.004, 0.004].forEach(dz => g.add(bx(0.003, 0.004, 0.003, M.bearDark, 0.020, 0.033, dz))); // 귀
     addEyes(g, 0.0270, 0.0282, 0, 0.0040, 0.0022);
     [[-0.011, -0.006], [-0.011, 0.006], [0.011, -0.006], [0.011, 0.006]].forEach(([lx, lz]) => {
-      const l = bx(0.006, 0.014, 0.006, M.bearDark, lx, 0.007, lz);
+      const l = legBox(0.006, 0.014, 0.006, M.bearDark, lx, 0.014, lz);
       g.add(l); legs.push(l);
     });
     return { group: g, legs, hop: false };
@@ -779,29 +790,50 @@ function buildFirstPersonWorld(renderer) {
     tail.position.set(-0.048, bodyBottomY + 0.004, -0.012);
     group.add(tail);
 
-    // 전기차 표식: 후드(앞부분) 위에 눕혀 놓은 번개 마크. 전기차일 때만 보인다.
-    const bolt = new THREE.Shape();
-    bolt.moveTo(0.55, 1.00);
-    bolt.lineTo(0.13, 0.46);
-    bolt.lineTo(0.44, 0.46);
-    bolt.lineTo(0.32, 0.00);
-    bolt.lineTo(0.86, 0.58);
-    bolt.lineTo(0.55, 0.58);
-    bolt.lineTo(0.55, 1.00);
-    const boltGeo = new THREE.ShapeGeometry(bolt);
-    boltGeo.translate(-0.5, -0.5, 0);          // 도형 중심을 원점으로
-    boltGeo.scale(0.024, 0.024, 1);
-    boltGeo.rotateX(-Math.PI / 2);             // 후드 위에 눕힘
-    boltGeo.rotateY(-Math.PI / 2);             // 번개 끝이 차 앞쪽을 향하게
-    const boltMesh = new THREE.Mesh(boltGeo, new THREE.MeshStandardMaterial({
+    // 전기차 표식: 후드 위 + 양 옆면에 붙는 번개 마크. 전기차일 때만 보인다.
+    function boltGeometry(size) {
+      const sh = new THREE.Shape();
+      sh.moveTo(0.55, 1.00);
+      sh.lineTo(0.13, 0.46);
+      sh.lineTo(0.44, 0.46);
+      sh.lineTo(0.32, 0.00);
+      sh.lineTo(0.86, 0.58);
+      sh.lineTo(0.55, 0.58);
+      sh.lineTo(0.55, 1.00);
+      const g = new THREE.ShapeGeometry(sh);
+      g.translate(-0.5, -0.5, 0);              // 도형 중심을 원점으로
+      g.scale(size, size, 1);
+      return g;
+    }
+    const boltMat = new THREE.MeshStandardMaterial({
       color: 0xeafff8, emissive: 0x7ffcd8, emissiveIntensity: 0.9,
       roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide,
-    }));
-    boltMesh.position.set(0.030, bodyBottomY + bodyH + 0.0006, 0);
-    group.add(boltMesh);
+    });
+    const bolts = [];
+
+    // (1) 후드 위 - 눕혀서 붙임
+    const hoodGeo = boltGeometry(0.024);
+    hoodGeo.rotateX(-Math.PI / 2);             // 바닥에 눕힘
+    hoodGeo.rotateY(-Math.PI / 2);             // 번개 끝이 차 앞쪽을 향하게
+    const hoodBolt = new THREE.Mesh(hoodGeo, boltMat);
+    hoodBolt.position.set(0.030, bodyBottomY + bodyH + 0.0006, 0);
+    group.add(hoodBolt);
+    bolts.push(hoodBolt);
+
+    // (2)(3) 양 옆면 - 차체 측면(z = ±0.0225)에 세워서 붙임.
+    // ShapeGeometry는 기본 법선이 +z라 +z쪽은 그대로, -z쪽은 180도 돌려 바깥을 보게 한다.
+    const SIDE_Z = 0.0225 + 0.0004;
+    [1, -1].forEach(sign => {
+      const g = boltGeometry(0.018);
+      if (sign < 0) g.rotateY(Math.PI);
+      const m = new THREE.Mesh(g, boltMat);
+      m.position.set(0.004, bodyBottomY + bodyH / 2, SIDE_Z * sign);
+      group.add(m);
+      bolts.push(m);
+    });
 
     return {
-      group, bodyParts, tail, bolt: boltMesh,
+      group, bodyParts, tail, bolts,
       tailLocal: new THREE.Vector3(-0.054, bodyBottomY + 0.004, -0.012),
     };
   }
@@ -810,12 +842,12 @@ function buildFirstPersonWorld(renderer) {
                     [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
   FPWorld.cars = [];
   carSpots.forEach((pos, i) => {
-    const { group: car, bodyParts, tail, bolt, tailLocal } = buildCarModel();
+    const { group: car, bodyParts, tail, bolts, tailLocal } = buildCarModel();
     car.position.set(pos[0], GROUND_BASE, pos[1]);
     car.rotation.y = (i % 3) * 0.04;
     cityGroup.add(car);
     FPWorld.cars.push({
-      group: car, bodyParts, tail, bolt, isGas: true,
+      group: car, bodyParts, tail, bolts, isGas: true,
       // 배기구 월드 좌표 (cityGroup이 +ZONE_W 밀려 있으므로 더해줌)
       tail: new THREE.Vector3(pos[0] + tailLocal.x + ZONE_W, GROUND_BASE + tailLocal.y, pos[1] + tailLocal.z),
     });
@@ -916,8 +948,8 @@ function applyWorldCO2(ppm) {
       car.isGas = isGas;
       const mat = isGas ? FPWorld.gasCarMat : FPWorld.evCarMat;
       car.bodyParts.forEach(p => { p.material = mat; });
-      car.tail.visible = isGas;    // 전기차엔 배기구 자체가 없음
-      car.bolt.visible = !isGas;   // 전기차만 후드에 번개 마크
+      car.tail.visible = isGas;                             // 전기차엔 배기구 자체가 없음
+      car.bolts.forEach(b => { b.visible = !isGas; });       // 후드 + 양 옆면 번개 마크
     });
     FPWorld.gasCarCount = gasCount;
   }
@@ -1013,12 +1045,14 @@ function updateAnimals(dt, t) {
       } else {
         // 나머지는 앞다리/뒷다리를 엇갈려 흔든다
         for (let i = 0; i < a.legs.length; i++) {
-          a.legs[i].rotation.x = Math.sin(a.phase + (i % 2) * Math.PI) * (a.state === 'run' ? 0.7 : 0.4);
+          // 모델이 +x를 바라보므로, 다리를 '앞뒤'로 흔들려면 z축 회전이어야 한다.
+          // x축으로 돌리면 다리가 좌우로 벌어졌다 오므라들어서 걷는 것처럼 안 보인다.
+          a.legs[i].rotation.z = Math.sin(a.phase + (i % 2) * Math.PI) * (a.state === 'run' ? 0.7 : 0.4);
         }
         a.group.position.y = baseY + Math.abs(Math.sin(a.phase * 2)) * 0.0012;
       }
     } else {
-      for (const l of a.legs) l.rotation.x *= 0.85;
+      for (const l of a.legs) l.rotation.z *= 0.85;
       a.group.rotation.z = 0;
       // 가만히 있을 때는 숨쉬듯 아주 살짝 위아래로
       a.group.position.y = baseY + Math.sin(t * 1.6 + a.phase) * 0.0004;

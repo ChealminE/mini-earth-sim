@@ -116,30 +116,38 @@ function buildTool(kind) {
   screen.position.set(0, 0.0042, 0.00256);
   g.add(screen);
 
+  // 측정부는 전부 본체 '아래'로 내려온다 (실제 휴대용 계측기와 같은 배치).
+  // 손은 본체를 쥐고, 탐침은 손 앞쪽(+z)을 지나 아래로 빠져나가게 z를 살짝 띄워
+  // 손과 겹쳐 보이지 않게 한다.
+  const PROBE_Z = 0.003;
   if (kind === 'temp') {
-    // 디지털 온도계: 본체 위로 뻗은 가느다란 금속 탐침
-    const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.0008, 0.0006, 0.014, 8),
+    // 디지털 온도계: 본체 아래로 뻗은 가느다란 금속 탐침
+    const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.0006, 0.0008, 0.014, 8),
       new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.3, metalness: 0.85 }));
-    probe.position.set(0, 0.015, 0);
+    probe.position.set(0, -0.015, PROBE_Z);
     g.add(probe);
   } else if (kind === 'ph') {
-    // pH 미터: 유리 전극(둥근 끝)이 달린 프로브
+    // pH 미터: 아래로 내려온 프로브 끝에 유리 전극(둥근 구)
     const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.0013, 0.0013, 0.016, 10), darkMat);
-    rod.position.set(0, 0.0155, 0);
+    rod.position.set(0, -0.0155, PROBE_Z);
     g.add(rod);
     const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.0017, 12, 10),
       new THREE.MeshPhysicalMaterial({ color: 0xbfe6ff, roughness: 0.1, transmission: 0.6, thickness: 0.001 }));
-    bulb.position.set(0, 0.0238, 0);
+    bulb.position.set(0, -0.0238, PROBE_Z);
     g.add(bulb);
   } else {
-    // CO2 센서: 공기가 드나드는 격자 흡입구
-    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.004, 0.0009), darkMat);
-    grille.position.set(0, -0.0046, 0.0027);
+    // CO2 센서: 아래로 내려온 흡입관 + 그 끝의 격자 흡입구
+    const inlet = new THREE.Mesh(new THREE.CylinderGeometry(0.0022, 0.0022, 0.012, 10), darkMat);
+    inlet.position.set(0, -0.014, PROBE_Z);
+    g.add(inlet);
+    const grille = new THREE.Mesh(new THREE.BoxGeometry(0.0062, 0.0055, 0.0012),
+      new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.7 }));
+    grille.position.set(0, -0.0185, PROBE_Z + 0.0018);
     g.add(grille);
-    for (let i = -2; i <= 2; i++) {
-      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.0006, 0.0032, 0.0006),
-        new THREE.MeshStandardMaterial({ color: 0x0d0f11 }));
-      slit.position.set(i * 0.0016, -0.0046, 0.0031);
+    for (let i = -1; i <= 1; i++) {
+      const slit = new THREE.Mesh(new THREE.BoxGeometry(0.0009, 0.0042, 0.0008),
+        new THREE.MeshStandardMaterial({ color: 0x000000 }));
+      slit.position.set(i * 0.0018, -0.0185, PROBE_Z + 0.0024);
       g.add(slit);
     }
   }
@@ -157,27 +165,55 @@ function buildHand() {
   // 팔은 화면 바깥(카메라 뒤쪽, +z)으로 뻗게 둔다. 처음엔 팔 앞끝이 카메라 근평면
   // 코앞(0.006)까지 와서 화면 절반을 팔로 가려버렸다 - 반드시 카메라에서 떨어뜨려야 한다.
   const arm = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.007, 0.024), sleeve);
-  arm.position.set(0, -0.009, 0.016);
+  arm.position.set(0, -0.009, 0.012);
   g.add(arm);
+  // 손은 팔보다 화면 안쪽(-z)에 둬서, 아래로 내려오는 탐침(+z 쪽)과 겹치지 않게 한다
   const hand = new THREE.Mesh(new THREE.BoxGeometry(0.0078, 0.0078, 0.0085), skin);
-  hand.position.set(0, -0.0025, 0.0005);
+  hand.position.set(0, -0.0025, -0.004);
   g.add(hand);
   return g;
 }
 
+// 창 크기가 바뀌면 뷰모델 카메라의 종횡비도 맞춰줘야 도구가 늘어나지 않는다
+FPTools.resize = function (aspect) {
+  if (!this.viewCamera) return;
+  this.viewCamera.aspect = aspect;
+  this.viewCamera.updateProjectionMatrix();
+};
+
+// 메인 씬을 그린 뒤 깊이만 비우고 그 위에 덧그린다
+FPTools.render = function (renderer) {
+  if (!this.handGroup.visible) return;
+  const prevAutoClear = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(this.viewScene, this.viewCamera);
+  renderer.autoClear = prevAutoClear;
+};
+
 // ── 초기화 ──────────────────────────────────────────────────────────────────
 FPTools.init = function (camera) {
   this.camera = camera;
-  // 카메라의 자식이 렌더링되려면 카메라 자체가 씬 그래프 안에 있어야 한다
-  FPWorld.scene.add(camera);
+
+  // ── 뷰모델(손·도구) 전용 씬 ──────────────────────────────────────────────
+  // 손을 메인 카메라에 그냥 붙이면, 바닥을 내려다볼 때 지면이 손보다 카메라에 가까워져서
+  // 깊이 테스트에 걸려 도구가 땅에 파묻힌 것처럼 사라진다.
+  // FPS 게임들이 쓰는 방식대로 뷰모델을 별도 씬/카메라로 분리해서, 메인 씬을 다 그린 뒤
+  // 깊이 버퍼만 비우고 그 위에 덧그린다. 그러면 3D상 어디를 보든 도구는 항상 보인다.
+  this.viewScene = new THREE.Scene();
+  this.viewCamera = new THREE.PerspectiveCamera(75, 1, 0.001, 0.5);
+  // 뷰모델 조명은 메인 씬과 무관하게 고정 - 어두운 곳에서도 도구는 항상 읽혀야 함
+  this.viewScene.add(new THREE.AmbientLight(0xffffff, 1.15));
+  const vl = new THREE.DirectionalLight(0xffffff, 1.6);
+  vl.position.set(0.4, 0.8, 1);
+  this.viewScene.add(vl);
 
   this.handGroup = new THREE.Group();
-  // 화면 우하단. 카메라에서 0.05유닛 떨어뜨려 도구가 화면 높이의 1/3쯤만 차지하게 한다
-  // (near=0.002보다 훨씬 멀고, 안개 시작(near 0.25)보다는 가까워 안개 영향은 안 받음).
-  this.handGroup.position.set(0.026, -0.023, -0.050);
+  // 화면 우하단. 뷰카메라(원점)에서 0.05유닛 떨어뜨려 화면 높이의 1/3쯤 차지하게 배치.
+  this.handGroup.position.set(0.024, -0.030, -0.050);
   this.handGroup.rotation.set(-0.16, 0.32, 0.10);
   this.handGroup.visible = false;
-  camera.add(this.handGroup);
+  this.viewScene.add(this.handGroup);
 
   const hand = buildHand();
   this.handGroup.add(hand);
@@ -188,7 +224,8 @@ FPTools.init = function (camera) {
   this.slots.forEach(t => {
     if (!t) return;
     t.group.visible = false;
-    t.group.position.set(0, 0.010, -0.003);   // 손이 쥐고 있는 위치
+    // 손보다 위에 본체를 두고, 탐침이 손 앞을 지나 아래로 빠지게 한다
+    t.group.position.set(0, 0.017, 0.003);
     this.handGroup.add(t.group);
   });
 

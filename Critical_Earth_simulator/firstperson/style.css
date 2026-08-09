@@ -49,6 +49,8 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 }
 #hud b { font-size: 14px; }
 #hud .dim { color: #a9b4c0; font-size: 11.5px; }
+#hud .key-hint { color: #7e8b98; font-size: 10.5px; margin-top: 3px; }
+#hud .key-hint b { color: #b6c2ce; font-weight: 700; }
 
 #helpPanel {
   position: fixed; top: 14px; right: 14px; color: #e7ecf2; font-size: 12px;
