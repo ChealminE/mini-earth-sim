@@ -1,0 +1,61 @@
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif; background: #0d1014;
+}
+canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+canvas#gl:active { cursor: grabbing; }
+
+/* 수중 틴트 - 화면 전체를 덮되 마우스 이벤트는 통과시킴 */
+#waterOverlay {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  transition: opacity .25s;
+  background: radial-gradient(ellipse at 50% 50%, rgba(30,110,150,0.28) 0%, rgba(8,45,70,0.72) 100%);
+}
+#waterOverlay.on { opacity: 1; }
+
+/* 크로스헤어: 두 개의 얇은 선을 십자로 겹침 */
+#crosshair {
+  position: fixed; left: 50%; top: 50%; width: 18px; height: 18px;
+  transform: translate(-50%, -50%); pointer-events: none;
+  mix-blend-mode: difference;
+}
+#crosshair span { position: absolute; background: #fff; }
+#crosshair span:nth-child(1) { left: 50%; top: 0; width: 2px; height: 100%; margin-left: -1px; }
+#crosshair span:nth-child(2) { top: 50%; left: 0; height: 2px; width: 100%; margin-top: -1px; }
+
+#hud {
+  position: fixed; top: 14px; left: 14px; color: #eaf0f6; font-size: 12.5px;
+  background: rgba(0,0,0,0.38); padding: 10px 14px; border-radius: 10px;
+  line-height: 1.7; pointer-events: none; backdrop-filter: blur(3px);
+}
+#hud b { font-size: 14px; }
+#hud .dim { color: #a9b4c0; font-size: 11.5px; }
+
+#helpPanel {
+  position: fixed; top: 14px; right: 14px; color: #e7ecf2; font-size: 12px;
+  background: rgba(14,18,24,0.86); padding: 14px 16px; border-radius: 10px;
+  max-width: 330px; line-height: 1.6; border: 1px solid #2a323c;
+}
+#helpPanel.hidden { display: none; }
+#helpPanel h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+#helpPanel table { border-collapse: collapse; width: 100%; }
+#helpPanel td { padding: 3px 0; vertical-align: top; }
+#helpPanel td:first-child { white-space: nowrap; padding-right: 12px; color: #9fb0c2; }
+#helpPanel .key {
+  display: inline-block; background: #262d36; border: 1px solid #3a434f; border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 6px; margin-right: 3px; font-size: 11px; color: #dfe6ee;
+}
+#helpPanel .note { color: #8b96a3; font-size: 11px; margin: 10px 0 0; }
+
+#bottomBar {
+  position: fixed; bottom: 14px; left: 14px; display: flex; gap: 10px; flex-wrap: wrap;
+  align-items: center;
+}
+.ctl {
+  display: flex; align-items: center; gap: 8px; color: #cfd6de; font-size: 12px;
+  background: rgba(0,0,0,0.38); padding: 8px 13px; border-radius: 9px;
+  backdrop-filter: blur(3px);
+}
+.ctl input[type="range"] { width: 110px; accent-color: #5DCAA5; cursor: pointer; }
+.ctl.link { text-decoration: none; color: #5DCAA5; }
+.ctl.link:hover { color: #7fe0be; }

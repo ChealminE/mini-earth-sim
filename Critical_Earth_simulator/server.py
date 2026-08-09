@@ -168,6 +168,8 @@ async def basic_experiments_index():
 app.mount("/js", StaticFiles(directory=RESOURCE_DIR / "js"), name="js")
 app.mount("/texture_image", StaticFiles(directory=RESOURCE_DIR / "texture_image"), name="textures")
 app.mount("/basic_experiments", StaticFiles(directory=RESOURCE_DIR / "basic_experiments"), name="basic_experiments")
+# 1인칭 탐험 모드 (firstperson/index.html) - html=True라 /firstperson/ 으로 접속하면 index.html이 열림
+app.mount("/firstperson", StaticFiles(directory=RESOURCE_DIR / "firstperson", html=True), name="firstperson")
 
 
 @app.get("/style.css")

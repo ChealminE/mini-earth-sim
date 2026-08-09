@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>미니 지구 모델 - 1인칭 탐험 모드</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<!-- 수중 진입 시 화면 전체에 씌우는 파란 틴트 -->
+<div id="waterOverlay"></div>
+
+<!-- 화면 정중앙 크로스헤어 -->
+<div id="crosshair"><span></span><span></span></div>
+
+<div id="hud">
+  <div class="hud-line"><b id="hudZone">습지·숲</b></div>
+  <div class="hud-line dim" id="hudPos">X 0m · Z 0m · 고도 0m</div>
+  <div class="hud-line dim">상태: <span id="hudMode">걷기</span></div>
+</div>
+
+<div id="helpPanel">
+  <h3>조작법 <span class="key">H</span> 로 열고 닫기</h3>
+  <table>
+    <tr><td><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></td><td>이동</td></tr>
+    <tr><td>마우스 드래그</td><td>시점 회전</td></tr>
+    <tr><td>더블클릭</td><td>마우스 고정(게임 모드) · <span class="key">ESC</span>로 해제</td></tr>
+    <tr><td><span class="key">Shift</span></td><td>달리기</td></tr>
+    <tr><td><span class="key">Space</span></td><td>점프 / 물에서 헤엄쳐 오르기</td></tr>
+    <tr><td><span class="key">Ctrl</span> 또는 <span class="key">C</span></td><td>앉기</td></tr>
+    <tr><td><span class="key">F</span></td><td>비행 모드 켜기/끄기</td></tr>
+    <tr><td><span class="key">V</span> 또는 <span class="key">F5</span></td><td>1인칭 / 3인칭 전환</td></tr>
+    <tr><td><span class="key">R</span></td><td>출발 지점으로 되돌아가기</td></tr>
+  </table>
+  <p class="note">눈높이 기준 1유닛 = 약 50m로 환산했습니다. 나무는 약 10m, 가장 높은 건물은 약 24m(8층)로 보입니다.</p>
+  <p class="note">서쪽(왼쪽) 해안 절벽에서 바다로 뛰어내리면 헤엄칠 수 있습니다.</p>
+</div>
+
+<div id="bottomBar">
+  <label class="ctl">밝기
+    <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.15">
+  </label>
+  <label class="ctl">CO₂
+    <input type="range" id="co2Slider" min="280" max="600" step="1" value="418">
+    <span id="co2Out">418</span> ppm
+  </label>
+  <a class="ctl link" href="/">← 전체 조감 모드로</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="fp-world.js"></script>
+<script src="fp-player.js"></script>
+<script src="fp-main.js"></script>
+</body>
+</html>
