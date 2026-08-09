@@ -693,29 +693,35 @@ function buildFirstPersonWorld(renderer) {
     big: new THREE.MeshStandardMaterial({ color: 0x53728f, roughness: 0.55, flatShading: true }),
     bigFin: new THREE.MeshStandardMaterial({ color: 0x35506a, roughness: 0.6 }),
   };
-  // 물고기는 +x를 바라보게 만든다 (지상 동물과 동일 규칙)
-  function buildFish(size, bodyMat, finMat, withEyes) {
+  // 물고기는 +x를 바라보게 만든다 (지상 동물과 동일 규칙).
+  // 개체 수를 3배로 늘리면서 마리당 메시 수가 곧바로 드로우콜로 이어지므로,
+  // 눈에 잘 안 띄는 부위(소형 어류의 등지느러미·눈)는 생략해 비용을 줄였다.
+  function buildFish(size, bodyMat, finMat, detail) {
     const g = new THREE.Group();
     g.add(bx(size * 1.0, size * 0.5, size * 0.28, bodyMat, 0, 0, 0));            // 몸통
     g.add(bx(size * 0.34, size * 0.34, size * 0.22, bodyMat, size * 0.56, 0, 0)); // 머리
     const tail = bx(size * 0.28, size * 0.46, size * 0.05, finMat, -size * 0.62, 0, 0);
     g.add(tail);
-    g.add(bx(size * 0.3, size * 0.16, size * 0.04, finMat, 0, size * 0.31, 0));   // 등지느러미
-    if (withEyes) addEyes(g, size * 0.68, size * 0.07, 0, size * 0.1, size * 0.062);
+    if (detail) {
+      g.add(bx(size * 0.3, size * 0.16, size * 0.04, finMat, 0, size * 0.31, 0)); // 등지느러미
+      addEyes(g, size * 0.68, size * 0.07, 0, size * 0.1, size * 0.062);
+    }
     // 물속이라 그림자는 거의 안 보이는데 비용은 그대로 들어서 끈다
     g.traverse(o => { if (o.isMesh) o.castShadow = false; });
     return { group: g, tail };
   }
 
+  // 바다 생물 밀도 배수 (성능이 부족하면 이 값만 낮추면 전체가 같이 줄어든다)
+  const SEA_DENSITY = 3;
   const FISH_KINDS = [
-    { n: 20, size: 0.005, body: fishMats.small, fin: fishMats.smallFin, eyes: false, speed: 0.045 },
-    { n: 12, size: 0.010, body: fishMats.mid,   fin: fishMats.midFin,   eyes: true,  speed: 0.034 },
-    { n: 5,  size: 0.017, body: fishMats.big,   fin: fishMats.bigFin,   eyes: true,  speed: 0.026 },
+    { n: 20 * SEA_DENSITY, size: 0.005, body: fishMats.small, fin: fishMats.smallFin, detail: false, speed: 0.045 },
+    { n: 12 * SEA_DENSITY, size: 0.010, body: fishMats.mid,   fin: fishMats.midFin,   detail: true,  speed: 0.034 },
+    { n: 5 * SEA_DENSITY,  size: 0.017, body: fishMats.big,   fin: fishMats.bigFin,   detail: true,  speed: 0.026 },
   ];
   FPWorld.fish = [];
   FISH_KINDS.forEach(k => {
     for (let i = 0; i < k.n; i++) {
-      const { group, tail } = buildFish(k.size, k.body, k.fin, k.eyes);
+      const { group, tail } = buildFish(k.size, k.body, k.fin, k.detail);
       const lx = (Math.random() - 0.5) * 2 * SEA_HALF_X;
       const lz = (Math.random() - 0.5) * 2 * SEA_HALF_Z;
       const floor = seabedY(lx, lz);
@@ -743,7 +749,7 @@ function buildFirstPersonWorld(renderer) {
     const g = new THREE.Group();
     const h = 0.016 + Math.random() * 0.014;
     g.add(bx(0.008, h * 0.45, 0.008, coralBranchMat, 0, h * 0.22, 0));   // 밑동
-    const arms = 3 + Math.floor(Math.random() * 3);
+    const arms = 3 + Math.floor(Math.random() * 2);
     for (let i = 0; i < arms; i++) {
       const ang = (i / arms) * Math.PI * 2 + Math.random() * 0.6;
       const len = h * (0.5 + Math.random() * 0.5);
@@ -791,7 +797,7 @@ function buildFirstPersonWorld(renderer) {
   }
   function buildSeagrass() {
     const g = new THREE.Group();
-    const n = 5 + Math.floor(Math.random() * 4);
+    const n = 4 + Math.floor(Math.random() * 2);
     for (let i = 0; i < n; i++) {
       const h = 0.009 + Math.random() * 0.008;
       const blade = bx(0.0035, h, 0.0009, grassSeaMat,
@@ -817,10 +823,10 @@ function buildFirstPersonWorld(renderer) {
   }
   FPWorld.corals = [];
   FPWorld.plants = [];
-  scatterOnSeabed(buildBranchCoral, 10, FPWorld.corals);
-  scatterOnSeabed(buildBrainCoral, 8, FPWorld.corals);
-  scatterOnSeabed(buildKelp, 14, FPWorld.plants);
-  scatterOnSeabed(buildSeagrass, 12, FPWorld.plants);
+  scatterOnSeabed(buildBranchCoral, 10 * SEA_DENSITY, FPWorld.corals);
+  scatterOnSeabed(buildBrainCoral, 8 * SEA_DENSITY, FPWorld.corals);
+  scatterOnSeabed(buildKelp, 14 * SEA_DENSITY, FPWorld.plants);
+  scatterOnSeabed(buildSeagrass, 12 * SEA_DENSITY, FPWorld.plants);
   FPWorld.coralMats = { branch: coralBranchMat, brain: coralBrainMat };
   FPWorld.CORAL_COLORS = { branch: CORAL_BRANCH_HEALTHY, brain: CORAL_BRAIN_HEALTHY, bleached: CORAL_BLEACHED };
   FPWorld.SEA_HALF_X = SEA_HALF_X;

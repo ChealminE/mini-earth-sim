@@ -115,10 +115,11 @@ function buildTool(kind) {
   screen.position.set(0, 0.0042, 0.00256);
   g.add(screen);
 
-  // 측정부는 전부 본체 '아래'로 내려온다 (실제 휴대용 계측기와 같은 배치).
-  // 손은 본체를 쥐고, 탐침은 손 앞쪽(+z)을 지나 아래로 빠져나가게 z를 살짝 띄워
-  // 손과 겹쳐 보이지 않게 한다.
-  const PROBE_Z = 0.003;
+  // 측정부는 전부 본체 '아래'로, 본체 중심축을 그대로 따라 내려온다.
+  // 예전엔 손과 겹치지 않게 z로 밀었는데, 손 그룹이 기울어져 있어서 화면상으로는
+  // 탐침이 손 '옆'으로 삐져나온 것처럼 보였다. 실제 휴대용 계측기처럼 주먹을 관통해
+  // 아래로 빠지게 두는 편이 훨씬 자연스럽다(가는 막대라 어색하지 않음).
+  const PROBE_Z = 0;
   if (kind === 'temp') {
     // 디지털 온도계: 본체 아래로 뻗은 가느다란 금속 탐침
     const probe = new THREE.Mesh(new THREE.CylinderGeometry(0.0006, 0.0008, 0.014, 8),
@@ -163,12 +164,14 @@ function buildHand() {
   const sleeve = new THREE.MeshStandardMaterial({ color: 0x3f6fa8, roughness: 0.85 });
   // 팔은 화면 바깥(카메라 뒤쪽, +z)으로 뻗게 둔다. 처음엔 팔 앞끝이 카메라 근평면
   // 코앞(0.006)까지 와서 화면 절반을 팔로 가려버렸다 - 반드시 카메라에서 떨어뜨려야 한다.
+  // 화면 아래에서 위로 팔 -> 손 -> 도구 순서로 쌓는다.
+  // 팔은 카메라 쪽(+z)·아래(-y)로 뻗어 화면 밖으로 빠지고, 그 끝에 손이 붙고,
+  // 손 바로 위(손끝)에 도구 본체가 얹힌다.
   const arm = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.007, 0.024), sleeve);
-  arm.position.set(0, -0.009, 0.012);
+  arm.position.set(0, -0.006, 0.011);
   g.add(arm);
-  // 손은 팔보다 화면 안쪽(-z)에 둬서, 아래로 내려오는 탐침(+z 쪽)과 겹치지 않게 한다
   const hand = new THREE.Mesh(new THREE.BoxGeometry(0.0078, 0.0078, 0.0085), skin);
-  hand.position.set(0, -0.0025, -0.004);
+  hand.position.set(0, -0.001, 0);
   g.add(hand);
   return g;
 }
@@ -210,7 +213,7 @@ FPTools.init = function (camera) {
   this.handGroup = new THREE.Group();
   // 화면 우하단. 뷰카메라(원점)에서 0.05유닛 떨어뜨려 화면 높이의 1/3쯤 차지하게 배치.
   this.handGroup.position.set(0.024, -0.023, -0.050);
-  this.handGroup.rotation.set(-0.16, 0.32, 0.10);
+  this.handGroup.rotation.set(-0.14, 0.24, 0.08);   // 표시창이 카메라를 더 정면으로 보게
   this.handGroup.visible = false;
   this.viewScene.add(this.handGroup);
 
@@ -223,9 +226,9 @@ FPTools.init = function (camera) {
   this.slots.forEach(t => {
     if (!t) return;
     t.group.visible = false;
-    // 표시창이 달린 본체를 손끝(손 윗면)에 딱 얹고, 탐침은 거기서 아래로 내려가
-    // 손 앞쪽(+z)을 스치며 빠진다. 예전엔 본체가 손에서 한참 떠 있었다.
-    t.group.position.set(0, 0.010, 0.003);
+    // 표시창이 달린 본체를 손끝(주먹 윗면)에 얹는다. 본체 아랫부분이 손과 살짝 겹쳐야
+    // '쥐고 있다'로 읽히고, 탐침은 그대로 주먹을 지나 아래로 빠진다.
+    t.group.position.set(0, 0.0105, 0);
     this.handGroup.add(t.group);
   });
 
