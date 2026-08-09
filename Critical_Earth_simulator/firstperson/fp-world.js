@@ -289,9 +289,9 @@ function buildFirstPersonWorld(renderer) {
       1.35 + Math.random() * 0.75,
       (Math.random() - 0.5) * (BOX_D + 2.2)
     );
-    const s = 0.8 + Math.random() * 1.1;
+    const s = (0.8 + Math.random() * 1.1) * 0.8;   // 크기 20% 축소
     c.group.scale.setScalar(s);
-    c.speed = 0.018 + Math.random() * 0.032;
+    c.speed = (0.018 + Math.random() * 0.032) * 2; // 흐르는 속도 2배
   }
   FPWorld.clouds = [];
   FPWorld.CLOUD_X_LIMIT = CLOUD_X_LIMIT;
@@ -559,6 +559,20 @@ function buildFirstPersonWorld(renderer) {
     m.castShadow = true;
     return m;
   }
+  // 눈: 흰자 구 + 그 앞에 살짝 튀어나온 눈동자 구. 머리 좌우 두 쪽에 붙인다.
+  // 각진 박스 몸통에 동그란 눈만 얹으면 저폴리인데도 인상이 확 순해진다.
+  const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.25 });
+  function addEyes(g, x, y, z, spread, r) {
+    [-spread, spread].forEach(dz => {
+      const w = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), eyeWhiteMat);
+      w.position.set(x, y, z + dz);
+      g.add(w);
+      const p = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), eyePupilMat);
+      p.position.set(x + r * 0.6, y, z + dz);   // 얼굴 앞쪽(+x)을 바라보게
+      g.add(p);
+    });
+  }
   // 모델은 전부 +x를 바라보게 만든다 (heading에 맞춰 group.rotation.y = -heading)
   function buildRabbit() {
     const g = new THREE.Group(), M = animalMats, legs = [];
@@ -566,6 +580,7 @@ function buildFirstPersonWorld(renderer) {
     g.add(bx(0.005, 0.0045, 0.0045, M.rabbitBody, 0.0068, 0.0072, 0));   // 머리
     g.add(bx(0.0012, 0.004, 0.0022, M.rabbitEar, 0.0072, 0.0108, -0.0013));
     g.add(bx(0.0012, 0.004, 0.0022, M.rabbitEar, 0.0072, 0.0108, 0.0013));
+    addEyes(g, 0.0090, 0.0080, 0, 0.0016, 0.0011);
     g.add(bx(0.0025, 0.0025, 0.0025, M.rabbitBody, -0.0062, 0.006, 0));  // 꼬리
     [[-0.003, -0.0022], [-0.003, 0.0022], [0.003, -0.0022], [0.003, 0.0022]].forEach(([lx, lz]) => {
       const l = bx(0.0022, 0.0035, 0.0022, M.rabbitEar, lx, 0.0018, lz);
@@ -584,6 +599,7 @@ function buildFirstPersonWorld(renderer) {
       g.add(bx(0.0016, 0.008, 0.0016, M.deerDark, 0.015, 0.038, dz));
       g.add(bx(0.006, 0.0016, 0.0016, M.deerDark, 0.018, 0.041, dz));
     });
+    addEyes(g, 0.0205, 0.0335, 0, 0.0022, 0.0013);
     g.add(bx(0.004, 0.004, 0.003, M.deerBody, -0.014, 0.023, 0));        // 꼬리
     [[-0.009, -0.004], [-0.009, 0.004], [0.009, -0.004], [0.009, 0.004]].forEach(([lx, lz]) => {
       const l = bx(0.003, 0.016, 0.003, M.deerDark, lx, 0.008, lz);
@@ -597,6 +613,7 @@ function buildFirstPersonWorld(renderer) {
     g.add(bx(0.008, 0.007, 0.007, M.wolfBody, 0.012, 0.0135, 0));        // 머리
     g.add(bx(0.004, 0.003, 0.004, M.wolfDark, 0.017, 0.012, 0));         // 주둥이
     [-0.002, 0.002].forEach(dz => g.add(bx(0.0015, 0.003, 0.0025, M.wolfDark, 0.010, 0.018, dz))); // 귀
+    addEyes(g, 0.0152, 0.0150, 0, 0.0024, 0.0014);
     g.add(bx(0.008, 0.003, 0.003, M.wolfDark, -0.012, 0.014, 0));        // 꼬리
     [[-0.006, -0.0032], [-0.006, 0.0032], [0.006, -0.0032], [0.006, 0.0032]].forEach(([lx, lz]) => {
       const l = bx(0.0028, 0.008, 0.0028, M.wolfDark, lx, 0.004, lz);
@@ -610,6 +627,7 @@ function buildFirstPersonWorld(renderer) {
     g.add(bx(0.013, 0.012, 0.012, M.bearBody, 0.022, 0.026, 0));         // 머리
     g.add(bx(0.005, 0.005, 0.006, M.bearDark, 0.030, 0.024, 0));         // 주둥이
     [-0.004, 0.004].forEach(dz => g.add(bx(0.003, 0.004, 0.003, M.bearDark, 0.020, 0.033, dz))); // 귀
+    addEyes(g, 0.0270, 0.0282, 0, 0.0040, 0.0022);
     [[-0.011, -0.006], [-0.011, 0.006], [0.011, -0.006], [0.011, 0.006]].forEach(([lx, lz]) => {
       const l = bx(0.006, 0.014, 0.006, M.bearDark, lx, 0.007, lz);
       g.add(l); legs.push(l);
@@ -752,7 +770,7 @@ function buildFirstPersonWorld(renderer) {
       group.add(fender);
       bodyParts.push(fender);
     });
-    // 배기구: 차체 뒤쪽(-x) 아래. 내연기관차일 때 여기서 매연이 뿜어져 나온다.
+    // 배기구: 차체 뒤쪽(-x) 아래. 내연기관차에만 달리고 전기차에서는 통째로 숨긴다.
     const tail = new THREE.Mesh(
       new THREE.CylinderGeometry(0.0035, 0.0035, 0.008, 8),
       new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.6, metalness: 0.7 })
@@ -760,19 +778,44 @@ function buildFirstPersonWorld(renderer) {
     tail.rotation.z = Math.PI / 2;
     tail.position.set(-0.048, bodyBottomY + 0.004, -0.012);
     group.add(tail);
-    return { group, bodyParts, tailLocal: new THREE.Vector3(-0.054, bodyBottomY + 0.004, -0.012) };
+
+    // 전기차 표식: 후드(앞부분) 위에 눕혀 놓은 번개 마크. 전기차일 때만 보인다.
+    const bolt = new THREE.Shape();
+    bolt.moveTo(0.55, 1.00);
+    bolt.lineTo(0.13, 0.46);
+    bolt.lineTo(0.44, 0.46);
+    bolt.lineTo(0.32, 0.00);
+    bolt.lineTo(0.86, 0.58);
+    bolt.lineTo(0.55, 0.58);
+    bolt.lineTo(0.55, 1.00);
+    const boltGeo = new THREE.ShapeGeometry(bolt);
+    boltGeo.translate(-0.5, -0.5, 0);          // 도형 중심을 원점으로
+    boltGeo.scale(0.024, 0.024, 1);
+    boltGeo.rotateX(-Math.PI / 2);             // 후드 위에 눕힘
+    boltGeo.rotateY(-Math.PI / 2);             // 번개 끝이 차 앞쪽을 향하게
+    const boltMesh = new THREE.Mesh(boltGeo, new THREE.MeshStandardMaterial({
+      color: 0xeafff8, emissive: 0x7ffcd8, emissiveIntensity: 0.9,
+      roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide,
+    }));
+    boltMesh.position.set(0.030, bodyBottomY + bodyH + 0.0006, 0);
+    group.add(boltMesh);
+
+    return {
+      group, bodyParts, tail, bolt: boltMesh,
+      tailLocal: new THREE.Vector3(-0.054, bodyBottomY + 0.004, -0.012),
+    };
   }
   const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
                     [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
                     [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
   FPWorld.cars = [];
   carSpots.forEach((pos, i) => {
-    const { group: car, bodyParts, tailLocal } = buildCarModel();
+    const { group: car, bodyParts, tail, bolt, tailLocal } = buildCarModel();
     car.position.set(pos[0], GROUND_BASE, pos[1]);
     car.rotation.y = (i % 3) * 0.04;
     cityGroup.add(car);
     FPWorld.cars.push({
-      group: car, bodyParts, isGas: true,
+      group: car, bodyParts, tail, bolt, isGas: true,
       // 배기구 월드 좌표 (cityGroup이 +ZONE_W 밀려 있으므로 더해줌)
       tail: new THREE.Vector3(pos[0] + tailLocal.x + ZONE_W, GROUND_BASE + tailLocal.y, pos[1] + tailLocal.z),
     });
@@ -873,6 +916,8 @@ function applyWorldCO2(ppm) {
       car.isGas = isGas;
       const mat = isGas ? FPWorld.gasCarMat : FPWorld.evCarMat;
       car.bodyParts.forEach(p => { p.material = mat; });
+      car.tail.visible = isGas;    // 전기차엔 배기구 자체가 없음
+      car.bolt.visible = !isGas;   // 전기차만 후드에 번개 마크
     });
     FPWorld.gasCarCount = gasCount;
   }

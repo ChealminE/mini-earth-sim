@@ -14,6 +14,7 @@ const camera = new THREE.PerspectiveCamera(75, 1, 0.002, 60);
 buildFirstPersonWorld(renderer);
 applyWorldCO2(418);
 FPPlayer.init(camera, glCanvas);
+FPTools.init(camera);   // 단축바 + 손에 든 도구 (camera를 씬에 넣는 것도 여기서 처리)
 
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;

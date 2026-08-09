@@ -314,13 +314,47 @@ function buildAvatar() {
 
 // ── 입력 바인딩 ─────────────────────────────────────────────────────────────
 function bindInput(P, canvas) {
+  const settingsPanel = document.getElementById('settingsPanel');
+  const overlayEl = document.getElementById('startOverlay');
+
+  // E키 설정창: 포인터락 상태에서는 마우스 커서가 없어서 슬라이더를 못 만진다.
+  // E를 누르면 포인터락을 풀어 커서를 돌려주고, 다시 E(또는 닫기)로 게임에 복귀한다.
+  function openSettings() {
+    P.settingsOpen = true;
+    settingsPanel.classList.remove('hidden');
+    overlayEl.classList.add('hidden');
+    P.keys = Object.create(null);              // 열린 동안 이동 입력 정리
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeSettings() {
+    P.settingsOpen = false;
+    settingsPanel.classList.add('hidden');
+    // 브라우저가 포인터락 재요청을 잠깐 막을 수 있으므로, 실패하면 시작 오버레이로 폴백
+    if (canvas.requestPointerLock) canvas.requestPointerLock();
+    setTimeout(() => {
+      if (document.pointerLockElement !== canvas && !P.settingsOpen) overlayEl.classList.remove('hidden');
+    }, 350);
+  }
+  P.openSettings = openSettings;
+  P.closeSettings = closeSettings;
+  P.toggleSettings = () => (P.settingsOpen ? closeSettings() : openSettings());
+  document.getElementById('settingsCloseBtn').addEventListener('click', closeSettings);
+
   window.addEventListener('keydown', e => {
+    // e.repeat 가드: E를 누르고 있으면 keydown이 연속으로 들어와 창이 깜빡인다
+    if (e.code === 'KeyE') { if (!e.repeat) P.toggleSettings(); e.preventDefault(); return; }
+    if (P.settingsOpen) return;                // 설정창이 열려 있으면 게임 조작 차단
     P.keys[e.code] = true;
     if (e.code === 'F5' || e.code === 'KeyV') { P.thirdPerson = !P.thirdPerson; e.preventDefault(); }
     if (e.code === 'KeyF') P.flying = !P.flying;
     if (e.code === 'KeyR') P.respawn();
     if (e.code === 'KeyH') document.getElementById('helpPanel').classList.toggle('hidden');
     if (e.code === 'Space') e.preventDefault();   // 스페이스로 페이지가 스크롤되는 것 방지
+    // 숫자키 1~9로 단축바 선택
+    if (e.code.startsWith('Digit')) {
+      const n = Number(e.code.slice(5));
+      if (n >= 1 && n <= 9) FPTools.select(n - 1);
+    }
   });
   window.addEventListener('keyup', e => { P.keys[e.code] = false; });
   window.addEventListener('blur', () => { P.keys = Object.create(null); });
@@ -345,17 +379,26 @@ function bindInput(P, canvas) {
   P.enterGame = enterGame;
   overlay.addEventListener('click', enterGame);
   canvas.addEventListener('click', () => {
-    if (document.pointerLockElement !== canvas) enterGame();
+    if (document.pointerLockElement !== canvas && !P.settingsOpen) enterGame();
   });
 
   window.addEventListener('pointermove', e => {
     if (document.pointerLockElement === canvas) look(e.movementX, e.movementY);
   });
 
-  // 포인터락이 풀리면(ESC) 다시 안내 오버레이를 띄우고 입력을 비운다
+  // 도구를 든 상태에서 좌클릭 = 측정
+  window.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (document.pointerLockElement !== canvas) return;
+    FPTools.use();
+  });
+
+  // 포인터락이 풀리면(ESC) 다시 안내 오버레이를 띄운다.
+  // 단, E키로 설정창을 연 경우는 의도된 해제이므로 오버레이를 띄우지 않는다.
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvas;
-    overlay.classList.toggle('hidden', locked);
+    if (locked) overlay.classList.add('hidden');
+    else if (!P.settingsOpen) overlay.classList.remove('hidden');
     if (!locked) P.keys = Object.create(null);
   });
 }

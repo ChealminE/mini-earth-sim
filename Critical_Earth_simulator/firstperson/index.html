@@ -43,24 +43,42 @@
     <tr><td><span class="key">F</span></td><td>비행 모드 켜기/끄기</td></tr>
     <tr><td><span class="key">V</span> 또는 <span class="key">F5</span></td><td>1인칭 / 3인칭 전환</td></tr>
     <tr><td><span class="key">R</span></td><td>출발 지점으로 되돌아가기</td></tr>
+    <tr><td><span class="key">E</span></td><td>설정창 열기/닫기 (밝기·CO₂)</td></tr>
+    <tr><td><span class="key">1</span>~<span class="key">9</span></td><td>단축바에서 도구 선택</td></tr>
+    <tr><td>좌클릭</td><td>든 도구로 바라보는 지점 측정</td></tr>
   </table>
+  <p class="note">도구 1 온도계(녹지·도시·바다) · 2 pH미터(바다만) · 3 CO₂센서(수중 제외)</p>
   <p class="note">눈높이 기준 1유닛 = 약 50m로 환산했습니다. 나무는 약 10m, 가장 높은 건물은 약 24m(8층)로 보입니다.</p>
   <p class="note">서쪽(왼쪽) 해안 절벽에서 바다로 뛰어내리면 헤엄칠 수 있습니다.</p>
 </div>
 
-<div id="bottomBar">
-  <label class="ctl">밝기
-    <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.15">
-  </label>
-  <label class="ctl">CO₂
-    <input type="range" id="co2Slider" min="280" max="1000" step="1" value="418">
-    <span id="co2Out">418</span> ppm
-  </label>
-  <a class="ctl link" href="/">← 전체 조감 모드로</a>
+<!-- 마인크래프트식 단축바 (숫자키 1~9) -->
+<div id="hotbar"></div>
+
+<!-- E키로 여는 설정창. 열려 있는 동안은 마우스 커서가 돌아온다. -->
+<div id="settingsPanel" class="hidden">
+  <div class="settings-box">
+    <h3>설정 <span class="hint-key">E</span> 로 닫기</h3>
+    <label class="row">
+      <span class="lbl">밝기</span>
+      <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.15">
+    </label>
+    <label class="row">
+      <span class="lbl">CO₂ 농도</span>
+      <input type="range" id="co2Slider" min="280" max="1000" step="1" value="418">
+      <span class="val"><span id="co2Out">418</span> ppm</span>
+    </label>
+    <p class="note">CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <div class="settings-actions">
+      <button id="settingsCloseBtn" class="settings-btn">돌아가기</button>
+      <a class="settings-btn ghost" href="/">전체 조감 모드로</a>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="fp-world.js"></script>
+<script src="fp-tools.js"></script>
 <script src="fp-player.js"></script>
 <script src="fp-main.js"></script>
 </body>
