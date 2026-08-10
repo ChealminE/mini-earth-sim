@@ -110,6 +110,8 @@ const FPWorld = {
   beachRamp: null,    // 해변 모래 경사로
   leafMeshes: [],     // 나뭇잎 덩어리 (겨울에 숨겨 낙엽 표현)
   grass: null,        // {mesh, baseHSL, count} - 계절마다 다시 칠하려면 원본 색조가 필요
+  animalGroups: [],   // 온도계로 체온을 잴 수 있는 동물 (그룹 단위)
+  fishGroups: [],     // 어류 - 변온동물이라 체온이 수온을 따라간다
   seasonSkin: null,   // 계절이 색을 바꾸는 재질들과 그 원래 색
   co2: 418,
   BOX_W, BOX_D, BOX_H, ZONE_W, GROUND_BASE, OCEAN_BASE, waveBaseY, TERRAIN_TOP,
@@ -852,11 +854,17 @@ function buildFirstPersonWorld(renderer) {
       const z = (Math.random() - 0.5) * 2 * ANIM_HALF_D;
       group.position.set(x, wetlandY(x, z), z);
       world.add(group);
-      FPWorld.animals.push({
+      const a = {
         kind, group, legs, hop,
         x, z, heading: Math.random() * Math.PI * 2,
         state: 'walk', timer: Math.random() * 2.5, phase: Math.random() * 10,
-      });
+      };
+      // 온도계가 동물을 집어낼 수 있게 그룹에 자기 자신을 심어 둔다.
+      // 동물 한 마리는 메시가 여러 개라, 레이캐스트로 맞은 메시에서 부모를 거슬러
+      // 올라가며 이 표시를 찾는 방식이 가장 단순하다.
+      group.userData.animal = a;
+      FPWorld.animalGroups.push(group);
+      FPWorld.animals.push(a);
     }
   });
 
@@ -925,6 +933,8 @@ function buildFirstPersonWorld(renderer) {
       const ly = floor + 0.012 + Math.random() * Math.max(0.004, SEA_CEIL - floor - 0.02);
       group.position.set(lx, ly, lz);
       oceanGroup.add(group);
+      group.userData.fish = true;
+      FPWorld.fishGroups.push(group);
       FPWorld.fish.push({
         group, tail, lx, ly, lz,
         heading: Math.random() * Math.PI * 2, pitch: 0,

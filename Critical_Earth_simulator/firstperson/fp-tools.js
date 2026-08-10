@@ -59,6 +59,25 @@ const SPOT = {
 //
 // 빙하의 cap: 얼음 표면은 녹는점 위로 못 올라간다. 들어온 열을 녹는 데 다 쓰기 때문
 // (융해 잠열). CO2가 아무리 높아도 0°C에서 멈추게 상한을 걸었다.
+
+// ── 살아 있는 것의 체온 ─────────────────────────────────────────────────────
+// 동물을 겨누면 체온이 나온다. 그냥 재미 요소로 둘 수도 있었지만, 한 걸음 더 나가면
+// 여기가 이 도구 전체에서 가장 좋은 교육 소재가 된다:
+//   포유류는 정온동물이라 CO2·계절·시간이 아무리 변해도 체온이 일정하다 (amp=0, day=0).
+//   어류는 변온동물이라 체온이 곧 수온이다 - 바다가 더워지면 물고기 체온도 오른다.
+// 둘을 나란히 재면 그 차이가 그대로 드러난다. "환경이 변해도 안 변하는 값"과
+// "환경을 그대로 따라가는 값"을 같은 도구로 비교하게 하는 것이 요점이다.
+const BODY_TEMPS = {
+  bodyRabbit: { base: 39.0, amp: 0, day: 0, label: '토끼 체온' },
+  bodyDeer:   { base: 38.5, amp: 0, day: 0, label: '사슴 체온' },
+  bodyWolf:   { base: 38.5, amp: 0, day: 0, label: '늑대 체온' },
+  bodyBear:   { base: 37.5, amp: 0, day: 0, label: '곰 체온' },
+  bodyFish:   { base: 0,    amp: 0, day: 0, label: '어류 체온 (변온)' },
+};
+Object.assign(SPOT, BODY_TEMPS);
+const ANIMAL_SPOT = { '토끼': 'bodyRabbit', '사슴': 'bodyDeer', '늑대': 'bodyWolf', '곰': 'bodyBear' };
+// 곰은 겨울에 동면한다. 동면 중에는 대사를 낮춰 체온이 크게 떨어진다(실제로 31°C 근처).
+const BEAR_HIBERNATE_T = 31.0;
 const AIR_MIX_H = 0.06;        // 지면에서 이 높이(실척 3m) 안쪽은 지면 열의 영향을 받는다
 const AIR_SAMPLE_DIST = 0.3;   // 허공을 겨눴을 때 대기를 뜨는 거리 (실척 15m)
 // 대기 -> 그 아래 지면의 대응 관계 (지면 열 섞임 계산용)
@@ -86,9 +105,16 @@ function spotBaseTemp(spot, ppm, hour) {
 }
 function measureTemperature(spot, x, z, ppm, aboveGround) {
   const S = SPOT[spot];
+  // 어류는 변온동물이라 체온이 곧 주변 수온이다. 해수와 정확히 같은 값을 돌려준다.
+  if (spot === 'bodyFish') return seaTemperature(ppm);
+  // 곰은 겨울에 동면해 체온이 크게 내려간다
+  if (spot === 'bodyBear' && FPWorld.season === 'winter') {
+    return BEAR_HIBERNATE_T + Math.sin(x * 37.1 + z * 21.7) * 0.3;
+  }
   // 같은 구역 안에서도 지점마다 조금씩 다르게 (측정하는 맛)
   const jitter = Math.sin(x * 37.1 + z * 21.7) * 0.5 + Math.sin(x * 11.3 - z * 53.9) * 0.35;
-  let v = spotBaseTemp(spot, ppm) + jitter;
+  // 정온동물은 개체차만 있고 환경에는 반응하지 않는다 (흔들림도 훨씬 작다)
+  let v = spotBaseTemp(spot, ppm) + (S.amp === 0 && S.day === 0 ? jitter * 0.4 : jitter);
   // 대기를 잴 때 지면 바로 위면 지면 온도 쪽으로 끌어당긴다.
   // 뜨거운 아스팔트 바로 위 공기가 뜨거운 건 실제로 그렇고, 위로 갈수록 옅어진다.
   if (aboveGround != null && SPOT_GROUND[spot]) {
@@ -176,8 +202,11 @@ function pickTarget() {
   const rc = FPTools._rc;
   rc.setFromCamera({ x: 0, y: 0 }, cam);
   rc.far = 1.4;   // 실척 약 70m까지 닿음
-  const targets = FPWorld.walkables.concat([FPWorld.waterMesh], FPWorld.iceMeshes);
-  const hits = rc.intersectObjects(targets, false);
+  // 동물·어류는 한 마리가 메시 여러 개라 그룹째 넣고 재귀 탐색(true)을 켠다.
+  // 지형 쪽은 전부 단일 메시라 재귀가 필요 없지만, 한 번에 쏘려면 옵션을 맞춰야 한다.
+  const targets = FPWorld.walkables.concat(
+    [FPWorld.waterMesh], FPWorld.iceMeshes, FPWorld.animalGroups, FPWorld.fishGroups);
+  const hits = rc.intersectObjects(targets, true);
   const half = FPWorld.ZONE_W / 2;
 
   if (!hits.length) {
@@ -206,6 +235,20 @@ function pickTarget() {
   const h = hits[0], p = h.point;
   const isWater = h.object === FPWorld.waterMesh;
   const zone = p.x < -half ? 'ocean' : (p.x > half ? 'city' : 'green');
+
+  // 살아 있는 것을 맞췄는지 먼저 본다. 맞은 메시에서 부모를 거슬러 올라가며 표시를 찾는다.
+  for (let o = h.object; o; o = o.parent) {
+    if (o.userData && o.userData.animal) {
+      const spotKey = ANIMAL_SPOT[o.userData.animal.kind.name];
+      if (spotKey) return { point: p, zone, isWater: false, isAir: false, spot: spotKey,
+                            dist: h.distance, aboveGround: 0, creature: o.userData.animal };
+    }
+    if (o.userData && o.userData.fish) {
+      return { point: p, zone: 'ocean', isWater: false, isAir: false, spot: 'bodyFish',
+               dist: h.distance, aboveGround: 0, creature: true };
+    }
+  }
+
   let spot;
   if (FPWorld.iceMeshes.includes(h.object)) spot = 'ice';
   else if (isWater) spot = 'sea';
@@ -504,6 +547,7 @@ FPTools.use = function () {
     tool.reading.spot = hit.spot;
     tool.reading.zone = hit.zone;
     tool.reading.at = hit.point.clone();
+    tool.reading.creature = !!hit.creature;
   }
 };
 

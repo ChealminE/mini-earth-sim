@@ -23,6 +23,8 @@ const FPField = {
 const SPOT_KO = {
   sea: '해수', ice: '빙하', beach: '해변 모래', green: '녹지 지면', city: '도시 지면',
   airOcean: '해양 대기', airGreen: '녹지 대기', airCity: '도심 대기',
+  bodyRabbit: '토끼 체온', bodyDeer: '사슴 체온', bodyWolf: '늑대 체온',
+  bodyBear: '곰 체온', bodyFish: '어류 체온',
 };
 const KIND_KO = { temp: '온도', ph: 'pH', co2: 'CO2' };
 
@@ -46,6 +48,13 @@ FPField.record = function (tool, value, reading) {
     iso: new Date().toISOString(),
   };
   this.rows.push(row);
+  // 이스터에그: 살아 있는 것의 체온을 처음 쟀을 때만 요점을 한 번 짚어 준다
+  if (reading.creature && !this._bodySeen) {
+    this._bodySeen = true;
+    this.toast(row.spotKo.includes('어류')
+      ? '🐟 어류는 변온동물이라 체온이 곧 수온입니다. 육지 동물과 비교해 보세요.'
+      : '🐾 정온동물은 바깥 온도가 변해도 체온이 일정합니다. CO₂를 올려 보세요.', 6500);
+  }
   if (this.transect) this.addTransectPoint(row);
   this.refresh();
   this.flash();
@@ -179,6 +188,16 @@ FPField.close = function () {
   this.el.classList.add('hidden');
 };
 FPField.toggle = function () { this.panelOpen ? this.close() : this.open(); };
+
+// 짧은 안내 문구. 이스터에그를 처음 발견했을 때 한 번만 띄운다.
+FPField.toast = function (msg, ms) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(this._toastT);
+  this._toastT = setTimeout(() => el.classList.remove('on'), ms || 5000);
+};
 
 // 측정이 기록될 때마다 화면 구석 배지를 잠깐 밝힌다 (패널을 안 열어놔도 남은 걸 알게)
 FPField.flash = function () {
