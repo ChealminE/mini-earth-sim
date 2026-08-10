@@ -102,6 +102,10 @@ const FPWorld = {
   waterMesh: null,
   waveGeo: null, wavePosAttr: null, waveBase: null,
   waterWall: null,    // 물 옆면(윗변이 파도를 따라감)
+  // 실측 도구가 측정 지점을 구분하는 데 쓰는 목록
+  trees: [],          // {x, z, r} - 나무 근처는 광합성으로 CO2가 낮게 나온다
+  iceMeshes: [],      // 빙하(유빙) 메시
+  beachRamp: null,    // 해변 모래 경사로
   co2: 418,
   BOX_W, BOX_D, BOX_H, ZONE_W, GROUND_BASE, OCEAN_BASE, waveBaseY, TERRAIN_TOP,
   waveHeightAt, waveNormalAt, wetlandY,
@@ -379,6 +383,7 @@ function buildFirstPersonWorld(renderer) {
     ramp.castShadow = true;
     world.add(ramp);
     FPWorld.walkables.push(ramp);
+    FPWorld.beachRamp = ramp;   // 온도계가 '해변 모래'를 따로 집어낼 수 있게
   }
 
   // ── 해양: 수면 + 물 몸통 ────────────────────────────────────────────────
@@ -466,6 +471,7 @@ function buildFirstPersonWorld(renderer) {
     ice.position.set(x, waveBaseY + s * 0.35, z);
     ice.castShadow = true;
     oceanGroup.add(ice);
+    FPWorld.iceMeshes.push(ice);   // 온도계가 '빙하'를 따로 집어낼 수 있게
     FPWorld.cylinders.push({ x: x - ZONE_W, z, r: s * 0.95, top: ice.position.y + s * 0.5 });
   });
 
@@ -520,6 +526,10 @@ function buildFirstPersonWorld(renderer) {
     world.add(tree);
     // 줄기만 막고 잎은 통과 - 나무 밑을 지나갈 수 있어야 자연스럽다
     FPWorld.cylinders.push({ x, z, r: rBot + 0.004, top: wetlandY(x, z) + h });
+    // CO2 센서가 "나무 근처"를 판정하는 데 쓴다.
+    // 잎 덩어리는 중심에서 0.03 밀린 자리에 반지름 0.035~0.055로 붙고 z로 1.6배
+    // 늘어나므로 수관이 덮는 범위가 대략 0.11(실척 5.5m)이다.
+    FPWorld.trees.push({ x, z, r: 0.11 });
   }
 
   // 진흙 패치 + 물웅덩이 (걸어서 지나갈 수 있게 충돌체 없음)
