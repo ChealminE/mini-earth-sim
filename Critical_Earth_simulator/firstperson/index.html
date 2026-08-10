@@ -140,6 +140,20 @@
     <p class="note">계절은 기온(여름 +8 / 겨울 −10°C)·일출일몰·경관을 함께 바꿉니다.
       <b>CO₂도 계절을 탑니다</b> — 북반구 식생 때문에 봄에 높고 가을에 낮습니다(킬링 곡선).
       슬라이더 값은 연평균이고, 센서로 재는 값은 그 위에서 흔들립니다.</p>
+    <div class="row">
+      <span class="lbl">날씨</span>
+      <div class="btn-row wrap" id="weatherBtns">
+        <button data-w="clear">맑음</button><button data-w="rain">비</button
+        ><button data-w="storm">폭풍</button><button data-w="snow">눈</button
+        ><button data-w="squall">스콜</button><button data-w="fog">안개</button>
+      </div>
+    </div>
+    <label class="row check">
+      <input type="checkbox" id="weatherRandomChk"><span class="lbl">무작위 날씨 (5분마다 바뀜)</span>
+    </label>
+    <p class="note">날씨는 <b>측정값도 바꿉니다.</b> 비는 지면을 2.5°C 낮추고,
+      <b>안개는 일교차를 0.4배로 죽입니다</b> — 복사냉각과 복사가열을 둘 다 막기 때문입니다.
+      안개 낀 날 밤낮 온도를 재서 맑은 날과 비교해 보세요. 스콜은 2~3분 뒤 저절로 갭니다.</p>
     <label class="row check">
       <input type="checkbox" id="soundChk" checked><span class="lbl">환경음 (파도·바람·풀벌레·차량)</span>
     </label>
@@ -158,6 +172,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="/js/earth-model.js"></script>
 <script src="fp-world.js"></script>
+<script src="fp-weather.js"></script>
 <script src="fp-audio.js"></script>
 <script src="fp-field.js"></script>
 <script src="fp-tools.js"></script>

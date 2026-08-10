@@ -79,6 +79,8 @@ FPAudio.init = function () {
   this.nodes.city = mk(brown, 'lowpass', 180);
   // 수중: 물속에서는 고음이 다 죽고 먹먹해진다.
   this.nodes.under = mk(brown, 'lowpass', 150);
+  // 비: 수많은 물방울이 부딪히는 소리라 고역이 강한 백색 잡음이 그럴듯하다.
+  this.nodes.rain = mk(white, 'highpass', 1100);
 
   // 풀벌레/매미: 짧은 삑 소리를 주기적으로 낸다. 낮에는 매미(높고 빠름),
   // 밤에는 귀뚜라미(낮고 느림)로 바뀐다 - 밤이 됐다는 걸 귀로도 알게 한다.
@@ -86,6 +88,37 @@ FPAudio.init = function () {
   this.nodes.chirpGain.gain.value = 0;
   this.nodes.chirpGain.connect(master);
   this._chirpT = 0;
+  this._rainLevel = 0;
+  this._quiet = 1;          // 눈 오는 날은 세상이 조용해진다
+};
+
+// 날씨가 바뀔 때 FPWeather가 알려준다
+FPAudio.setWeather = function (kind, W) {
+  this._rainLevel = W.rain > 0 ? Math.min(0.45, 0.16 + 0.16 * W.rain) : 0;
+  // 눈은 소리를 흡수해서 오히려 고요해진다. 안개도 소리를 먹는다.
+  this._quiet = kind === 'snow' ? 0.35 : (kind === 'fog' ? 0.6 : 1);
+};
+
+// 천둥 한 번. dist 0=코앞, 1=멀리.
+// 가까우면 '쫙' 하고 날카롭게, 멀면 고역이 깎여 '우르릉'으로 들린다.
+FPAudio.thunder = function (dist) {
+  const ctx = this.ctx;
+  if (!ctx || !this.enabled) return;
+  const d = Math.min(1, Math.max(0, dist));
+  const dur = 1.4 + d * 1.8;
+  const src = ctx.createBufferSource();
+  src.buffer = makeNoiseBuffer(ctx, dur, true);
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 900 - d * 700;      // 멀수록 저음만 남는다
+  const g = ctx.createGain();
+  const peak = 0.55 * (1 - d * 0.6);
+  g.gain.setValueAtTime(0.0001, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.04 + d * 0.25);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+  src.connect(f); f.connect(g); g.connect(this.nodes.master);
+  src.start();
+  src.stop(ctx.currentTime + dur + 0.05);
 };
 
 FPAudio.setEnabled = function (on) {
@@ -132,19 +165,23 @@ FPAudio.update = function (dt) {
     // 급하게 바꾸면 '툭' 하는 잡음이 난다. 지수적으로 따라가게 한다.
     node.gain.gain.value += (v - node.gain.gain.value) * Math.min(1, dt * 3);
   };
-  to(N.waves, sea * 0.55 * air);
+  to(N.waves, sea * 0.55 * air * this._quiet);
+  // 비: 어디서나 같은 세기로 들린다(머리 위에서 내리므로). 수중에서는 안 들린다.
+  to(N.rain, this._rainLevel * air);
   // 바람은 어디서나 조금씩, 녹지에서 가장 크게. 밤에는 조금 잦아든다.
-  to(N.wind, (0.05 + green * 0.16) * (0.6 + 0.4 * lit) * air);
+  to(N.wind, (0.05 + green * 0.16) * (0.6 + 0.4 * lit) * air * this._quiet);
   // 도심 차량 소음은 내연기관차 비율을 그대로 따라간다.
   // CO2를 낮춰 전부 전기차로 바꾸면 도시가 조용해진다 - 귀로 듣는 CO2 지표다.
   const gasRatio = FPWorld.cars && FPWorld.cars.length
     ? FPWorld.gasCarCount / FPWorld.cars.length : 0;
-  to(N.city, city * (0.06 + 0.34 * gasRatio) * (0.55 + 0.45 * lit) * air);
+  to(N.city, city * (0.06 + 0.34 * gasRatio) * (0.55 + 0.45 * lit) * air * this._quiet);
   to(N.under, under ? 0.5 : 0);
 
   // 벌레 소리 - 녹지에서만, 밤일수록 잦게
   const night = lit < 0.4;
-  N.chirpGain.gain.value += ((under ? 0 : green * 0.9) - N.chirpGain.gain.value) * Math.min(1, dt * 3);
+  // 비·눈이 오면 풀벌레가 운다는 게 어색하므로 같이 잦아든다
+  const bugs = under ? 0 : green * 0.9 * (this._rainLevel > 0 ? 0.15 : 1) * this._quiet;
+  N.chirpGain.gain.value += (bugs - N.chirpGain.gain.value) * Math.min(1, dt * 3);
   this._chirpT -= dt;
   if (this._chirpT <= 0 && green > 0.15 && !under) {
     this.chirp(night);

@@ -75,10 +75,14 @@ function seasonTempOffset(spot) {
 function spotBaseTemp(spot, ppm, hour) {
   const S = SPOT[spot];
   const h = hour == null ? FPWorld.hour : hour;
-  // (diurnal(h) - 정오값)이라 정오에는 일교차 항이 0이 된다
+  // (diurnal(h) - 정오값)이라 정오에는 일교차 항이 0이 된다.
+  // 일교차 진폭에 날씨 계수를 곱하는 게 이 모형의 요점 중 하나다:
+  // 안개·구름은 낮의 복사가열과 밤의 복사냉각을 둘 다 막아 밤낮 차이를 죽인다.
+  const wDay = typeof weatherDiurnalK === 'function' ? weatherDiurnalK() : 1;
+  const wTemp = typeof weatherTempOffset === 'function' ? weatherTempOffset(spot) : 0;
   return S.base + S.amp * warmingSince280(ppm)
-       + S.day * (diurnal(h) - DIURNAL_AT_NOON)
-       + seasonTempOffset(spot);
+       + S.day * wDay * (diurnal(h) - DIURNAL_AT_NOON)
+       + seasonTempOffset(spot) + wTemp;
 }
 function measureTemperature(spot, x, z, ppm, aboveGround) {
   const S = SPOT[spot];
