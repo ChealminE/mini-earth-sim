@@ -60,7 +60,7 @@ function syncTimeUI() {
 timeSlider.addEventListener('input', () => {
   FPWorld.hour = Number(timeSlider.value);
   FPWorld.timeFlowing = false;      // 손으로 옮기면 자동 흐름은 멈춘다
-  applyWorldCO2(FPWorld.co2);       // 광합성량이 바뀌므로 대기 상태도 다시 계산
+  FPWorld.refresh();                // 광합성량이 바뀌므로 대기 상태도 다시 계산
   syncTimeUI();
 });
 timeFlowChk.addEventListener('change', () => { FPWorld.timeFlowing = timeFlowChk.checked; });
