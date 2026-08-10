@@ -1753,6 +1753,19 @@ function updateSunShadow(px, pz) {
   cam.updateProjectionMatrix();
 }
 
+// ── 생물 거리 컬링 ──────────────────────────────────────────────────────────
+// 도심에서 서쪽을 보면 맵 반대편(200m 밖) 동물 41마리와 어류 333마리가 전부 그려진다.
+// 실측해 보니 그 한 시점에서만 동물 441 + 어류 446 = 887 드로우콜이었다.
+// 토끼는 40cm, 물고기는 25cm짜리라 그 거리에서는 몇 픽셀도 안 된다.
+// 살아 있는지(alive)와 그려지는지(visible)를 나눠서, 가까운 것만 그린다.
+// 성능이 부족하면 이 두 값만 낮추면 된다.
+const ANIMAL_CULL = 2.2;   // 실척 110m - 녹지 구역(100m) 어디에 서 있어도 다 보인다
+const FISH_CULL = 1.5;     // 실척 75m - 물속은 어차피 시야가 짧다
+function cullByDistance(group, x, z, limit) {
+  const dx = x - FPPlayer.pos.x, dz = z - FPPlayer.pos.z;
+  return dx * dx + dz * dz < limit * limit;
+}
+
 // ── 해양 생태 반응 ──────────────────────────────────────────────────────────
 // 두 가지 원인을 따로 굴린다:
 //   산호 색   <- 수온 (백화는 열 스트레스 현상이다)
@@ -1776,7 +1789,7 @@ function applyOceanHealth(ppm) {
   // 수초: 최악이어도 10%는 남겨서 바다가 완전히 텅 비어 보이지 않게
   const survive = 0.10 + 0.90 * h;
   const kelpCount = Math.round(FPWorld.plants.length * survive);
-  FPWorld.plants.forEach((p, i) => { p.group.visible = i < kelpCount; });
+  FPWorld.plants.forEach((p, i) => { p.alive = i < kelpCount; p.group.visible = p.alive; });
   // 잘피는 인스턴스라 '앞에서부터 count개만 그리기'로 같은 규칙을 구현한다
   const sg = FPWorld.seagrass;
   sg.mesh.count = Math.round(sg.total * survive);
@@ -1784,7 +1797,7 @@ function applyOceanHealth(ppm) {
 
   // 어류: 최악이면 15%만 남음
   const fishCount = Math.round(FPWorld.fish.length * (0.15 + 0.85 * h));
-  FPWorld.fish.forEach((f, i) => { f.group.visible = i < fishCount; });
+  FPWorld.fish.forEach((f, i) => { f.alive = i < fishCount; });
   FPWorld.aliveFish = fishCount;
   FPWorld.alivePlants = plantCount;
 }
@@ -1793,7 +1806,7 @@ function applyOceanHealth(ppm) {
 function updateOceanLife(dt, t) {
   const HX = FPWorld.SEA_HALF_X, HZ = FPWorld.SEA_HALF_Z, CEIL = FPWorld.SEA_CEIL;
   for (const f of FPWorld.fish) {
-    if (!f.group.visible) continue;
+    if (!f.alive) { f.group.visible = false; continue; }
     f.timer -= dt;
     if (f.timer <= 0) {
       f.heading += (Math.random() - 0.5) * 2.2;
@@ -1823,6 +1836,9 @@ function updateOceanLife(dt, t) {
 
     f.phase += dt * (6 + f.speed * 90);
     const wag = Math.sin(f.phase);
+    // 로컬 x는 oceanGroup 기준이라 월드 x는 -ZONE_W 만큼 밀려 있다
+    f.group.visible = cullByDistance(f.group, f.lx - FPWorld.ZONE_W, f.lz, FISH_CULL);
+    if (!f.group.visible) continue;
     f.group.position.set(f.lx, f.ly, f.lz);
     // 꼬리가 따로 있으면 꼬리만 흔들고, 통째로 구운 소형 어류는 몸을 좌우로 흔든다
     f.group.rotation.set(0, -f.heading + (f.tail ? 0 : wag * 0.13), f.pitch * 0.8);
@@ -1831,7 +1847,9 @@ function updateOceanLife(dt, t) {
   // 다시마: 띠의 각 행을 위로 갈수록 크게, 그리고 위상을 조금씩 늦춰 밀어서
   // 해류에 물결치듯 휘게 한다 (밑동은 rise=0이라 바닥에 붙은 채로 안 움직인다)
   for (const p of FPWorld.plants) {
-    if (!p.kelp || !p.group.visible) continue;
+    if (!p.kelp || !p.alive) continue;
+    p.group.visible = cullByDistance(p.group, p.group.position.x - FPWorld.ZONE_W, p.group.position.z, FISH_CULL);
+    if (!p.group.visible) continue;
     const K = p.kelp, arr = K.pos.array;
     for (let i = 0; i < K.pos.count; i++) {
       const r = K.rise[i];
@@ -1856,6 +1874,9 @@ function updateClouds(dt) {
 function updateAnimals(dt, t) {
   const HW = FPWorld.ANIM_HALF_W, HD = FPWorld.ANIM_HALF_D;
   for (const a of FPWorld.animals) {
+    // 멀리 있는 개체는 계속 돌아다니되 그리지만 않는다.
+    // (갱신까지 멈추면 다가갈 때 한 덩어리로 뭉쳐 있는 게 보인다)
+    a.group.visible = cullByDistance(a.group, a.x, a.z, ANIMAL_CULL);
     a.timer -= dt;
     if (a.timer <= 0) {
       const r = Math.random();
