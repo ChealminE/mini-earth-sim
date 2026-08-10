@@ -83,6 +83,8 @@ function animate() {
   }
   pa.needsUpdate = true;
   na.needsUpdate = true;
+  // 물 옆면의 윗변도 같은 파도식으로 맞춰 올려 수면과 정확히 맞물리게 한다
+  updateWaterWalls(t, intensity, halfD);
   // 미세 법선맵을 서로 다른 속도로 흘려서 정지된 무늬처럼 보이지 않게
   FPWorld.waterNormal.offset.x = (t * 0.02) % 1;
   FPWorld.waterNormal.offset.y = (t * 0.013) % 1;
@@ -127,7 +129,7 @@ function animate() {
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
-    hudSea.textContent = `pH ${oceanPH(FPWorld.co2).toFixed(2)} · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plants.length}`;
+    hudSea.textContent = `pH ${oceanPH(FPWorld.co2).toFixed(2)} · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plantTotal}`;
   }
 
   renderer.render(FPWorld.scene, camera);

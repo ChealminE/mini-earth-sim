@@ -101,6 +101,7 @@ const FPWorld = {
   skyMat: null,
   waterMesh: null,
   waveGeo: null, wavePosAttr: null, waveBase: null,
+  waterWall: null,    // 물 옆면(윗변이 파도를 따라감)
   co2: 418,
   BOX_W, BOX_D, BOX_H, ZONE_W, GROUND_BASE, OCEAN_BASE, waveBaseY, TERRAIN_TOP,
   waveHeightAt, waveNormalAt, wetlandY,
@@ -407,13 +408,55 @@ function buildFirstPersonWorld(renderer) {
   FPWorld.waveBase = Float32Array.from(waveGeo.attributes.position.array);
   FPWorld.waveD = waveD;
 
-  const waterH = Math.max(0.03, waveBaseY + 0.1 - OCEAN_BASE);
-  const waterBody = new THREE.Mesh(
-    new THREE.BoxGeometry(waveW, waterH, waveD),
-    new THREE.MeshPhysicalMaterial({ color: 0x0e2c45, transparent: true, opacity: 0.55, roughness: 0.2, depthWrite: false })
-  );
-  waterBody.position.y = OCEAN_BASE + waterH / 2;
+  // 파도 표면은 매 프레임 형상이 바뀌는데 boundingSphere는 평평했을 때 한 번만 계산된다.
+  // 마루 높이만큼 여유를 주지 않으면 비스듬히 볼 때 수면이 통째로 컬링돼 사라진다.
+  waveGeo.computeBoundingSphere();
+  waveGeo.boundingSphere.radius += WAVE_MAX_AMPLITUDE;
+
+  // ── 물 몸통: 뚜껑 없는 '통' ────────────────────────────────────────────────
+  // 예전에는 Box 하나로 물을 채웠는데, 박스 윗면이 파도 표면보다 0.1(실척 5m) 위에
+  // 떠 있어서 밖에서 보면 '일렁이지 않는 파란 평면'이 바다 위에 한 겹 더 얹힌 것처럼
+  // 보였다(= 바다가 이중으로 보이는 원인). 박스 높이를 줄여 윗면을 수면에 맞춰도
+  // 파도 골에서 평평한 뚜껑이 비친다.
+  // 그래서 윗면 자체를 없애고 옆면 4장만 남긴 뒤, 그 윗변을 매 프레임 파도 높이에
+  // 맞춰 올렸다 내린다. 옆에서 보면 물이 꽉 찬 것처럼 보이고 윗면은 파도 표면 그 자체다.
+  const WALL_SEG = 40;
+  const wallCorners = [
+    [-waveW / 2, -waveD / 2], [waveW / 2, -waveD / 2],
+    [waveW / 2, waveD / 2], [-waveW / 2, waveD / 2],
+  ];
+  const wallCols = WALL_SEG + 1;
+  const wallTopN = 4 * wallCols;                  // 윗변 정점 수 (변마다 wallCols개)
+  const wallPos = new Float32Array(wallTopN * 2 * 3);
+  const wallSX = new Float32Array(wallTopN);      // 윗변 정점의 파도 샘플 좌표
+  const wallSY = new Float32Array(wallTopN);
+  const wallIdx = [];
+  const WALL_BOTTOM = OCEAN_BASE - 0.03;          // 해저 지형보다 확실히 아래(틈 방지)
+  for (let e = 0; e < 4; e++) {
+    const [x0, z0] = wallCorners[e], [x1, z1] = wallCorners[(e + 1) % 4];
+    for (let i = 0; i < wallCols; i++) {
+      const s = i / WALL_SEG;
+      const x = x0 + (x1 - x0) * s, z = z0 + (z1 - z0) * s;
+      const k = e * wallCols + i, vT = k * 2, vB = vT + 1;
+      wallPos[vT * 3] = x; wallPos[vT * 3 + 1] = waveBaseY; wallPos[vT * 3 + 2] = z;
+      wallPos[vB * 3] = x; wallPos[vB * 3 + 1] = WALL_BOTTOM; wallPos[vB * 3 + 2] = z;
+      // 파도 평면은 rotateX(-90°) 상태라 로컬 (lx, ly) -> 월드 (x, z) = (lx, -ly)
+      wallSX[k] = x; wallSY[k] = -z;
+      if (i < WALL_SEG) wallIdx.push(vT, vB, vT + 2, vB, vB + 2, vT + 2);
+    }
+  }
+  const wallGeo = new THREE.BufferGeometry();
+  wallGeo.setAttribute('position', new THREE.BufferAttribute(wallPos, 3));
+  wallGeo.setIndex(wallIdx);
+  wallGeo.computeVertexNormals();   // 옆면은 수직이라 윗변이 오르내려도 법선은 그대로다
+  wallGeo.computeBoundingSphere();
+  wallGeo.boundingSphere.radius += WAVE_MAX_AMPLITUDE;
+  const waterBody = new THREE.Mesh(wallGeo, new THREE.MeshPhysicalMaterial({
+    color: 0x0e2c45, transparent: true, opacity: 0.55, roughness: 0.2,
+    depthWrite: false, side: THREE.DoubleSide,   // 헤엄쳐 들어가면 안쪽에서도 보여야 한다
+  }));
   oceanGroup.add(waterBody);
+  FPWorld.waterWall = { geo: wallGeo, attr: wallGeo.attributes.position, sx: wallSX, sy: wallSY, topN: wallTopN };
 
   // 빙하: 1인칭에선 물 위에 뜬 거대한 유빙이라 올라설 수 있게 충돌체로도 등록
   const iceMat = new THREE.MeshPhysicalMaterial({ map: T.iceCrack, color: 0xf3fbff, roughness: 0.15, clearcoat: 0.8, flatShading: true });
@@ -574,15 +617,62 @@ function buildFirstPersonWorld(renderer) {
   // 각진 박스 몸통에 동그란 눈만 얹으면 저폴리인데도 인상이 확 순해진다.
   const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
   const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.25 });
-  function addEyes(g, x, y, z, spread, r) {
+  // seg를 낮추면 저해상도 구를 쓴다. 어류처럼 개체가 수백 마리인 쪽은 눈 하나가
+  // 삼각형 400개씩 먹으면 눈알만으로 씬 전체 폴리곤을 넘겨버려서 따로 낮춰 쓴다.
+  function addEyes(g, x, y, z, spread, r, seg) {
+    const [wS, wR] = seg ? [seg, Math.max(3, Math.round(seg * 0.7))] : [12, 10];
+    const [pS, pR] = seg ? [Math.max(4, seg - 1), Math.max(3, Math.round(seg * 0.5))] : [10, 8];
     [-spread, spread].forEach(dz => {
-      const w = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), eyeWhiteMat);
+      const w = new THREE.Mesh(new THREE.SphereGeometry(r, wS, wR), eyeWhiteMat);
       w.position.set(x, y, z + dz);
       g.add(w);
-      const p = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, 10, 8), eyePupilMat);
+      const p = new THREE.Mesh(new THREE.SphereGeometry(r * 0.55, pS, pR), eyePupilMat);
       p.position.set(x + r * 0.6, y, z + dz);   // 얼굴 앞쪽(+x)을 바라보게
       g.add(p);
     });
+  }
+
+  // ── 조각 모델 굽기(bake) ────────────────────────────────────────────────────
+  // 저폴리 조각 여러 개를 이어붙여 만든 모델은 조각 수가 곧 드로우콜 수가 된다.
+  // 물고기 한 마리가 메시 8개면 300마리에 2,400 드로우콜 - 내장 그래픽에선 못 버틴다.
+  // 움직일 필요가 없는 부위는 하나의 지오메트리로 구워서 개체당 1 드로우콜로 만든다.
+  //  - mat를 주면 그 재질 하나로 굽는다(산호처럼 나중에 재질 색을 바꿔야 하는 경우).
+  //  - 안 주면 조각별 색을 정점색으로 구워넣고 공용 재질을 쓴다(색이 여러 개인 물고기).
+  const bakedLifeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, flatShading: true });
+  function bakeGroup(src, mat) {
+    src.updateMatrixWorld(true);
+    const parts = [];
+    let total = 0;
+    src.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      g.applyMatrix4(o.matrixWorld);          // src는 원점·무회전 상태에서 굽는다
+      parts.push({ g, c: o.material.color });
+      total += g.attributes.position.count;
+    });
+    const pos = new Float32Array(total * 3);
+    const nor = new Float32Array(total * 3);
+    const col = mat ? null : new Float32Array(total * 3);
+    let off = 0;
+    for (const { g, c } of parts) {
+      const n = g.attributes.position.count;
+      pos.set(g.attributes.position.array, off * 3);
+      nor.set(g.attributes.normal.array, off * 3);
+      // Color의 r/g/b는 이미 작업 색공간(선형)이라 정점색에 그대로 넣으면 된다
+      if (col) for (let i = 0; i < n; i++) {
+        const j = (off + i) * 3;
+        col[j] = c.r; col[j + 1] = c.g; col[j + 2] = c.b;
+      }
+      off += n;
+      g.dispose();
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    if (col) geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const mesh = new THREE.Mesh(geo, mat || bakedLifeMat);
+    mesh.castShadow = false;
+    return mesh;
   }
   // 모델은 전부 +x를 바라보게 만든다 (heading에 맞춰 group.rotation.y = -heading)
   function buildRabbit() {
@@ -694,25 +784,36 @@ function buildFirstPersonWorld(renderer) {
     bigFin: new THREE.MeshStandardMaterial({ color: 0x35506a, roughness: 0.6 }),
   };
   // 물고기는 +x를 바라보게 만든다 (지상 동물과 동일 규칙).
-  // 개체 수를 3배로 늘리면서 마리당 메시 수가 곧바로 드로우콜로 이어지므로,
-  // 눈에 잘 안 띄는 부위(소형 어류의 등지느러미·눈)는 생략해 비용을 줄였다.
+  // 꼬리만 따로 흔들어야 하므로 '몸통 한 덩어리 + 꼬리' 2메시로 굽는다.
+  // (굽기 전에는 마리당 3~8메시였다. 개체 수가 세 자리라 이 차이가 그대로 프레임에 나온다.)
   function buildFish(size, bodyMat, finMat, detail) {
-    const g = new THREE.Group();
-    g.add(bx(size * 1.0, size * 0.5, size * 0.28, bodyMat, 0, 0, 0));            // 몸통
-    g.add(bx(size * 0.34, size * 0.34, size * 0.22, bodyMat, size * 0.56, 0, 0)); // 머리
-    const tail = bx(size * 0.28, size * 0.46, size * 0.05, finMat, -size * 0.62, 0, 0);
-    g.add(tail);
+    const src = new THREE.Group();
+    src.add(bx(size * 1.0, size * 0.5, size * 0.28, bodyMat, 0, 0, 0));            // 몸통
+    src.add(bx(size * 0.34, size * 0.34, size * 0.22, bodyMat, size * 0.56, 0, 0)); // 머리
     if (detail) {
-      g.add(bx(size * 0.3, size * 0.16, size * 0.04, finMat, 0, size * 0.31, 0)); // 등지느러미
-      addEyes(g, size * 0.68, size * 0.07, 0, size * 0.1, size * 0.062);
+      src.add(bx(size * 0.3, size * 0.16, size * 0.04, finMat, 0, size * 0.31, 0)); // 등지느러미
+      // 지상 동물과 같은 '흰자+눈동자' 테마를 유지하되 구 분할만 크게 낮춘다
+      addEyes(src, size * 0.68, size * 0.07, 0, size * 0.1, size * 0.062, 6);
     }
-    // 물속이라 그림자는 거의 안 보이는데 비용은 그대로 들어서 끈다
-    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    const tail = bx(size * 0.28, size * 0.46, size * 0.05, finMat, -size * 0.62, 0, 0);
+    tail.castShadow = false;   // 물속이라 그림자는 안 보이는데 비용은 그대로 들어서 끈다
+    if (!detail) {
+      // 소형 어류는 실척 25cm라 꼬리지느러미 하나가 흔들리는 게 보일 크기가 아니다.
+      // 꼬리까지 통째로 구워 1 드로우콜로 만들고, 대신 몸 전체를 좌우로 흔들어
+      // 헤엄치는 티를 낸다 (updateOceanLife에서 tail이 없으면 그렇게 처리).
+      src.add(tail);
+      const only = bakeGroup(src);
+      return { group: only, tail: null };
+    }
+    const g = new THREE.Group();
+    g.add(bakeGroup(src));
+    // 꼬리는 매 프레임 회전해야 해서 굽지 않고 남긴다 (마리당 1 드로우콜 추가)
+    g.add(tail);
     return { group: g, tail };
   }
 
   // 바다 생물 밀도 배수 (성능이 부족하면 이 값만 낮추면 전체가 같이 줄어든다)
-  const SEA_DENSITY = 3;
+  const SEA_DENSITY = 9;
   const FISH_KINDS = [
     { n: 20 * SEA_DENSITY, size: 0.005, body: fishMats.small, fin: fishMats.smallFin, detail: false, speed: 0.045 },
     { n: 12 * SEA_DENSITY, size: 0.010, body: fishMats.mid,   fin: fishMats.midFin,   detail: true,  speed: 0.034 },
@@ -745,7 +846,9 @@ function buildFirstPersonWorld(renderer) {
   const coralBranchMat = new THREE.MeshStandardMaterial({ color: CORAL_BRANCH_HEALTHY.clone(), roughness: 0.85, flatShading: true });
   const coralBrainMat = new THREE.MeshStandardMaterial({ color: CORAL_BRAIN_HEALTHY.clone(), roughness: 0.8, flatShading: true });
 
-  function buildBranchCoral() {
+  // 산호·수초는 재질 색을 나중에 바꿔야 하거나(백화) 색이 한 가지뿐이라,
+  // 정점색 대신 '기존 재질 그대로' 한 덩어리로 굽는다. 백화 로직은 그대로 동작한다.
+  function buildBranchCoralGeo() {
     const g = new THREE.Group();
     const h = 0.016 + Math.random() * 0.014;
     g.add(bx(0.008, h * 0.45, 0.008, coralBranchMat, 0, h * 0.22, 0));   // 밑동
@@ -759,45 +862,38 @@ function buildFirstPersonWorld(renderer) {
       arm.rotation.x = Math.sin(ang) * 0.5;
       g.add(arm);
     }
-    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
-    return g;
+    return bakeGroup(g, coralBranchMat).geometry;
   }
-  function buildBrainCoral() {
-    const g = new THREE.Group();
-    const r = 0.010 + Math.random() * 0.008;
-    const dome = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), coralBrainMat);
-    dome.scale.y = 0.55;
-    dome.position.y = r * 0.35;
-    g.add(dome);
-    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
-    return g;
+  function buildBrainCoralGeo() {
+    const r = 0.014;
+    const geo = new THREE.IcosahedronGeometry(r, 1);
+    geo.scale(1, 0.55, 1);
+    geo.translate(0, r * 0.35, 0);
+    return geo;
   }
 
   // 수초 2종: 다시마(길게 흔들리는 띠) / 잘피(짧은 잎 다발)
   const kelpMat = new THREE.MeshStandardMaterial({ color: 0x487038, roughness: 0.9, side: THREE.DoubleSide, flatShading: true });
   const grassSeaMat = new THREE.MeshStandardMaterial({ color: 0x6aa84f, roughness: 0.9, side: THREE.DoubleSide });
+  // 다시마: 예전엔 마디 Group을 사슬처럼 이어 붙여서 흔들었는데, 그러면 한 포기가
+  // 메시 4~6개였다. 대신 세로로 긴 띠(PlaneGeometry) 한 장으로 만들고 매 프레임
+  // 행(row)별로 x를 밀어 휘게 한다. 메시는 1개로 줄면서 휨은 오히려 더 매끄럽다.
   function buildKelp() {
-    const g = new THREE.Group();
-    const segs = 4 + Math.floor(Math.random() * 3);
-    const segH = 0.013 + Math.random() * 0.006;
-    const blades = [];
-    let parent = g;
-    for (let i = 0; i < segs; i++) {
-      // 마디를 사슬처럼 이어 붙여서 위로 갈수록 크게 휘도록(해류에 흔들리는 느낌)
-      const seg = new THREE.Group();
-      seg.position.y = i === 0 ? 0 : segH;
-      const blade = bx(0.010, segH, 0.0012, kelpMat, 0, segH / 2, 0);
-      seg.add(blade);
-      parent.add(seg);
-      parent = seg;
-      blades.push(seg);
-    }
-    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
-    return { group: g, segs: blades };
+    const rows = 8;
+    const h = 0.055 + Math.random() * 0.035;
+    const geo = new THREE.PlaneGeometry(0.010, h, 1, rows);
+    geo.translate(0, h / 2, 0);                       // 밑동을 원점에
+    const mesh = new THREE.Mesh(geo, kelpMat);
+    mesh.castShadow = false;
+    const pos = geo.attributes.position;
+    // 정점의 원래 x와, 밑동에서의 높이 비율(휘는 정도)을 미리 뽑아둔다
+    const baseX = Float32Array.from({ length: pos.count }, (_, i) => pos.getX(i));
+    const rise = Float32Array.from({ length: pos.count }, (_, i) => pos.getY(i) / h);
+    return { group: mesh, kelp: { pos, baseX, rise, amp: h * 0.35 }, phase: Math.random() * 10 };
   }
-  function buildSeagrass() {
+  function buildSeagrassGeo() {
     const g = new THREE.Group();
-    const n = 4 + Math.floor(Math.random() * 2);
+    const n = 5;
     for (let i = 0; i < n; i++) {
       const h = 0.009 + Math.random() * 0.008;
       const blade = bx(0.0035, h, 0.0009, grassSeaMat,
@@ -805,8 +901,7 @@ function buildFirstPersonWorld(renderer) {
       blade.rotation.z = (Math.random() - 0.5) * 0.5;
       g.add(blade);
     }
-    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
-    return g;
+    return bakeGroup(g, grassSeaMat).geometry;
   }
 
   function scatterOnSeabed(makeFn, count, store) {
@@ -818,15 +913,49 @@ function buildFirstPersonWorld(renderer) {
       g.position.set(lx, seabedY(lx, lz) - 0.001, lz);
       g.rotation.y = Math.random() * Math.PI * 2;
       oceanGroup.add(g);
-      store.push(made.segs ? { group: g, segs: made.segs, phase: Math.random() * 10 } : { group: g });
+      store.push(made.kelp ? { group: g, kelp: made.kelp, phase: made.phase } : { group: g });
     }
   }
+
+  // 산호·잘피는 심어 놓고 나면 제자리에서 아무것도 하지 않는다(백화는 재질 색만 바뀜).
+  // 그래서 개체마다 메시를 두지 않고 InstancedMesh로 한 번에 그린다.
+  // 이 셋만 인스턴싱해도 수중 드로우콜이 300개 넘게 줄어든다 - 내장 그래픽에서 체감이 크다.
+  const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion();
+  const _ip = new THREE.Vector3(), _is = new THREE.Vector3(), _iup = new THREE.Vector3(0, 1, 0);
+  function scatterInstanced(geo, mat, count, sizeLo, sizeHi) {
+    const im = new THREE.InstancedMesh(geo, mat, count);
+    im.castShadow = false;
+    for (let i = 0; i < count; i++) {
+      const lx = (Math.random() - 0.5) * 2 * SEA_HALF_X;
+      const lz = (Math.random() - 0.5) * 2 * SEA_HALF_Z;
+      _ip.set(lx, seabedY(lx, lz) - 0.001, lz);
+      _iq.setFromAxisAngle(_iup, Math.random() * Math.PI * 2);
+      // 인스턴스는 지오메트리를 공유하므로 크기·회전으로 개체차를 만든다
+      const k = sizeLo + Math.random() * (sizeHi - sizeLo);
+      _is.set(k, k * (0.8 + Math.random() * 0.5), k);
+      im.setMatrixAt(i, _im.compose(_ip, _iq, _is));
+    }
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    oceanGroup.add(im);
+    return im;
+  }
+
+  // 가지산호는 지오메트리 3종을 돌려써서 인스턴싱해도 다 똑같아 보이지 않게 한다
   FPWorld.corals = [];
+  const branchGeos = [buildBranchCoralGeo(), buildBranchCoralGeo(), buildBranchCoralGeo()];
+  const branchEach = Math.round(10 * SEA_DENSITY / 3);
+  branchGeos.forEach(g => FPWorld.corals.push(scatterInstanced(g, coralBranchMat, branchEach, 0.8, 1.5)));
+  FPWorld.corals.push(scatterInstanced(buildBrainCoralGeo(), coralBrainMat, 8 * SEA_DENSITY, 0.7, 1.4));
+  FPWorld.coralCount = branchEach * 3 + 8 * SEA_DENSITY;
+
+  // 다시마만 개체별 메시로 남는다(마디마다 휘어야 해서 인스턴싱이 안 됨).
   FPWorld.plants = [];
-  scatterOnSeabed(buildBranchCoral, 10 * SEA_DENSITY, FPWorld.corals);
-  scatterOnSeabed(buildBrainCoral, 8 * SEA_DENSITY, FPWorld.corals);
   scatterOnSeabed(buildKelp, 14 * SEA_DENSITY, FPWorld.plants);
-  scatterOnSeabed(buildSeagrass, 12 * SEA_DENSITY, FPWorld.plants);
+  // 잘피: 인스턴싱 + 개체수 감소는 mesh.count 를 줄이는 것으로 처리한다
+  // (three.js는 앞에서부터 count개만 그리므로, 앞쪽이 살아남는 기존 규칙과 맞아떨어진다)
+  FPWorld.seagrass = { mesh: scatterInstanced(buildSeagrassGeo(), grassSeaMat, 12 * SEA_DENSITY, 0.8, 1.6), total: 12 * SEA_DENSITY };
+  FPWorld.plantTotal = FPWorld.plants.length + FPWorld.seagrass.total;
   FPWorld.coralMats = { branch: coralBranchMat, brain: coralBrainMat };
   FPWorld.CORAL_COLORS = { branch: CORAL_BRANCH_HEALTHY, brain: CORAL_BRAIN_HEALTHY, bleached: CORAL_BLEACHED };
   FPWorld.SEA_HALF_X = SEA_HALF_X;
@@ -1030,6 +1159,14 @@ function buildFirstPersonWorld(renderer) {
   const exhaust = new THREE.Points(exGeo, new THREE.PointsMaterial({
     color: 0x6b6660, size: 0.012, transparent: true, opacity: 0.5, depthWrite: false,
   }));
+  // 프러스텀 컬링 끄기. three.js는 boundingSphere를 지오메트리 생성 시점에 한 번만
+  // 계산하고, 정점을 매 프레임 갱신해도 다시 계산하지 않는다. 배기 입자는 "살아 있는
+  // 내연기관차"에만 붙는데 그 대수가 CO2 슬라이더에 따라 2대 -> 12대로 변하므로,
+  // 첫 프레임에 잡힌 좁은 구가 그대로 남아 입자 대부분이 구 밖으로 나간다.
+  // 그러면 그 좁은 구가 화면 밖일 때 배기가스 전체가 통째로 사라진다 - 도시를 걸어
+  // 다니면 "어떤 칸에선 안 보이고 옆 칸에선 보이는" 증상이 이것이다. 드로우콜 1개짜리
+  // 오브젝트라 컬링을 꺼도 비용이 없다.
+  exhaust.frustumCulled = false;
   world.add(exhaust);
   FPWorld.exhaust = { points: exhaust, geo: exGeo, count: exCount, life: exLife, perCar: EXHAUST_PER_CAR };
 
@@ -1056,6 +1193,7 @@ function buildFirstPersonWorld(renderer) {
   smokeGeo.setAttribute('position', new THREE.BufferAttribute(smokePos, 3));
   const smokeMat = new THREE.PointsMaterial({ color: 0x9a9a96, size: 0.05, transparent: true, opacity: 0.45, depthWrite: false });
   const smoke = new THREE.Points(smokeGeo, smokeMat);
+  smoke.frustumCulled = false;   // 배기가스와 같은 이유(굴뚝 연기도 매 프레임 위치가 바뀜)
   cityGroup.add(smoke);
   // rate/opacity/size는 applyWorldCO2()가 CO2 농도에 맞춰 계속 바꿔준다
   FPWorld.smoke = { geo: smokeGeo, mat: smokeMat, life: smokeLife, count: smokeCount, x: 0.6, z: 0.55, rate: 0.3 };
@@ -1165,7 +1303,7 @@ function updateSunShadow(px, pz) {
 // pH가 내려갈수록: 산호는 색을 잃어 하얗게(백화), 수초와 어류는 개체수가 줄어든다.
 // 살아남는 개체를 앞에서부터 세는 방식이라 CO2를 되돌리면 그대로 복원된다.
 function applyOceanHealth(ph) {
-  if (!FPWorld.fish) return;
+  if (!FPWorld.fish || !FPWorld.seagrass) return;
   const h = oceanHealth(ph);
   FPWorld.oceanHealth = h;
 
@@ -1175,8 +1313,13 @@ function applyOceanHealth(ph) {
   FPWorld.coralMats.brain.color.lerpColors(C.bleached, C.brain, h);
 
   // 수초: 최악이어도 10%는 남겨서 바다가 완전히 텅 비어 보이지 않게
-  const plantCount = Math.round(FPWorld.plants.length * (0.10 + 0.90 * h));
-  FPWorld.plants.forEach((p, i) => { p.group.visible = i < plantCount; });
+  const survive = 0.10 + 0.90 * h;
+  const kelpCount = Math.round(FPWorld.plants.length * survive);
+  FPWorld.plants.forEach((p, i) => { p.group.visible = i < kelpCount; });
+  // 잘피는 인스턴스라 '앞에서부터 count개만 그리기'로 같은 규칙을 구현한다
+  const sg = FPWorld.seagrass;
+  sg.mesh.count = Math.round(sg.total * survive);
+  const plantCount = kelpCount + sg.mesh.count;
 
   // 어류: 최악이면 15%만 남음
   const fishCount = Math.round(FPWorld.fish.length * (0.15 + 0.85 * h));
@@ -1218,16 +1361,22 @@ function updateOceanLife(dt, t) {
     f.ly = Math.max(floor, Math.min(CEIL, f.ly));
 
     f.phase += dt * (6 + f.speed * 90);
+    const wag = Math.sin(f.phase);
     f.group.position.set(f.lx, f.ly, f.lz);
-    f.group.rotation.set(0, -f.heading, f.pitch * 0.8);
-    f.tail.rotation.y = Math.sin(f.phase) * 0.65;          // 꼬리 흔들기
+    // 꼬리가 따로 있으면 꼬리만 흔들고, 통째로 구운 소형 어류는 몸을 좌우로 흔든다
+    f.group.rotation.set(0, -f.heading + (f.tail ? 0 : wag * 0.13), f.pitch * 0.8);
+    if (f.tail) f.tail.rotation.y = wag * 0.65;
   }
-  // 다시마: 마디마다 위상을 조금씩 늦춰 해류에 물결치듯 휘게
+  // 다시마: 띠의 각 행을 위로 갈수록 크게, 그리고 위상을 조금씩 늦춰 밀어서
+  // 해류에 물결치듯 휘게 한다 (밑동은 rise=0이라 바닥에 붙은 채로 안 움직인다)
   for (const p of FPWorld.plants) {
-    if (!p.segs || !p.group.visible) continue;
-    for (let i = 0; i < p.segs.length; i++) {
-      p.segs[i].rotation.z = Math.sin(t * 0.9 + p.phase + i * 0.55) * 0.16;
+    if (!p.kelp || !p.group.visible) continue;
+    const K = p.kelp, arr = K.pos.array;
+    for (let i = 0; i < K.pos.count; i++) {
+      const r = K.rise[i];
+      arr[i * 3] = K.baseX[i] + Math.sin(t * 0.9 + p.phase - r * 2.2) * K.amp * r * r;
     }
+    K.pos.needsUpdate = true;
   }
 }
 
@@ -1306,6 +1455,18 @@ function updateAnimals(dt, t) {
       a.group.position.y = baseY + Math.sin(t * 1.6 + a.phase) * 0.0004;
     }
   }
+}
+
+// ── 물 옆면: 윗변을 수면(파도) 높이에 맞춘다 ────────────────────────────────
+// 윗변 정점만 훑으므로 파도 본체(7천 정점)에 비하면 비용은 무시할 수준이다.
+function updateWaterWalls(t, intensity, halfD) {
+  const W = FPWorld.waterWall;
+  if (!W) return;
+  const arr = W.attr.array;
+  for (let k = 0; k < W.topN; k++) {
+    arr[k * 6 + 1] = FPWorld.waveBaseY + FPWorld.waveHeightAt(W.sx[k], W.sy[k], t, intensity, halfD);
+  }
+  W.attr.needsUpdate = true;
 }
 
 // ── 자동차 배기가스: 내연기관차 배기구에서만 뿜어져 나옴 ──────────────────────
