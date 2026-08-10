@@ -32,9 +32,11 @@ import argparse
 import asyncio
 import csv
 import json
+import queue
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -176,20 +178,80 @@ async def style_css():
 
 
 # ── 2) USB 시리얼 방식 경로 ─────────────────────────
-def find_serial_port() -> Optional[str]:
-    """연결된 시리얼 포트 중 그럴듯한 것을 자동으로 찾아본다."""
+# 학생마다 보드/USB칩/포트 번호가 제각각이라 이름 키워드만으론 못 믿는다
+# (엉뚱한 COM포트를 집어서 열려다 실패하는 사고를 실제로 겪었음).
+# 그래서 후보 포트를 실제로 열어 JSON 한 줄이 오는지까지 확인해서 진짜 장치를 찾는다.
+# basic_experiments의 CO2(MH-Z19B) 예제들은 30초에 한 번만 전송하므로(code.ino의
+# SEND_INTERVAL_MS), 포트마다 순서대로 기다리면 최악의 경우 포트 수 x 30초가 걸린다.
+# 그래서 후보를 전부 동시에 열어서 지켜보고 가장 먼저 JSON을 내놓는 포트를 채택한다
+# (전체 대기 시간이 포트 개수와 무관하게 전송 주기 한 번만큼만 걸리게).
+SERIAL_PROBE_SECONDS = 33.0  # 기본 실험 코드 중 가장 긴 전송 주기(30초)보다 살짝 여유
+
+def _list_candidate_ports() -> List[str]:
+    """연결된 포트 목록. Arduino/USB-Serial 칩(CH340, CP210x, FTDI 등) 이름이 들어간 포트를 우선순위로 정렬."""
     import serial.tools.list_ports
 
     ports = list(serial.tools.list_ports.comports())
-    if not ports:
-        return None
-    # Arduino/USB-Serial 칩(CH340, CP210x, FTDI 등) 이름이 들어간 포트 우선
     keywords = ["arduino", "ch340", "usb-serial", "cp210", "ftdi", "usb serial"]
-    for p in ports:
+
+    def looks_like_device(p) -> bool:
         desc = (p.description or "").lower()
-        if any(k in desc for k in keywords):
-            return p.device
-    return ports[0].device  # 못 찾으면 첫 번째 포트라도 시도
+        return any(k in desc for k in keywords)
+
+    return [p.device for p in sorted(ports, key=lambda p: not looks_like_device(p))]
+
+
+def _probe_serial_port(port: str, baud: int, probe_seconds: float, stop_event: threading.Event) -> bool:
+    """포트를 열어서 최대 probe_seconds 동안 JSON 한 줄이 오는지 확인.
+    다른 포트가 먼저 찾아지면(stop_event) 바로 포기한다."""
+    import serial
+
+    try:
+        ser = serial.Serial(port, baud, timeout=0.5)
+    except Exception:
+        return False
+    try:
+        deadline = time.time() + probe_seconds
+        while time.time() < deadline and not stop_event.is_set():
+            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # 보드가 디버그 텍스트를 찍어도 무시하고 계속 기다림
+            if isinstance(payload, dict):
+                return True
+        return False
+    finally:
+        ser.close()
+
+
+def find_serial_port(baud: int) -> Optional[str]:
+    """연결된 포트 후보들을 동시에 열어보고, 그중 실제로 JSON을 보내는 포트를 찾는다."""
+    candidates = _list_candidate_ports()
+    if not candidates:
+        return None
+
+    print(f"[시리얼] 포트 {len(candidates)}개 동시 확인 중 "
+          f"(최대 {int(SERIAL_PROBE_SECONDS)}초 — 전송 주기가 긴 실험 코드도 있어서 시간이 걸릴 수 있음)…")
+    found: "queue.Queue[str]" = queue.Queue()
+    stop_event = threading.Event()
+
+    def worker(port: str):
+        if _probe_serial_port(port, baud, SERIAL_PROBE_SECONDS, stop_event):
+            found.put(port)
+
+    threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in candidates]
+    for t in threads:
+        t.start()
+
+    try:
+        port = found.get(timeout=SERIAL_PROBE_SECONDS + 1)
+    except queue.Empty:
+        port = None
+    stop_event.set()
+    return port
 
 
 def serial_reader_thread(port: str, baud: int):
@@ -308,10 +370,11 @@ if __name__ == "__main__":
     print(f"  브라우저 접속:        http://{ip}:8000")
     print(f"  WiFi 전송 주소:        http://{ip}:8000/data")
 
+    serial_port = None
     if not args.no_serial:
-        port = args.serial or find_serial_port()
-        if port:
-            print(f"  USB 시리얼 포트: {port} @ {args.baud}bps")
+        serial_port = args.serial or find_serial_port(args.baud)
+        if serial_port:
+            print(f"  USB 시리얼 포트: {serial_port} @ {args.baud}bps")
         else:
             print("  USB 시리얼: 연결된 포트를 찾지 못함 (연결 후 --serial 로 직접 지정 가능)")
     else:
@@ -330,11 +393,9 @@ if __name__ == "__main__":
         main_loop = asyncio.get_running_loop()
         if not args.no_browser:
             webbrowser.open("http://127.0.0.1:8000")
-        if not args.no_serial:
-            port = args.serial or find_serial_port()
-            if port:
-                t = threading.Thread(target=serial_reader_thread, args=(port, args.baud), daemon=True)
-                t.start()
+        if not args.no_serial and serial_port:
+            t = threading.Thread(target=serial_reader_thread, args=(serial_port, args.baud), daemon=True)
+            t.start()
         if args.ble:
             asyncio.create_task(ble_reader_task(args.ble_name, args.ble_address))
 

@@ -95,4 +95,8 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 .sensor-card .updated { font-size: 9.5px; color: #7d838d; margin-top: 2px; }
 .sensor-role-select { width: 100%; background: #1a1d22; border: 1px solid #2a2e35; color: #9198a3;
   font-size: 10px; padding: 3px 4px; border-radius: 5px; margin-top: 6px; }
-.empty-hint { font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
+.empty-hint { grid-column: 1 / -1; font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
+.conn-status-hint { grid-column: 1 / -1; font-size: 11px; padding: 8px 10px; border-radius: 8px;
+  line-height: 1.6; margin-bottom: 2px; }
+.conn-status-hint.error { background: rgba(226,75,74,.12); color: #E24B4A; border: 1px solid rgba(226,75,74,.3); }
+.conn-status-hint.warn { background: rgba(239,159,39,.12); color: #EF9F27; border: 1px solid rgba(239,159,39,.3); }

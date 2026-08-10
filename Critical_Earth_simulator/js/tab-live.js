@@ -4,6 +4,7 @@ const sceneLive = buildAcrylicScene();
 const liveLatest = {};
 const liveKnownKeys = new Set();
 let liveScatterPoints = [];
+let sessionStartTime = null; // 첫 데이터 수신 시각(ms) - "경과 시간" X축의 0초 기준점
 const LIVE_MAX_POINTS = 200;
 const liveColorRamp = ['#5DCAA5', '#EF9F27', '#E24B4A', '#85B7EB', '#c07fe0', '#8fd83c'];
 function liveColorFor(key) {
@@ -12,11 +13,33 @@ function liveColorFor(key) {
   return liveColorRamp[hash % liveColorRamp.length];
 }
 
+// ── 연결/데이터 상태 배너 (센서 카드 영역 맨 위) ──────────────────
+// 웹소켓이 열려도 보드 쪽 코드/배선이 잘못됐으면 데이터가 안 올 수 있고,
+// 한동안 잘 오다가 케이블이 빠지는 등으로 끊길 수도 있어서 세 가지 상태를 구분해서 보여준다.
+const LIVE_STALE_MS = 5000; // 이 시간 넘게 새 데이터가 안 오면 "전송 끊김"으로 간주
+let lastDataAt = 0;
+
+function connectionStatusHtml() {
+  if (!experimentRunning) {
+    return '<div class="empty-hint">\'실험 시작\' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>';
+  }
+  if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) {
+    return '<div class="conn-status-hint error">🔴 연결 안 됨 — server.py가 실행 중인지, 보드 연결 상태를 확인하세요.</div>';
+  }
+  if (liveKnownKeys.size === 0) {
+    return '<div class="conn-status-hint warn">🟡 데이터 수신 안 됨 — 연결은 됐지만 아직 센서 값이 안 옵니다. 보드 코드·배선을 확인하세요.</div>';
+  }
+  if (lastDataAt && Date.now() - lastDataAt > LIVE_STALE_MS) {
+    const sec = Math.floor((Date.now() - lastDataAt) / 1000);
+    return `<div class="conn-status-hint warn">🟠 데이터 전송 끊김 — 마지막 수신 ${sec}초 전. 케이블·전원을 확인하세요.</div>`;
+  }
+  return '';
+}
+
 function renderSensorGrid() {
   const grid = document.getElementById('sensorGrid');
   const keys = [...liveKnownKeys].sort();
-  if (keys.length === 0) return;
-  grid.innerHTML = keys.map(k => {
+  const cardsHtml = keys.map(k => {
     const d = liveLatest[k];
     const t = new Date(d.timestamp);
     const timeStr = t.toLocaleTimeString('ko-KR', {hour12:false});
@@ -30,7 +53,11 @@ function renderSensorGrid() {
       <select class="sensor-role-select" data-key="${k}" title="이 센서가 실제로 측정하는 값 지정 (3D 효과 연결용)">${roleOptionsHtml}</select>
     </div>`;
   }).join('');
+  grid.innerHTML = connectionStatusHtml() + cardsHtml;
 }
+
+// 새 데이터가 안 와도(=onmessage가 안 불려도) 끊김을 감지할 수 있도록 주기적으로 상태만 다시 그림
+setInterval(() => { if (experimentRunning) renderSensorGrid(); }, 1000);
 
 document.getElementById('sensorGrid').addEventListener('change', (e) => {
   if (!e.target.classList.contains('sensor-role-select')) return;
@@ -51,8 +78,19 @@ const MAX_LIVE_GRAPHS = 4;
 let gsCurrentGraphId = null; // 지금 설정 팝업이 편집 중인 그래프
 let pendingMerge = null;     // { sourceId, targetId } - 합치기 확인 팝업 대기중
 
+// X축은 "경과 시간"도 고를 수 있게 함 (센서값 vs 센서값 상관관계 그래프뿐 아니라,
+// CO2 농도처럼 하나의 값이 시간에 따라 어떻게 변하는지 보는 그래프도 필요해서).
+// 실제 센서 키가 아니라서 liveScatterPoints의 timestamp로부터 계산해 만들어내는 가상의 축.
+const TIME_AXIS_KEY = '__time__';
+const TIME_AXIS_LABEL = '경과 시간';
+
 function buildKeyOptionsHtml(selectedKey, keys) {
   return keys.map(k => `<option value="${k}"${k === selectedKey ? ' selected' : ''}>${k}</option>`).join('');
+}
+
+function buildXKeyOptionsHtml(selectedKey, keys) {
+  const timeOption = `<option value="${TIME_AXIS_KEY}"${selectedKey === TIME_AXIS_KEY ? ' selected' : ''}>${TIME_AXIS_LABEL} (초)</option>`;
+  return timeOption + buildKeyOptionsHtml(selectedKey, keys);
 }
 
 // 새 센서 키가 들어오면 주 계열(series[0])에 기본값으로 자동 배정 (병합으로 늘어난 계열은 사용자가 직접 골라야 함)
@@ -75,10 +113,15 @@ function updateLiveChart(g) {
   g.chart.data.datasets = g.series.map(s => {
     if (s.xKey && !xKeys.includes(s.xKey)) xKeys.push(s.xKey);
     if (s.yKey && !yKeys.includes(s.yKey)) yKeys.push(s.yKey);
+    const isTimeX = s.xKey === TIME_AXIS_KEY;
     const data = (s.xKey && s.yKey)
-      ? liveScatterPoints.filter(p => s.xKey in p && s.yKey in p).map(p => ({ x: p[s.xKey], y: p[s.yKey] }))
+      ? liveScatterPoints.filter(p => (isTimeX || s.xKey in p) && s.yKey in p).map(p => ({
+          x: isTimeX ? (new Date(p.timestamp).getTime() - sessionStartTime) / 1000 : p[s.xKey],
+          y: p[s.yKey],
+        }))
       : [];
-    return { label: s.xKey && s.yKey ? `${s.xKey} / ${s.yKey}` : '(선택 안 됨)', data,
+    const xLabelPart = isTimeX ? TIME_AXIS_LABEL : s.xKey;
+    return { label: s.xKey && s.yKey ? `${xLabelPart} / ${s.yKey}` : '(선택 안 됨)', data,
       backgroundColor: s.color, borderColor: s.color, pointRadius: 3, showLine: true, borderWidth: 1 };
   });
 
@@ -96,7 +139,7 @@ function updateLiveChart(g) {
     });
   }
 
-  const xLabel = xKeys.join(' / ') || 'X축 변인';
+  const xLabel = xKeys.map(k => k === TIME_AXIS_KEY ? TIME_AXIS_LABEL : k).join(' / ') || 'X축 변인';
   const yLabel = yKeys.join(' / ') || 'Y축 변인';
   g.chart.options.scales.x.title.text = g.xUnit ? `${xLabel} (${g.xUnit})` : xLabel;
   g.chart.options.scales.y.title.text = g.yUnit ? `${yLabel} (${g.yUnit})` : yLabel;
@@ -196,10 +239,12 @@ function downloadGraphData(graphId) {
   if (!g) return;
   const keys = [];
   g.series.forEach(s => {
-    if (s.xKey && !keys.includes(s.xKey)) keys.push(s.xKey);
+    if (s.xKey && s.xKey !== TIME_AXIS_KEY && !keys.includes(s.xKey)) keys.push(s.xKey);
     if (s.yKey && !keys.includes(s.yKey)) keys.push(s.yKey);
   });
   if (keys.length === 0) { alert('내보낼 변인이 선택되지 않았습니다. 계열에서 X/Y축을 먼저 골라주세요.'); return; }
+  // "경과 시간" X축은 실제 필드가 아니라 timestamp에서 계산해서 그리는 값이라 여기 keys엔 안 넣음
+  // (CSV엔 이미 timestamp 절대시각 컬럼이 있어서, 필요하면 거기서 경과 시간을 계산할 수 있음).
 
   const header = ['timestamp', ...keys];
   const rows = liveScatterPoints
@@ -228,7 +273,7 @@ function renderSettingsSeriesList(g) {
   document.getElementById('gsSeriesList').innerHTML = g.series.map((s, idx) => `
     <div class="gs-series-row">
       <input type="color" class="series-color" value="${s.color}" onchange="setSeriesColor(${g.id}, ${s.sid}, this.value)" title="계열 색상">
-      <select class="modal-input" onchange="setSeriesKey(${g.id}, ${s.sid}, 'xKey', this.value)"><option value="">X축 변인</option>${buildKeyOptionsHtml(s.xKey, keys)}</select>
+      <select class="modal-input" onchange="setSeriesKey(${g.id}, ${s.sid}, 'xKey', this.value)"><option value="">X축 변인</option>${buildXKeyOptionsHtml(s.xKey, keys)}</select>
       <select class="modal-input" onchange="setSeriesKey(${g.id}, ${s.sid}, 'yKey', this.value)"><option value="">Y축 변인</option>${buildKeyOptionsHtml(s.yKey, keys)}</select>
       ${idx > 0 ? `<button class="gs-remove-series-btn" onclick="removeSeriesFromGraph(${g.id}, ${s.sid})" title="병합 해제">✕</button>` : ''}
     </div>`).join('');
@@ -376,9 +421,11 @@ function connectLiveSocket() {
   ws.onopen = () => {
     document.getElementById('liveDot').classList.add('on');
     document.getElementById('liveStatusText').textContent = '실험 진행중 (연결됨)';
+    renderSensorGrid();
   };
   ws.onclose = () => {
     document.getElementById('liveDot').classList.remove('on');
+    renderSensorGrid();
     if (manualStop) return;   // 사용자가 '실험 종료'를 눌러서 끊은 거면 재접속 시도 안 함
     document.getElementById('liveStatusText').textContent = '재연결 시도중…';
     setTimeout(connectLiveSocket, 2000);
@@ -386,6 +433,8 @@ function connectLiveSocket() {
   ws.onerror = () => ws.close();
   ws.onmessage = (evt) => {
     const payload = JSON.parse(evt.data);
+    lastDataAt = Date.now();
+    if (sessionStartTime === null) sessionStartTime = new Date(payload.timestamp || Date.now()).getTime();
     let newKey = false;
     for (const [k, v] of Object.entries(payload)) {
       if (k === 'timestamp' || k === '_source') continue;
@@ -486,6 +535,8 @@ function resetLiveData() {
   liveKnownKeys.clear();
   liveScatterPoints = [];
   Object.keys(sensorRoles).forEach(k => delete sensorRoles[k]);
+  lastDataAt = 0;
+  sessionStartTime = null;
   document.getElementById('sensorGrid').innerHTML =
     '<div class="empty-hint">\'실험 시작\' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>';
   refreshLiveSelectOptions();
