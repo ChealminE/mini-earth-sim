@@ -130,6 +130,16 @@
       <input type="range" id="timeSlider" min="0" max="23.99" step="0.05" value="12">
       <span class="val"><span id="timeOut">낮 12:00</span></span>
     </label>
+    <div class="row">
+      <span class="lbl">계절</span>
+      <div class="btn-row" id="seasonBtns">
+        <button data-season="spring">봄</button><button data-season="summer">여름</button
+        ><button data-season="autumn">가을</button><button data-season="winter">겨울</button>
+      </div>
+    </div>
+    <p class="note">계절은 기온(여름 +8 / 겨울 −10°C)·일출일몰·경관을 함께 바꿉니다.
+      <b>CO₂도 계절을 탑니다</b> — 북반구 식생 때문에 봄에 높고 가을에 낮습니다(킬링 곡선).
+      슬라이더 값은 연평균이고, 센서로 재는 값은 그 위에서 흔들립니다.</p>
     <label class="row check">
       <input type="checkbox" id="soundChk" checked><span class="lbl">환경음 (파도·바람·풀벌레·차량)</span>
     </label>

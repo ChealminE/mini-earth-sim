@@ -169,3 +169,13 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 /* 설정창의 체크박스 행 */
 .settings-box .row.check { align-items: center; gap: 8px; }
 .settings-box .row.check .lbl { width: auto; font-size: 12.5px; color: #9db3bf; }
+
+/* 설정창 안의 버튼 묶음 (계절·날씨 선택) */
+.btn-row { display: flex; gap: 6px; flex: 1; }
+.btn-row button {
+  flex: 1; padding: 6px 4px; font-size: 12px; cursor: pointer;
+  background: #1a1d22; border: 1px solid #2a2e35; border-radius: 6px; color: #9198a3;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-row button:hover { background: #22262d; color: #c3cdd6; }
+.btn-row button.on { background: #24483c; border-color: #3f9e7d; color: #7fe6bc; }

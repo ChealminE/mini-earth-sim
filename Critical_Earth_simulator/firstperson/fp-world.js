@@ -108,6 +108,9 @@ const FPWorld = {
   trees: [],          // {x, z, r} - 나무 근처는 광합성으로 CO2가 낮게 나온다
   iceMeshes: [],      // 빙하(유빙) 메시
   beachRamp: null,    // 해변 모래 경사로
+  leafMeshes: [],     // 나뭇잎 덩어리 (겨울에 숨겨 낙엽 표현)
+  grass: null,        // {mesh, baseHSL, count} - 계절마다 다시 칠하려면 원본 색조가 필요
+  seasonSkin: null,   // 계절이 색을 바꾸는 재질들과 그 원래 색
   co2: 418,
   BOX_W, BOX_D, BOX_H, ZONE_W, GROUND_BASE, OCEAN_BASE, waveBaseY, TERRAIN_TOP,
   waveHeightAt, waveNormalAt, wetlandY,
@@ -361,8 +364,8 @@ function buildFirstPersonWorld(renderer) {
     return block;
   }
   zoneFloor(-ZONE_W, OCEAN_BASE, T.oceanFloor, 0xa89f83);
-  zoneFloor(0, GROUND_BASE, T.forestGrass, 0x2c331c);
-  zoneFloor(ZONE_W, GROUND_BASE, T.cityPavement, 0x3a3832, 0x9a9a9a);
+  const greenBlock = zoneFloor(0, GROUND_BASE, T.forestGrass, 0x2c331c);
+  const cityBlock = zoneFloor(ZONE_W, GROUND_BASE, T.cityPavement, 0x3a3832, 0x9a9a9a);
 
   // ── 절차적 지형 캡 (원본과 같은 노이즈, 세그먼트만 크게 올림) ─────────────
   // 캡도 블록과 같은 크기로. terrainNoise의 falloff가 |u|>1에서 0으로 잘리므로
@@ -384,7 +387,44 @@ function buildFirstPersonWorld(renderer) {
     return mesh;
   }
   createTerrainCap(-ZONE_W, OCEAN_BASE, T.oceanFloor, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
-  createTerrainCap(0, GROUND_BASE, T.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
+  const greenCap = createTerrainCap(0, GROUND_BASE, T.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
+  // ── 계절 지면 오버레이 ──────────────────────────────────────────────────
+  // 지면은 텍스처 맵을 쓴다. 재질 색은 텍스처에 '곱해지는' 값이라 어둡게만 만들 수 있고,
+  // 초록 텍스처를 흰색이나 갈색으로 바꿀 수는 없다(흰색은 곱셈의 항등원이라
+  // 겨울이 그대로 초록으로 나왔다). 그래서 지형과 같은 모양의 반투명 판을 위에 겹친다.
+  // 이 한 장으로 가을 마른 땅과 겨울 눈을 모두 처리한다.
+  const overlayMat = new THREE.MeshStandardMaterial({
+    color: 0xf4f8fc, roughness: 0.8, transparent: true, opacity: 0, depthWrite: false,
+  });
+  const groundOverlay = new THREE.Mesh(greenCap.geometry, overlayMat);   // 지오메트리 공유
+  groundOverlay.position.copy(greenCap.position);
+  // 진흙 웅덩이(지면+0.006)보다 위로 올려야 한다. 안 그러면 눈밭 한가운데 진흙만
+  // 초록으로 드러난다.
+  groundOverlay.position.y += 0.008;
+  groundOverlay.receiveShadow = true;
+  world.add(groundOverlay);
+
+  // 도시 포장면은 계절색을 안 탄다. 눈만 따로 얹는다.
+  // 도로(GROUND_BASE+0.002)보다 낮게 깔아야 눈이 도로를 덮지 않아
+  // '제설한 도로 + 눈 쌓인 주변'처럼 보인다.
+  const citySnowMat = new THREE.MeshStandardMaterial({
+    color: 0xf4f8fc, roughness: 0.8, transparent: true, opacity: 0, depthWrite: false,
+  });
+  const citySnowGeo = new THREE.PlaneGeometry(ZONE_W, BOX_D);
+  citySnowGeo.rotateX(-Math.PI / 2);
+  const citySnow = new THREE.Mesh(citySnowGeo, citySnowMat);
+  citySnow.position.set(ZONE_W, GROUND_BASE + 0.0015, 0);
+  citySnow.receiveShadow = true;
+  world.add(citySnow);
+
+  // 계절이 색을 바꿀 재질들. '원래 색'을 함께 들고 있어야 계절을 되돌릴 수 있다.
+  // (재질 색을 직접 곱해 놓으면 봄->여름->봄 왕복에서 색이 계속 어두워진다)
+  FPWorld.seasonSkin = {
+    // 지면 텍스처에 곱하는 색조 - 미세 조정용. 큰 변화는 오버레이가 맡는다.
+    grounds: [greenCap.material, greenBlock.material[2]].map(m => ({ mat: m, base: m.color.clone() })),
+    overlayMat, overlay: groundOverlay,
+    citySnowMat, citySnow,
+  };
 
   // ── 해변 경사로 ─────────────────────────────────────────────────────────
   // 육지(0.432)와 해저(0.138)의 낙차는 실척 약 15m라, 1인칭에선 바다에 한번 빠지면
@@ -502,7 +542,13 @@ function buildFirstPersonWorld(renderer) {
     ice.castShadow = true;
     oceanGroup.add(ice);
     FPWorld.iceMeshes.push(ice);   // 온도계가 '빙하'를 따로 집어낼 수 있게
-    FPWorld.cylinders.push({ x: x - ZONE_W, z, r: s * 0.95, top: ice.position.y + s * 0.5 });
+    const col = { x: x - ZONE_W, z, r: s * 0.95, top: ice.position.y + s * 0.5 };
+    FPWorld.cylinders.push(col);
+    // 계절에 따라 유빙 크기가 변한다. 겉모습만 키우면 보이지 않는 벽이 생기므로
+    // 충돌체와 기준 치수를 같이 들고 있다가 applySeason()에서 함께 갱신한다.
+    ice.userData.baseSize = s;
+    ice.userData.baseY = ice.position.y;
+    ice.userData.collider = col;
   });
 
   // ── 습지·숲 ─────────────────────────────────────────────────────────────
@@ -534,6 +580,7 @@ function buildFirstPersonWorld(renderer) {
 
   const trunkMat = new THREE.MeshStandardMaterial({ map: T.treeBark, roughness: 0.9 });
   const leafMat = new THREE.MeshStandardMaterial({ color: 0x3f7433, roughness: 0.8, flatShading: true });
+  FPWorld.leafMat = leafMat;   // 계절마다 색이 바뀐다 (겨울엔 잎 자체를 숨김)
   for (let i = 0; i < 26; i++) {
     const [x, z] = scatterInGreenZone();
     const tree = new THREE.Group();
@@ -551,6 +598,7 @@ function buildFirstPersonWorld(renderer) {
       leaf.position.set(Math.cos(ang) * 0.03, h * (0.7 + Math.random() * 0.25), Math.sin(ang) * 0.03);
       leaf.castShadow = true;
       tree.add(leaf);
+      FPWorld.leafMeshes.push(leaf);   // 겨울에 통째로 숨겨 낙엽을 표현한다
     }
     tree.position.set(x, wetlandY(x, z), z);
     world.add(tree);
@@ -596,6 +644,9 @@ function buildFirstPersonWorld(renderer) {
   {
     const dummy = new THREE.Object3D();
     const col = new THREE.Color();
+    // 계절마다 잔디를 다시 칠하려면 '이 포기의 원래 색조'를 알아야 한다.
+    // setColorAt()은 값을 넣기만 하고 되읽을 방법이 없어서 여기서 따로 보관해 둔다.
+    const baseHSL = new Float32Array(FP.GRASS_COUNT * 3);
     let placed = 0, attempts = 0;
     while (placed < FP.GRASS_COUNT && attempts < FP.GRASS_COUNT * 6) {
       attempts++;
@@ -613,13 +664,18 @@ function buildFirstPersonWorld(renderer) {
       dummy.updateMatrix();
       grassMesh.setMatrixAt(placed, dummy.matrix);
       // 채도·명도를 조금씩 흩어 놓으면 같은 모델 수천 개라도 덜 인위적으로 보인다
-      col.setHSL(0.26 + Math.random() * 0.06, 0.42 + Math.random() * 0.22, 0.32 + Math.random() * 0.18);
+      const gh = 0.26 + Math.random() * 0.06;
+      const gs2 = 0.42 + Math.random() * 0.22;
+      const gl = 0.32 + Math.random() * 0.18;
+      baseHSL[placed * 3] = gh; baseHSL[placed * 3 + 1] = gs2; baseHSL[placed * 3 + 2] = gl;
+      col.setHSL(gh, gs2, gl);
       grassMesh.setColorAt(placed, col);
       placed++;
     }
     grassMesh.count = placed;
     grassMesh.instanceMatrix.needsUpdate = true;
     if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
+    FPWorld.grass = { mesh: grassMesh, baseHSL, count: placed };
   }
   world.add(grassMesh);
 
@@ -1293,11 +1349,14 @@ function diurnal(hour) {
 const DIURNAL_AT_NOON = diurnal(12);   // 정오를 기준점으로 삼아 기존 보정값을 유지한다
 
 // 햇빛의 세기(0=한밤, 1=한낮). 광합성량과 조명이 이 값을 따른다.
-// 일출 6시, 일몰 18시로 잡고 앞뒤 1.5시간을 여명/황혼으로 부드럽게 잇는다.
+// 일출·일몰 시각은 계절이 정한다(여름은 길고 겨울은 짧다). 앞뒤 1.5시간을
+// 여명/황혼으로 부드럽게 잇는다.
 function daylight(hour) {
   const h = ((hour % 24) + 24) % 24;
+  const S = SEASONS[FPWorld.season] || SEASONS.summer;
   const ramp = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return Math.min(ramp(h, 4.5, 7.5), 1 - ramp(h, 16.5, 19.5));
+  return Math.min(ramp(h, S.rise - 1.5, S.rise + 1.5),
+                  1 - ramp(h, S.set - 1.5, S.set + 1.5));
 }
 function isNight(hour) { return daylight(hour) < 0.5; }
 function hourLabel(hour) {
@@ -1326,13 +1385,39 @@ const DUSK_SKY = new THREE.Color(0xd98a52);
 FPWorld.season = 'summer';
 FPWorld.weather = 'clear';
 
-// 계절이 환경에 주는 몫 (기온·일장·CO2 진동은 Stage B에서 별도 테이블로 붙는다)
-const SEASON_ENV = {
-  spring: { sky: 0xd8f0c0, skyW: 0.10, fogK: 1.00 },
-  summer: { sky: 0xffffff, skyW: 0.00, fogK: 1.00 },
-  autumn: { sky: 0xf0d68c, skyW: 0.12, fogK: 0.95 },
-  winter: { sky: 0xdfe8f2, skyW: 0.18, fogK: 0.85 },
+// ── 계절 ────────────────────────────────────────────────────────────────────
+// temp   : 기온 오프셋 [°C]. 중위도 연교차(최난월-최한월)는 20°C 안팎이라 여름 +8 / 겨울 -10.
+// seaT   : 해수 기온 오프셋. 훨씬 작은 건 물의 열용량 때문이다(SEA_WARM_AMP과 같은 이유).
+// rise/set: 일출·일몰 시각. 여름은 길고 겨울은 짧다.
+// co2    : CO2 계절 진동 [ppm]. 이 기능의 과학적 핵심이다.
+//          실제 킬링 곡선은 북반구 식생 때문에 연 6ppm 안팎으로 오르내린다
+//          (5월 최고 / 9월 최저). 이미 구현한 '낮=광합성 흡수 / 밤=호흡 배출'의
+//          연 단위 판이라, 학생이 CO2 센서로 직접 재서 확인할 수 있다.
+//          슬라이더 값은 '연평균'이고 실측값은 계절을 탄다고 설명하면 된다.
+// grass  : 잔디 색조 가산 (H, S, L). leaf: 나뭇잎 색. snow: 지면 눈 덮임 비율.
+// ice    : 유빙 크기 배수.
+const SEASONS = {
+  spring: { ko: '봄',   temp: 0.0,  seaT: 0.0,  rise: 6.0, set: 18.0, co2: +3,
+            sky: 0xd8f0c0, skyW: 0.10, fogK: 1.00,
+            grass: [+0.02, +0.10, +0.06], leaf: 0x6cae4a, snow: 0.00, ice: 1.00,
+            ground: 0xd9f0b8, groundW: 0.20, ov: 0x9ed46a, ovW: 0.12 },
+  summer: { ko: '여름', temp: +8.0, seaT: +2.5, rise: 5.0, set: 19.5, co2: -1,
+            sky: 0xffffff, skyW: 0.00, fogK: 1.00,
+            grass: [0, 0, 0],             leaf: 0x3f7433, snow: 0.00, ice: 0.75,
+            ground: 0xffffff, groundW: 0.00, ov: 0xffffff, ovW: 0.00 },
+  autumn: { ko: '가을', temp: +0.5, seaT: +1.0, rise: 6.0, set: 18.0, co2: -3,
+            sky: 0xf0d68c, skyW: 0.12, fogK: 0.95,
+            grass: [-0.16, -0.05, +0.02], leaf: 0xc9772a, snow: 0.00, ice: 1.00,
+            ground: 0xc9a45c, groundW: 0.35, ov: 0xb07d33, ovW: 0.55 },
+  winter: { ko: '겨울', temp: -10.0, seaT: -3.0, rise: 7.5, set: 17.0, co2: +2,
+            sky: 0xdfe8f2, skyW: 0.18, fogK: 0.85,
+            grass: [-0.10, -0.35, +0.10], leaf: null,     snow: 0.82, ice: 1.35,
+            ground: 0xa8b0a4, groundW: 0.20, ov: 0xf4f8fc, ovW: 0.88 },
 };
+const SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
+function seasonDef() { return SEASONS[FPWorld.season] || SEASONS.summer; }
+// applyEnvironment()가 쓰는 이름을 그대로 유지 (하늘색·안개 몫만 꺼내 준다)
+const SEASON_ENV = SEASONS;
 // 날씨가 환경에 주는 몫 (입자·소리·기온 보정은 Stage C에서 fp-weather.js가 맡는다)
 const WEATHER_ENV = {
   clear:  { sky: 0xffffff, skyW: 0.00, fogK: 1.00, lightK: 1.00 },
@@ -1392,6 +1477,62 @@ function applyEnvironment() {
   }
 }
 
+// 계절이 '겉모습'을 바꾸는 부분. 색·크기라 매 프레임 돌 필요가 없고 바뀔 때만 부른다.
+// (기온·일장·CO2 진동은 fp-tools.js와 daylight()가 SEASONS 테이블을 직접 읽는다)
+const _sc = new THREE.Color();
+const SNOW_COLOR = new THREE.Color(0xf2f6fa);
+function applySeason(name) {
+  if (SEASONS[name]) FPWorld.season = name;
+  const S = seasonDef();
+
+  // 잔디: 저장해 둔 원본 HSL에 계절 가산값을 더해 다시 칠한다.
+  // 원본을 안 들고 있으면 계절을 왕복할 때마다 색이 계속 어긋난다.
+  const G = FPWorld.grass;
+  if (G) {
+    const [dh, ds, dl] = S.grass;
+    for (let i = 0; i < G.count; i++) {
+      _sc.setHSL(
+        (G.baseHSL[i * 3] + dh + 1) % 1,
+        Math.min(1, Math.max(0, G.baseHSL[i * 3 + 1] + ds)),
+        Math.min(1, Math.max(0, G.baseHSL[i * 3 + 2] + dl))
+      );
+      // 겨울엔 눈에 파묻힌 만큼 흰색으로 끌어당긴다
+      if (S.snow > 0) _sc.lerp(SNOW_COLOR, S.snow * 0.8);
+      G.mesh.setColorAt(i, _sc);
+    }
+    if (G.mesh.instanceColor) G.mesh.instanceColor.needsUpdate = true;
+  }
+
+  // 나뭇잎: 겨울은 통째로 숨겨 낙엽을 표현한다
+  if (FPWorld.leafMat && S.leaf != null) FPWorld.leafMat.color.setHex(S.leaf);
+  FPWorld.leafMeshes.forEach(m => { m.visible = S.leaf != null; });
+
+  // 지면: 텍스처에 계절 색조를 살짝 곱하고, 큰 변화는 반투명 오버레이가 만든다
+  const SK = FPWorld.seasonSkin;
+  if (SK) {
+    SK.grounds.forEach(({ mat, base }) => mat.color.copy(base).lerp(_sc.setHex(S.ground), S.groundW));
+    SK.overlayMat.color.setHex(S.ov);
+    SK.overlayMat.opacity = S.ovW;
+    SK.overlay.visible = S.ovW > 0.01;
+    SK.citySnowMat.opacity = S.snow;
+    SK.citySnow.visible = S.snow > 0.01;
+  }
+
+  // 유빙: 겨울에 커지고 여름에 녹아 작아진다. 충돌체도 같이 따라가야 한다.
+  FPWorld.iceMeshes.forEach(ice => {
+    const u = ice.userData;
+    if (!u.baseSize) return;
+    ice.scale.setScalar(S.ice);
+    ice.position.y = waveBaseY + u.baseSize * S.ice * 0.35;
+    if (u.collider) {
+      u.collider.r = u.baseSize * S.ice * 0.95;
+      u.collider.top = ice.position.y + u.baseSize * S.ice * 0.5;
+    }
+  });
+
+  FPWorld.refresh();
+}
+
 // 상태를 바꾼 쪽(CO2·시간·계절·날씨 UI)은 전부 이것만 부르면 된다.
 // 갱신 경로를 하나로 모아 두면 "어떤 순서로 눌러도 넷 다 반영"이 보장된다.
 FPWorld.refresh = function () { applyWorldCO2(FPWorld.co2); };
@@ -1437,7 +1578,10 @@ const SEA_WARM_AMP = 0.75;      // 바다는 열용량이 커서 전 지구 승�
 //   418ppm -> 14% (요즘 실제로 관측되는 정도) / 600ppm -> 80% / 667ppm 이상 -> 전면
 const BLEACH_ON = 1.5, BLEACH_FULL = 4.0;
 function seaTemperature(ppm) {
-  return SEA_BASE_T + SEA_WARM_AMP * warmingSince280(ppm);
+  // 계절도 탄다. 여름 바다가 따뜻해지면 백화가 더 잘 일어나야 한다.
+  // (fp-tools.js의 SPOT.sea와 같은 기준: 여름을 0점으로 삼는다)
+  const S = SEASONS[FPWorld.season] || SEASONS.summer;
+  return SEA_BASE_T + SEA_WARM_AMP * warmingSince280(ppm) + (S.seaT - SEASONS.summer.seaT);
 }
 function coralBleaching(ppm) {
   const excess = seaTemperature(ppm) - (SEA_BASE_T + BLEACH_ON);

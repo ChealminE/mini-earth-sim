@@ -65,6 +65,23 @@ timeSlider.addEventListener('input', () => {
 });
 timeFlowChk.addEventListener('change', () => { FPWorld.timeFlowing = timeFlowChk.checked; });
 
+// ── 계절 ────────────────────────────────────────────────────────────────────
+const seasonBtns = document.getElementById('seasonBtns');
+function syncSeasonUI() {
+  seasonBtns.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.season === FPWorld.season);
+  });
+}
+seasonBtns.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  applySeason(b.dataset.season);
+  syncSeasonUI();
+  syncTimeUI();          // 일출·일몰이 바뀌므로 시각 표기도 갱신
+});
+applySeason(FPWorld.season);
+syncSeasonUI();
+
 // ── 환경음 ──────────────────────────────────────────────────────────────────
 // 브라우저는 사용자 조작 없이 소리를 못 내게 막는다. 게임 시작(클릭) 시점에 켠다.
 const soundChk = document.getElementById('soundChk');

@@ -64,11 +64,21 @@ const AIR_SAMPLE_DIST = 0.3;   // 허공을 겨눴을 때 대기를 뜨는 거�
 // 대기 -> 그 아래 지면의 대응 관계 (지면 열 섞임 계산용)
 const SPOT_GROUND = { airOcean: 'sea', airGreen: 'green', airCity: 'city' };
 
+// 바다·빙하 계열은 계절 진폭이 훨씬 작다 (물의 열용량)
+const SEA_SPOTS = { sea: 1, ice: 1, airOcean: 1 };
+// SPOT.base 값들은 계절이 없던 시절 '여름 정오' 기준으로 맞춰 둔 값이다.
+// 그래서 여름을 0점으로 삼아 그 차이만 더한다 (여름에는 이 항이 0).
+function seasonTempOffset(spot) {
+  const S = seasonDef(), SUM = SEASONS.summer;
+  return SEA_SPOTS[spot] ? (S.seaT - SUM.seaT) : (S.temp - SUM.temp);
+}
 function spotBaseTemp(spot, ppm, hour) {
   const S = SPOT[spot];
   const h = hour == null ? FPWorld.hour : hour;
-  // (diurnal(h) - 정오값)이라 정오에는 0 = base가 그대로 정오 기온이 된다
-  return S.base + S.amp * warmingSince280(ppm) + S.day * (diurnal(h) - DIURNAL_AT_NOON);
+  // (diurnal(h) - 정오값)이라 정오에는 일교차 항이 0이 된다
+  return S.base + S.amp * warmingSince280(ppm)
+       + S.day * (diurnal(h) - DIURNAL_AT_NOON)
+       + seasonTempOffset(spot);
 }
 function measureTemperature(spot, x, z, ppm, aboveGround) {
   const S = SPOT[spot];
@@ -123,7 +133,9 @@ function measureCO2(ppm, x, z, zone, px, pz) {
   // 낮 값과 밤 값 사이를 햇빛 세기로 섞는다 (여명·황혼에는 그 중간)
   const off = Z.nightOff + (Z.off - Z.nightOff) * lit;
   const rise = Z.nightRise + (Z.rise - Z.nightRise) * lit;
-  let v = ppm + off + rise * k;
+  // 계절 진동(킬링 곡선): 북반구 식생이 봄에 CO2를 뱉고 여름내 빨아들여 가을에 최저가 된다.
+  // 슬라이더 값은 연평균이고, 실제로 재는 값은 이만큼 계절을 탄다.
+  let v = ppm + seasonDef().co2 + off + rise * k;
 
   // 나무 그늘 아래는 낮에 특히 낮다. 잎이 바로 위에서 CO2를 빨아들이는 자리라
   // 같은 녹지 안에서도 확연히 차이가 난다.
