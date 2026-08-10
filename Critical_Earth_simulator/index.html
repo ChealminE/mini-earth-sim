@@ -134,22 +134,23 @@
     <div class="tab-panel" id="tab-future">
       <div class="co2-row">
         <span class="name">CO₂ 농도 (ppm)</span>
-        <input type="range" min="280" max="600" step="1" value="418" id="co2slider">
+        <input type="range" min="280" max="1000" step="1" value="418" id="co2slider">
         <span class="value" id="co2out">418</span>
       </div>
-      <p class="hint">실측 범위: 350~418ppm (1988~2023). 그 밖은 회귀식 기반 추정치예요. 기후 시스템은 임계점을 지나면 선형 관계가 깨질 수 있어 극단값 예측은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬의 대기·해수 상태에도 실시간으로 반영됩니다.</p>
+      <p class="hint">실측 범위: 350~418ppm (1988~2023). 해양 pH는 회귀가 아니라 <b>탄산 평형식</b>을 직접 풀어 구합니다(관측 35점을 RMSE 0.007로 재현). 기온편차는 복사강제력이 농도의 로그에 비례하는 점을 반영해 <b>log₂ 형태로 회귀</b>했습니다. 그래도 실측 범위 밖은 추정치이고, 기후 시스템은 임계점을 지나면 관계가 깨질 수 있어 극단값은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬과 <b>1인칭 탐험 모드</b>에도 똑같이 반영됩니다.</p>
 
       <div class="stat-grid">
         <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.62°C</div></div>
-        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.049</div></div>
+        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.043</div></div>
+        <div class="stat-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.43</div></div>
       </div>
 
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (r=0.925)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (r=-0.972)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (관측 r=0.924)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (관측 r=-0.972 · 곡선=탄산평형)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
       </div>
 
-      <p class="reg-note">회귀식: 기온편차 = 0.01608 × CO2농도 − 6.101 (R²=0.855) · 해양pH = −0.000942 × CO2농도 + 8.441 (R²=0.946)</p>
+      <p class="reg-note">기온편차 = 4.258 × log₂(CO₂/280) − 1.858 (r=0.924) · 여기서 4.258°C/배증이 이 관측 기록에서 읽어낸 기후민감도입니다 (IPCC 최적추정 3.0, 범위 2.5~4.0).<br>해양 pH는 회귀식이 아니라 탄산 평형(K₀·K₁·K₂ + 총알칼리도 일정)을 풀어 계산합니다 — 관측 35점 RMSE 0.007.</p>
     </div>
 
     <div class="tab-panel" id="tab-live">
@@ -342,6 +343,7 @@ Serial.println();</pre>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/earth-model.js"></script>
 <script src="js/common.js"></script>
 <script src="js/tab-current.js"></script>
 <script src="js/tab-future.js"></script>

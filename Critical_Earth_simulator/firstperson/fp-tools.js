@@ -20,41 +20,53 @@ const FPTools = {
 // ── 측정 지점 종류 ──────────────────────────────────────────────────────────
 // 온도계는 어디를 겨눠도 값이 나와야 하므로, 크로스헤어가 닿은 것이 무엇인지
 // 8가지로 나눈다. 하늘/허공을 겨누면 그 지점의 '대기'를 잰다.
+// base = 산업화 이전(280ppm)의 온도 [°C]
+// amp  = 전 지구 승온에 대한 그 표면의 증폭계수.
+//        실제 온도 = base + amp × warmingSince280(ppm)
+//        warmingSince280()은 js/earth-model.js에 있는 공유 기후 모델이다. 즉 여기 온도는
+//        조감 모드 '미래 예측' 탭의 기온편차와 같은 곡선을 타고 움직인다.
+//        예전엔 (1000ppm에서 +N도) 식으로 직접 박아 놔서 두 모드가 따로 놀았다.
 const SPOT = {
-  //                        base = 280ppm일 때 °C, rise = 1000ppm에서 더해질 °C
-  sea:      { base: 18, rise: 6.0,  label: '해수' },
-  ice:      { base: -6, rise: 6.0,  label: '빙하', cap: 0 },
-  beach:    { base: 28, rise: 9.0,  label: '해변 모래' },
-  green:    { base: 24, rise: 8.0,  label: '녹지 지면' },
-  city:     { base: 32, rise: 10.0, label: '도시 지면' },
-  airOcean: { base: 17, rise: 6.0,  label: '해양 대기' },
-  airGreen: { base: 22, rise: 7.5,  label: '녹지 대기' },
-  airCity:  { base: 29, rise: 9.5,  label: '도심 대기' },
+  sea:      { base: SEA_BASE_T, amp: SEA_WARM_AMP, label: '해수' },
+  ice:      { base: -6, amp: SEA_WARM_AMP, label: '빙하', cap: 0 },
+  beach:    { base: 28, amp: 1.15, label: '해변 모래' },
+  green:    { base: 24, amp: 1.00, label: '녹지 지면' },
+  city:     { base: 32, amp: 1.30, label: '도시 지면' },
+  airOcean: { base: 17, amp: SEA_WARM_AMP, label: '해양 대기' },
+  airGreen: { base: 22, amp: 0.95, label: '녹지 대기' },
+  airCity:  { base: 29, amp: 1.20, label: '도심 대기' },
 };
-// 위 수치는 원래 있던 세 값(도시 32/+10, 녹지 24/+8, 해수 18/+6)을 기준점으로 놓고
-// 나머지를 물리적으로 말이 되게 끼워 넣은 것이다.
-//  - 해변 모래(28/+9): 마른 모래는 아스팔트만큼은 아니어도 풀밭보다 훨씬 잘 달궈진다.
-//  - 빙하(-6/+6): 얼음 표면은 녹는점 위로 못 올라간다. 녹는 데 열을 다 쓰기 때문에
-//    (융해 잠열) CO2가 최대여도 정확히 0°C에서 멈추도록 cap을 걸었다.
-//  - 대기는 지면보다 낮다. 낮에 데워지는 건 지면이고 공기는 그걸 전달받는 쪽이라서.
-//    다만 바다 위 대기(17/+6)는 해수와 거의 같다 - 물의 열용량이 커서 대기를 붙잡는다.
-//  - 녹지 대기(22/+7.5)가 지면보다 더 시원한 건 증발산 때문이다.
+// 증폭계수의 근거:
+//  - 바다·빙하 0.75 : 물의 열용량이 커서 육지보다 천천히 데워진다. 실제로도 해양 표층은
+//    전 지구 평균보다 덜 오른다. 해수 온도는 fp-world.js와 상수를 공유해서, 온도계로 잰
+//    값과 산호가 반응하는 값이 반드시 같다.
+//  - 녹지 1.00 : 기준.
+//  - 도시 1.30 : 열섬. 포장면이 낮에 열을 더 받고 증발산으로 식지도 않는다.
+//  - 해변 1.15 : 마른 모래는 아스팔트만큼은 아니어도 풀밭보다 훨씬 잘 달궈진다.
+//  - 대기는 그 아래 지면보다 조금 낮다. 낮에 데워지는 건 지면이고 공기는 전달받는 쪽이라서.
+//    바다 위 대기만 해수와 같은 계수인데, 물이 대기 온도를 붙잡기 때문이다.
+//
+// 빙하의 cap: 얼음 표면은 녹는점 위로 못 올라간다. 들어온 열을 녹는 데 다 쓰기 때문
+// (융해 잠열). CO2가 아무리 높아도 0°C에서 멈추게 상한을 걸었다.
 const AIR_MIX_H = 0.06;        // 지면에서 이 높이(실척 3m) 안쪽은 지면 열의 영향을 받는다
 const AIR_SAMPLE_DIST = 0.3;   // 허공을 겨눴을 때 대기를 뜨는 거리 (실척 15m)
 // 대기 -> 그 아래 지면의 대응 관계 (지면 열 섞임 계산용)
 const SPOT_GROUND = { airOcean: 'sea', airGreen: 'green', airCity: 'city' };
 
-function measureTemperature(spot, x, z, k, aboveGround) {
+function spotBaseTemp(spot, ppm) {
+  const S = SPOT[spot];
+  return S.base + S.amp * warmingSince280(ppm);
+}
+function measureTemperature(spot, x, z, ppm, aboveGround) {
   const S = SPOT[spot];
   // 같은 구역 안에서도 지점마다 조금씩 다르게 (측정하는 맛)
   const jitter = Math.sin(x * 37.1 + z * 21.7) * 0.5 + Math.sin(x * 11.3 - z * 53.9) * 0.35;
-  let v = S.base + k * S.rise + jitter;
+  let v = spotBaseTemp(spot, ppm) + jitter;
   // 대기를 잴 때 지면 바로 위면 지면 온도 쪽으로 끌어당긴다.
   // 뜨거운 아스팔트 바로 위 공기가 뜨거운 건 실제로 그렇고, 위로 갈수록 옅어진다.
   if (aboveGround != null && SPOT_GROUND[spot]) {
-    const G = SPOT[SPOT_GROUND[spot]];
     const w = 1 - Math.min(1, Math.max(0, aboveGround) / AIR_MIX_H);
-    v += (G.base + k * G.rise - (S.base + k * S.rise)) * w * 0.6;
+    v += (spotBaseTemp(SPOT_GROUND[spot], ppm) - spotBaseTemp(spot, ppm)) * w * 0.6;
   }
   if (S.cap != null) v = Math.min(S.cap, v);
   return v;
@@ -361,7 +373,7 @@ FPTools.use = function () {
   }
 
   if (tool.kind === 'temp') {
-    const v = measureTemperature(hit.spot, hit.point.x, hit.point.z, k, hit.aboveGround);
+    const v = measureTemperature(hit.spot, hit.point.x, hit.point.z, ppm, hit.aboveGround);
     drawDisplay(tool, v.toFixed(1), `°C · ${SPOT[hit.spot].label}`, '#ff8f6b');
   } else if (tool.kind === 'ph') {
     // pH는 바다에서만. 해양 구역이면서 수면 아래인 지점만 유효.

@@ -129,7 +129,10 @@ function animate() {
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
-    hudSea.textContent = `pH ${oceanPH(FPWorld.co2).toFixed(2)} · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plantTotal}`;
+    hudSea.textContent =
+      `${FPWorld.seaTemp.toFixed(1)}°C · pH ${oceanPH(FPWorld.co2).toFixed(2)} · Ω ${FPWorld.aragonite.toFixed(2)}` +
+      ` · 백화 ${Math.round(FPWorld.coralBleaching * 100)}%` +
+      ` · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plantTotal}`;
   }
 
   renderer.render(FPWorld.scene, camera);

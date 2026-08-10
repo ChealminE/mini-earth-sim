@@ -1232,23 +1232,60 @@ function buildFirstPersonWorld(renderer) {
 // ── CO2 -> 세계 상태 ────────────────────────────────────────────────────────
 // 슬라이더 하나가 하늘색·시야거리·자동차 구성·배기가스·굴뚝 연기를 한꺼번에 움직인다.
 // "CO2를 줄이면 전부 전기차가 되고 매연이 멎는다"를 눈으로 보게 하는 게 목적.
-const CO2_MIN = 280, CO2_MAX = 1000;
+// CO2_MIN / CO2_MAX / CO2_NOW 는 js/earth-model.js 에서 온다 (조감 모드와 공유)
 
 // ── 해양 pH ─────────────────────────────────────────────────────────────────
-// 본편의 실측 회귀식(-0.000942·ppm + 8.441)은 1000ppm에서도 7.5까지밖에 안 내려가서
-// 1인칭에서 산호 백화·생물 감소를 눈으로 보기엔 변화폭이 너무 작다. 그래서 여기서는
-// "현재(418ppm)에서는 실측값 8.05에 맞추되, 고농도에서 훨씬 가파르게 떨어지는" 곡선으로
-// 과장했다. 지수 1.6은 418ppm에서 실측과 일치하도록 역산한 값.
-//   280ppm -> 8.20 / 418ppm -> 8.05 / 640ppm -> 7.52 / 1000ppm -> 6.15
-// 실측 재현이 아니라 교육용 연출이라는 점에 유의.
-const PH_CLEAN = 8.20, PH_DROP = 2.05, PH_CURVE = 1.6;
+// 예전엔 여기서 자체 곡선을 썼다. 1000ppm에서 pH 6.15까지 떨어뜨려 백화를 극적으로
+// 보이게 하려던 연출이었는데, 그 결과 같은 프로그램의 '미래 예측' 탭은 7.50을 내놓고
+// 1인칭은 6.15를 내놓는 상태가 됐다. 학생이 잰 값과 예측값이 다르면 도구를 못 믿는다.
+// (게다가 pH 6.15는 탄산음료 영역이라 산호가 하얘지는 게 아니라 골격이 녹는다.)
+//
+// 이제 두 모드가 js/earth-model.js 의 seawaterPH() 하나만 쓴다. 탄산 평형을 직접 푼
+// 값이라 관측 35점을 RMSE 0.007로 재현한다.
+//   280ppm -> 8.19 / 418ppm -> 8.04 / 600ppm -> 7.91 / 1000ppm -> 7.71
+// 변화폭이 0.48로 줄어든 만큼, '눈에 보이는 변화'는 pH 자체가 아니라
+// 아라고나이트 포화도 Ω(4.44 -> 1.78)와 수온으로 만든다. 아래 백화/석회화 참고.
 function oceanPH(ppm) {
-  const k = Math.min(1, Math.max(0, (ppm - CO2_MIN) / (CO2_MAX - CO2_MIN)));
-  return PH_CLEAN - PH_DROP * Math.pow(k, PH_CURVE);
+  return seawaterPH(ppm);
 }
-// pH를 0(최악)~1(건강) 생태 건강도로 환산 - 산호 백화율·개체수 감소에 함께 쓰인다
-function oceanHealth(ph) {
-  return Math.min(1, Math.max(0, (ph - (PH_CLEAN - PH_DROP)) / PH_DROP));
+
+// ── 산호에 일어나는 두 가지 서로 다른 일 ────────────────────────────────────
+// 예전엔 pH 하나로 백화와 개체수 감소를 전부 굴렸는데, 기작이 틀렸다.
+//   백화(bleaching)  = 수온 스트레스로 공생조류(주산텔라)를 뱉어내는 현상. 열 문제다.
+//   석회화 저해/용해 = 아라고나이트 포화도 Ω가 낮아져 골격을 못 만들거나 녹는 현상.
+//                      이쪽이 산성화(pH) 문제다.
+// 둘을 분리하면 새로 만든 수온 모델도 살아나고, 학생이 "산성화 = 백화"라는 흔한
+// 오개념을 갖지 않게 된다.
+
+// 열 스트레스: 표층 수온이 백화 임계를 넘긴 정도 (0=정상, 1=완전 백화)
+// 산호는 '평년 최고수온 + 1°C'가 몇 주 이어지면 백화한다(NOAA의 Degree Heating Week
+// 개념). 여기서는 그 임계를 산업화 이전 해수온 + 1.0°C로 잡고, +3.5°C에서 전면 백화로 본다.
+// 이 두 값은 fp-tools.js의 온도표(SPOT.sea)가 그대로 가져다 쓴다.
+// 수온을 두 군데서 따로 정의하면 "잰 값"과 "산호가 반응하는 값"이 어긋난다.
+const SEA_BASE_T = 18.0;        // 280ppm에서의 표층 수온 [°C]
+const SEA_WARM_AMP = 0.75;      // 바다는 열용량이 커서 전 지구 승온보다 덜 오른다
+// 백화 임계. 실제로는 '그 지역 월최고수온 + 1°C가 몇 주'가 기준인데 이 모형엔 계절이
+// 없으므로, 산업화 이전 수온 대비 +1.5°C에서 시작해 +4.0°C에서 전면 백화로 잡았다.
+//   418ppm -> 14% (요즘 실제로 관측되는 정도) / 600ppm -> 80% / 667ppm 이상 -> 전면
+const BLEACH_ON = 1.5, BLEACH_FULL = 4.0;
+function seaTemperature(ppm) {
+  return SEA_BASE_T + SEA_WARM_AMP * warmingSince280(ppm);
+}
+function coralBleaching(ppm) {
+  const excess = seaTemperature(ppm) - (SEA_BASE_T + BLEACH_ON);
+  return Math.min(1, Math.max(0, excess / (BLEACH_FULL - BLEACH_ON)));
+}
+// 석회화 가능성: Ω가 3 아래로 내려가면 성장이 느려지고, 1 밑이면 골격이 녹는다.
+// 어류·수초가 기댈 서식지가 남아 있는지를 이 값이 정한다.
+function calcificationHealth(ppm) {
+  const om = aragoniteOmega(ppm);
+  return Math.min(1, Math.max(0, (om - 1.0) / (3.4 - 1.0)));
+}
+// 생태 종합 건강도(0~1). 서식지(Ω)가 주된 요인이고, 백화는 거기에 얹히는 스트레스다.
+// 백화만으로 물고기가 전멸하지는 않으므로 계수를 0.5로 눌러 놨다.
+//   280 -> 1.00 / 418 -> 0.93 / 600 -> 0.41 / 1000 -> 0.16
+function oceanHealth(ppm) {
+  return calcificationHealth(ppm) * (1 - 0.5 * coralBleaching(ppm));
 }
 function applyWorldCO2(ppm) {
   FPWorld.co2 = ppm;
@@ -1283,7 +1320,7 @@ function applyWorldCO2(ppm) {
     FPWorld.exhaust.points.material.size = 0.010 + k * 0.010;
   }
   // 해양 산성화 -> 산호 백화 + 수초·어류 개체수 감소
-  applyOceanHealth(oceanPH(ppm));
+  applyOceanHealth(ppm);
   if (FPWorld.smoke) {
     // CO2가 낮으면 굴뚝 연기가 거의 안 보이고, 높으면 시커멓게 뿜어져 나옴
     FPWorld.smoke.mat.opacity = 0.05 + k * 0.55;
@@ -1310,17 +1347,24 @@ function updateSunShadow(px, pz) {
 }
 
 // ── 해양 생태 반응 ──────────────────────────────────────────────────────────
-// pH가 내려갈수록: 산호는 색을 잃어 하얗게(백화), 수초와 어류는 개체수가 줄어든다.
+// 두 가지 원인을 따로 굴린다:
+//   산호 색   <- 수온 (백화는 열 스트레스 현상이다)
+//   개체수    <- 아라고나이트 포화도 Ω (서식지 골격을 만들 수 있는가)
 // 살아남는 개체를 앞에서부터 세는 방식이라 CO2를 되돌리면 그대로 복원된다.
-function applyOceanHealth(ph) {
+function applyOceanHealth(ppm) {
   if (!FPWorld.fish || !FPWorld.seagrass) return;
-  const h = oceanHealth(ph);
+  const bleach = coralBleaching(ppm);        // 0=정상, 1=완전 백화 (수온이 정한다)
+  const habitat = calcificationHealth(ppm);  // 1=골격 잘 자람, 0=녹기 시작 (Ω가 정한다)
+  const h = oceanHealth(ppm);
   FPWorld.oceanHealth = h;
+  FPWorld.coralBleaching = bleach;
+  FPWorld.aragonite = aragoniteOmega(ppm);
+  FPWorld.seaTemp = seaTemperature(ppm);
 
-  // 산호 백화: 건강할 때 고유색 -> 최악일 때 표백된 흰색
+  // 산호 백화: 수온이 임계를 넘긴 만큼 고유색 -> 표백된 흰색
   const C = FPWorld.CORAL_COLORS;
-  FPWorld.coralMats.branch.color.lerpColors(C.bleached, C.branch, h);
-  FPWorld.coralMats.brain.color.lerpColors(C.bleached, C.brain, h);
+  FPWorld.coralMats.branch.color.lerpColors(C.branch, C.bleached, bleach);
+  FPWorld.coralMats.brain.color.lerpColors(C.brain, C.bleached, bleach);
 
   // 수초: 최악이어도 10%는 남겨서 바다가 완전히 텅 비어 보이지 않게
   const survive = 0.10 + 0.90 * h;
