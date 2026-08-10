@@ -46,11 +46,42 @@ co2Slider.addEventListener('input', () => {
   applyWorldCO2(Number(co2Slider.value));
 });
 
+// ── 시각 슬라이더 ───────────────────────────────────────────────────────────
+// 기본은 정오에 멈춰 있다. 조사 도중에 시간이 흐르면 같은 지점을 다시 재도 값이 달라져
+// 자료가 못 쓰게 되기 때문이다. 필요할 때만 흐르게 하고, 평소엔 이 슬라이더로 옮긴다.
+const timeSlider = document.getElementById('timeSlider');
+const timeOut = document.getElementById('timeOut');
+const timeFlowChk = document.getElementById('timeFlowChk');
+function syncTimeUI() {
+  timeSlider.value = FPWorld.hour.toFixed(2);
+  timeOut.textContent = hourLabel(FPWorld.hour);
+  timeFlowChk.checked = FPWorld.timeFlowing;
+}
+timeSlider.addEventListener('input', () => {
+  FPWorld.hour = Number(timeSlider.value);
+  FPWorld.timeFlowing = false;      // 손으로 옮기면 자동 흐름은 멈춘다
+  applyWorldCO2(FPWorld.co2);       // 광합성량이 바뀌므로 대기 상태도 다시 계산
+  syncTimeUI();
+});
+timeFlowChk.addEventListener('change', () => { FPWorld.timeFlowing = timeFlowChk.checked; });
+
+// ── 환경음 ──────────────────────────────────────────────────────────────────
+// 브라우저는 사용자 조작 없이 소리를 못 내게 막는다. 게임 시작(클릭) 시점에 켠다.
+const soundChk = document.getElementById('soundChk');
+soundChk.addEventListener('change', () => FPAudio.setEnabled(soundChk.checked));
+glCanvas.addEventListener('click', () => { FPAudio.init(); FPAudio.setEnabled(soundChk.checked); });
+
+// ── 야장 ────────────────────────────────────────────────────────────────────
+FPField.init();
+// 계측기가 값을 '확정'했을 때만 기록한다 (수렴 중인 값은 아직 못 믿는 값이라서)
+FPTools.onMeasured = (tool, value, reading) => FPField.record(tool, value, reading);
+
 // ── HUD ─────────────────────────────────────────────────────────────────────
 const hudZone = document.getElementById('hudZone');
 const hudPos = document.getElementById('hudPos');
 const hudMode = document.getElementById('hudMode');
 const waterOverlay = document.getElementById('waterOverlay');
+const hudTime = document.getElementById('hudTime');
 let hudTimer = 0;
 
 // ── 프레임 루프 ─────────────────────────────────────────────────────────────
@@ -64,6 +95,9 @@ function animate() {
   t += dt;
 
   FPPlayer.update(dt, t);
+  FPTools.update(dt);          // 측정 중인 계측기의 값이 안정되어 가는 과정
+  updateTime(dt);              // 시간 흐름이 켜져 있을 때만 동작
+  FPAudio.update(dt);          // 위치·시간·내연차 비율에 맞춰 환경음을 섞는다
   updateSunShadow(FPPlayer.pos.x, FPPlayer.pos.z);
 
   // 수면 파도: 잔물결까지 형상으로 만들고 매 프레임 법선을 다시 계산해야
@@ -127,6 +161,7 @@ function animate() {
     else if (FPPlayer.crouching) mode.push('앉기');
     else if (FPPlayer.sprinting) mode.push('달리기');
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
+    hudTime.textContent = hourLabel(FPWorld.hour) + (FPWorld.timeFlowing ? '' : ' · 정지 (T)');
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
     hudSea.textContent =

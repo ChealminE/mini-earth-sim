@@ -261,8 +261,36 @@ function buildFirstPersonWorld(renderer) {
   sun.shadow.bias = -0.0006;
   scene.add(sun, sun.target);
   FPWorld.sun = sun;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
-  scene.add(new THREE.HemisphereLight(0xdcefff, 0x6b6350, 0.6));
+  const ambient = new THREE.AmbientLight(0xffffff, 0.62);
+  const hemi = new THREE.HemisphereLight(0xdcefff, 0x6b6350, 0.6);
+  scene.add(ambient, hemi);
+  // 낮/밤 주기가 세기를 조절할 수 있게 기본값과 함께 들고 있는다
+  FPWorld.lights = {
+    sun, lampSpot, ambient, hemi, bulbMat: lampBulb.material,
+    base: { sun: 1.7, spot: 26, ambient: 0.62, hemi: 0.6 },
+  };
+
+  // ── 별 ──────────────────────────────────────────────────────────────────
+  // 밤에만 보인다. 하늘 돔 안쪽에 점을 뿌려 두고 낮에는 opacity 0으로 감춘다.
+  {
+    const N = 700, sp = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      // 반구 위쪽에만 뿌린다(지평선 아래 별은 어차피 지형에 가린다)
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+      const r = 34, s = Math.sqrt(1 - u * u);
+      sp[i * 3] = r * s * Math.cos(th);
+      sp[i * 3 + 1] = r * Math.abs(u) * 0.9 + 1;
+      sp[i * 3 + 2] = r * s * Math.sin(th);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+    const stars = new THREE.Points(g, new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.16, transparent: true, opacity: 0, fog: false, depthWrite: false,
+    }));
+    stars.frustumCulled = false;
+    scene.add(stars);
+    FPWorld.stars = stars;
+  }
 
   // ── 구름 ────────────────────────────────────────────────────────────────
   // 흰 구(球)를 여러 개 뭉쳐 만든 만화풍 뭉게구름. 바람을 타고 +x로 흐르다가 맵 끝을
@@ -1234,6 +1262,87 @@ function buildFirstPersonWorld(renderer) {
 // "CO2를 줄이면 전부 전기차가 되고 매연이 멎는다"를 눈으로 보게 하는 게 목적.
 // CO2_MIN / CO2_MAX / CO2_NOW 는 js/earth-model.js 에서 온다 (조감 모드와 공유)
 
+// ── 낮과 밤 ─────────────────────────────────────────────────────────────────
+// 왜 넣었나: 도시 열섬의 정의 자체가 "밤에도 안 식는 것"이다. 정오에 고정된 세계에서는
+// 열섬을 낮 기온 차이로밖에 못 보여주는데, 실제로 열섬 강도는 밤에 가장 커진다.
+// 숲도 마찬가지다. 낮에는 광합성이 CO2를 빨아들이지만 밤에는 호흡만 남아 CO2가 오른다.
+// 이 두 가지는 시간이 흐르지 않으면 아예 보여줄 수 없는 현상이라 시간을 넣었다.
+//
+// 기본은 정오에 '멈춰' 있다. 조사를 하는 중에 시간이 흘러가면 같은 지점을 다시 재도
+// 값이 달라져 자료가 못 쓰게 된다. T키나 설정창 슬라이더로 켜고 옮긴다.
+FPWorld.hour = 12;
+FPWorld.timeFlowing = false;
+const DAY_SECONDS = 300;    // 시간을 켰을 때 하루가 흐르는 데 걸리는 실제 시간(5분)
+
+// 일주 변화 곡선: -1(새벽 5시 최저) ~ +1(오후 2시 최고).
+// 해가 뜬 뒤 지면이 데워지는 데 시간이 걸리기 때문에 최고기온은 정오가 아니라 오후 2시다.
+// 상승 9시간 / 하강 15시간으로 비대칭이라, 반코사인 두 조각을 이어 붙인다.
+const T_MIN_H = 5, T_MAX_H = 14;
+function diurnal(hour) {
+  let h = ((hour % 24) + 24) % 24;
+  if (h >= T_MIN_H && h <= T_MAX_H) {
+    // 새벽 최저 -> 오후 최고 (9시간 동안 상승)
+    return -Math.cos((h - T_MIN_H) / (T_MAX_H - T_MIN_H) * Math.PI);
+  }
+  // 오후 최고 -> 다음날 새벽 최저 (15시간 동안 하강)
+  const t = (h > T_MAX_H ? h - T_MAX_H : h + 24 - T_MAX_H) / (24 - (T_MAX_H - T_MIN_H));
+  return Math.cos(t * Math.PI);
+}
+const DIURNAL_AT_NOON = diurnal(12);   // 정오를 기준점으로 삼아 기존 보정값을 유지한다
+
+// 햇빛의 세기(0=한밤, 1=한낮). 광합성량과 조명이 이 값을 따른다.
+// 일출 6시, 일몰 18시로 잡고 앞뒤 1.5시간을 여명/황혼으로 부드럽게 잇는다.
+function daylight(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  const ramp = (x, a, b) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return Math.min(ramp(h, 4.5, 7.5), 1 - ramp(h, 16.5, 19.5));
+}
+function isNight(hour) { return daylight(hour) < 0.5; }
+function hourLabel(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+  const d = daylight(h);
+  const part = d > 0.85 ? '낮' : (d < 0.15 ? '밤' : (hh < 12 ? '새벽' : '해질녘'));
+  return `${part} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+const NIGHT_SKY = new THREE.Color(0x0b1526);
+const DUSK_SKY = new THREE.Color(0xd98a52);
+
+// 시간에 따라 하늘·조명·별을 갱신한다. CO2에 따른 하늘색은 applyWorldCO2가 정하고,
+// 여기서는 그 위에 '밤이 얼마나 됐는지'를 덧씌운다.
+function applyTimeOfDay() {
+  const h = FPWorld.hour, d = daylight(h);
+  FPWorld.daylight = d;
+  const L = FPWorld.lights;
+  if (!L) return;
+
+  // 여명·황혼에서는 붉은 하늘을 잠깐 거쳐 간다(d가 0.5 근처일 때 가장 강함)
+  const dusk = 1 - Math.abs(d - 0.5) * 2;
+  const day = FPWorld.daySky || CLEAR_SKY;
+  const c = new THREE.Color().lerpColors(NIGHT_SKY, day, d);
+  c.lerp(DUSK_SKY, dusk * 0.55);
+  FPWorld.skyMat.color.copy(c);
+  FPWorld.scene.fog.color.copy(c);
+
+  // 밤에도 완전히 캄캄하면 아무것도 못 하므로 달빛 정도(15%)는 남긴다
+  const lit = 0.15 + 0.85 * d;
+  L.sun.intensity = L.base.sun * lit;
+  L.lampSpot.intensity = L.base.spot * lit;
+  L.ambient.intensity = L.base.ambient * (0.30 + 0.70 * d);
+  L.hemi.intensity = L.base.hemi * (0.25 + 0.75 * d);
+  // 거대 전등의 전구도 같이 꺼진다 - 이 세계의 광원이 저것이라는 걸 보여주는 부분
+  L.bulbMat.color.setRGB(1, 0.972, 0.886).multiplyScalar(0.25 + 0.75 * d);
+  if (FPWorld.stars) FPWorld.stars.material.opacity = Math.max(0, 1 - d * 1.6);
+}
+
+function updateTime(dt) {
+  if (!FPWorld.timeFlowing) return;
+  FPWorld.hour = (FPWorld.hour + dt * 24 / DAY_SECONDS) % 24;
+  applyTimeOfDay();
+  applyWorldCO2(FPWorld.co2);   // 광합성량이 바뀌므로 대기 상태도 다시 계산
+}
+
 // ── 해양 pH ─────────────────────────────────────────────────────────────────
 // 예전엔 여기서 자체 곡선을 썼다. 1000ppm에서 pH 6.15까지 떨어뜨려 백화를 극적으로
 // 보이게 하려던 연출이었는데, 그 결과 같은 프로그램의 '미래 예측' 탭은 7.50을 내놓고
@@ -1292,9 +1401,9 @@ function applyWorldCO2(ppm) {
   const k = Math.min(1, Math.max(0, (ppm - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   FPWorld.co2k = k;
 
-  const c = new THREE.Color().lerpColors(CLEAR_SKY, HAZY_SKY, k);
-  FPWorld.skyMat.color.copy(c);
-  FPWorld.scene.fog.color.copy(c);
+  // CO2가 정하는 '낮의 하늘색'. 실제 화면 색은 여기에 밤/황혼을 덧씌운 값이라
+  // applyTimeOfDay()가 마무리한다.
+  FPWorld.daySky = new THREE.Color().lerpColors(CLEAR_SKY, HAZY_SKY, k);
   // 맑을 때 7유닛(≈350m)까지 보이다가, 1000ppm에선 1.1유닛(≈55m) 앞도 안 보이게
   FPWorld.scene.fog.far = 7.0 - k * 5.9;
   FPWorld.scene.fog.near = 0.25 - k * 0.22;
@@ -1328,6 +1437,7 @@ function applyWorldCO2(ppm) {
     FPWorld.smoke.mat.color.setHSL(0.09, 0.05, 0.62 - k * 0.35);
     FPWorld.smoke.rate = 0.10 + k * 0.55;
   }
+  applyTimeOfDay();   // 하늘색·조명은 CO2와 시간이 함께 정한다
 }
 
 // 그림자 카메라를 플레이어 주변 좁은 범위로 계속 옮겨서 눈앞 그림자 해상도를 확보.

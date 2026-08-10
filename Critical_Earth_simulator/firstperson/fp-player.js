@@ -340,13 +340,39 @@ function bindInput(P, canvas) {
   P.toggleSettings = () => (P.settingsOpen ? closeSettings() : openSettings());
   document.getElementById('settingsCloseBtn').addEventListener('click', closeSettings);
 
+  // 야장도 설정창과 똑같이 커서를 돌려줘야 표를 읽고 버튼을 누를 수 있다.
+  // 두 창이 동시에 열리면 서로 가리므로 하나를 열면 다른 하나는 닫는다.
+  function openField() {
+    if (P.settingsOpen) closeSettings();
+    P.settingsOpen = true;                     // 게임 조작 차단은 설정창과 같은 플래그를 쓴다
+    FPField.open();
+    overlayEl.classList.add('hidden');
+    P.keys = Object.create(null);
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeField() {
+    FPField.close();
+    P.settingsOpen = false;
+    if (canvas.requestPointerLock) canvas.requestPointerLock();
+    setTimeout(() => {
+      if (document.pointerLockElement !== canvas && !P.settingsOpen) overlayEl.classList.remove('hidden');
+    }, 350);
+  }
+  P.toggleField = () => (FPField.panelOpen ? closeField() : openField());
+  document.getElementById('fieldCloseBtn').addEventListener('click', closeField);
+
   window.addEventListener('keydown', e => {
-    // e.repeat 가드: E를 누르고 있으면 keydown이 연속으로 들어와 창이 깜빡인다
-    if (e.code === 'KeyE') { if (!e.repeat) P.toggleSettings(); e.preventDefault(); return; }
-    if (P.settingsOpen) return;                // 설정창이 열려 있으면 게임 조작 차단
+    // e.repeat 가드: 키를 누르고 있으면 keydown이 연속으로 들어와 창이 깜빡인다
+    if (e.code === 'KeyE') {
+      if (!e.repeat) { if (FPField.panelOpen) closeField(); else P.toggleSettings(); }
+      e.preventDefault(); return;
+    }
+    if (e.code === 'KeyF') { if (!e.repeat) P.toggleField(); e.preventDefault(); return; }
+    if (P.settingsOpen) return;                // 설정창·야장이 열려 있으면 게임 조작 차단
     P.keys[e.code] = true;
     if (e.code === 'F5' || e.code === 'KeyV') { P.thirdPerson = !P.thirdPerson; e.preventDefault(); }
-    if (e.code === 'KeyF') P.flying = !P.flying;
+    if (e.code === 'KeyG') P.flying = !P.flying;    // F는 야장이 가져갔다
+    if (e.code === 'KeyT' && !e.repeat) FPWorld.timeFlowing = !FPWorld.timeFlowing;
     if (e.code === 'KeyR') P.respawn();
     if (e.code === 'KeyH') document.getElementById('helpPanel').classList.toggle('hidden');
     if (e.code === 'Space') e.preventDefault();   // 스페이스로 페이지가 스크롤되는 것 방지

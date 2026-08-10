@@ -1,0 +1,286 @@
+// ============================================================================
+// 1인칭 모드 - 야장(野帳) & 횡단 조사
+// ----------------------------------------------------------------------------
+// 왜 필요한가:
+//   측정이라는 행위는 만들어 놨는데 잰 값이 표시창에 잠깐 떴다가 사라졌다.
+//   조감 모드에는 CSV/PNG 내보내기, 축 설정, 추세선, 그래프 병합까지 있는데
+//   1인칭에서는 아무 결론도 못 내렸다. "구경하는 곳"에 머무르는 이유였다.
+//
+//   1인칭 모드가 조감 모드에 없는 걸 딱 하나 가지고 있다: 공간이다.
+//   조감 모드는 전 지구 평균값 하나뿐이라 도시 열섬도, 나무 밑 CO2 저하도 보여줄 수 없다.
+//   그 공간 변이를 숫자로 붙잡아 가져 나갈 수 있게 하는 것이 이 파일의 목적이다.
+//
+// CSV는 조감 모드 '실시간 실험' 탭과 같은 모양으로 뽑는다. 학생이 아두이노 실측과
+// 1인칭 조사 결과를 같은 표에 놓고 비교할 수 있어야 하기 때문이다.
+// ============================================================================
+
+const FPField = {
+  rows: [],          // {n, kind, label, spot, zone, value, unit, x, z, co2, hour, iso}
+  transect: null,    // 진행 중인 횡단 조사
+  panelOpen: false,
+};
+
+const SPOT_KO = {
+  sea: '해수', ice: '빙하', beach: '해변 모래', green: '녹지 지면', city: '도시 지면',
+  airOcean: '해양 대기', airGreen: '녹지 대기', airCity: '도심 대기',
+};
+const KIND_KO = { temp: '온도', ph: 'pH', co2: 'CO2' };
+
+// ── 기록 ────────────────────────────────────────────────────────────────────
+// FPTools가 측정을 '확정'했을 때만 부른다(수렴 중인 값은 기록하지 않는다).
+FPField.record = function (tool, value, reading) {
+  const spec = { temp: '°C', ph: 'pH', co2: 'ppm' }[tool.kind];
+  const row = {
+    n: this.rows.length + 1,
+    kind: tool.kind,
+    kindKo: KIND_KO[tool.kind],
+    spot: reading.spot || '',
+    spotKo: SPOT_KO[reading.spot] || (reading.zone || ''),
+    zone: reading.zone || '',
+    value,
+    unit: spec,
+    x: reading.at ? reading.at.x : FPPlayer.pos.x,
+    z: reading.at ? reading.at.z : FPPlayer.pos.z,
+    co2: FPWorld.co2,
+    hour: FPWorld.hour,
+    iso: new Date().toISOString(),
+  };
+  this.rows.push(row);
+  if (this.transect) this.addTransectPoint(row);
+  this.refresh();
+  this.flash();
+};
+
+FPField.clear = function () {
+  this.rows.length = 0;
+  this.transect = null;
+  // 진행 중이던 측정이 나중에 확정돼서 '지운 뒤'에 한 줄 끼어드는 일을 막는다
+  if (typeof FPTools !== 'undefined') FPTools.slots.forEach(t => { if (t) t.reading = null; });
+  this.refresh();
+};
+
+// ── 통계: 같은 지점 종류를 반복 측정했을 때의 평균과 표준편차 ────────────────
+// 계측기에 재현성 오차를 넣어 둔 이유가 여기 있다. 한 번 잰 값은 못 믿고,
+// 여러 번 재서 평균을 내야 참값에 가까워진다는 걸 표로 보게 하려는 것이다.
+FPField.summary = function () {
+  const g = new Map();
+  for (const r of this.rows) {
+    const key = r.kind + '|' + r.spotKo;
+    if (!g.has(key)) g.set(key, { kindKo: r.kindKo, spotKo: r.spotKo, unit: r.unit, v: [] });
+    g.get(key).v.push(r.value);
+  }
+  const out = [];
+  for (const s of g.values()) {
+    const n = s.v.length;
+    const mean = s.v.reduce((a, b) => a + b, 0) / n;
+    // 표본표준편차(n-1). 측정 자료를 다룰 때 쓰는 쪽이다.
+    const sd = n > 1 ? Math.sqrt(s.v.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : null;
+    out.push({ ...s, n, mean, sd });
+  }
+  out.sort((a, b) => a.kindKo.localeCompare(b.kindKo) || a.spotKo.localeCompare(b.spotKo));
+  return out;
+};
+
+// ── 횡단 조사 ───────────────────────────────────────────────────────────────
+// 해안에서 도심까지 일직선으로 걸으며 일정 간격마다 측정하는, 야외조사의 기본 설계.
+// 시작점을 잡아 두면 이후 측정이 '시작점으로부터의 거리'와 함께 기록되고,
+// 거리-값 그래프가 그려진다. 도시 열섬은 이 그래프 한 장으로 끝난다.
+FPField.startTransect = function () {
+  const p = FPPlayer.pos;
+  this.transect = {
+    x0: p.x, z0: p.z,
+    // 측정 항목별로 따로 모은다. 온도와 CO2를 한 축에 겹쳐 그리면 눈금이 무의미해지지만,
+    // 처음 찍힌 항목으로 고정해 버리면 그 뒤 다른 도구로 잰 값이 전부 조용히 버려진다.
+    // (실제로 그랬다: 앞선 CO2 측정 하나 때문에 온도 17점이 통째로 사라졌다.)
+    // 한 번 걸으면서 온도도 재고 CO2도 재는 편이 조사로서도 자연스럽다.
+    byKind: new Map(),
+    startedAt: new Date().toISOString(),
+  };
+  this.refresh();
+};
+FPField.addTransectPoint = function (row) {
+  const T = this.transect;
+  if (!T.byKind.has(row.kind)) T.byKind.set(row.kind, []);
+  const arr = T.byKind.get(row.kind);
+  const d = Math.hypot(row.x - T.x0, row.z - T.z0) * 50;   // 1유닛 = 50m
+  arr.push({ d, v: row.value, spotKo: row.spotKo, zone: row.zone });
+  arr.sort((a, b) => a.d - b.d);
+};
+// 그래프에 그릴 계열: 지금 들고 있는 도구의 항목을 우선하되, 그게 부족하면 점이 가장 많은 쪽.
+FPField.transectSeries = function () {
+  const T = this.transect;
+  if (!T) return null;
+  const held = FPTools.slots[FPTools.selected];
+  if (held && T.byKind.get(held.kind) && T.byKind.get(held.kind).length >= 2) {
+    return { kind: held.kind, points: T.byKind.get(held.kind) };
+  }
+  let best = null;
+  for (const [kind, points] of T.byKind) {
+    if (!best || points.length > best.points.length) best = { kind, points };
+  }
+  return best;
+};
+FPField.endTransect = function () {
+  this.transect = null;
+  this.refresh();
+};
+
+// ── CSV ─────────────────────────────────────────────────────────────────────
+// 조감 모드 '실시간 실험' 탭이 내보내는 CSV와 같은 자리에 같은 뜻의 열을 둔다.
+// BOM을 붙이는 이유: 안 붙이면 엑셀이 한글 헤더를 깨서 연다.
+FPField.toCSV = function () {
+  const head = ['번호', '측정항목', '측정지점', '구역', '측정값', '단위',
+                'X(m)', 'Z(m)', '시작점거리(m)', '설정CO2(ppm)', '시각(h)', '기록시각'];
+  const T = this.transect;
+  const lines = [head.join(',')];
+  for (const r of this.rows) {
+    const d = T ? (Math.hypot(r.x - T.x0, r.z - T.z0) * 50).toFixed(1) : '';
+    lines.push([
+      r.n, r.kindKo, r.spotKo, r.zone, r.value.toFixed(r.unit === 'ppm' ? 0 : 2), r.unit,
+      (r.x * 50).toFixed(1), (r.z * 50).toFixed(1), d, r.co2,
+      r.hour == null ? '' : r.hour.toFixed(2), r.iso,
+    ].join(','));
+  }
+  return '﻿' + lines.join('\r\n');
+};
+FPField.download = function () {
+  if (!this.rows.length) return;
+  const blob = new Blob([this.toCSV()], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  a.download = `미니지구_야외조사_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// ── 화면 ────────────────────────────────────────────────────────────────────
+FPField.init = function () {
+  this.el = document.getElementById('fieldPanel');
+  this.badge = document.getElementById('fieldBadge');
+  document.getElementById('fieldCsvBtn').addEventListener('click', () => this.download());
+  document.getElementById('fieldClearBtn').addEventListener('click', () => this.clear());
+  document.getElementById('fieldTransectBtn').addEventListener('click', () => {
+    if (this.transect) this.endTransect(); else this.startTransect();
+  });
+  document.getElementById('fieldCloseBtn').addEventListener('click', () => this.close());
+  this.refresh();
+};
+FPField.open = function () {
+  this.panelOpen = true;
+  this.el.classList.remove('hidden');
+  this.refresh();
+};
+FPField.close = function () {
+  this.panelOpen = false;
+  this.el.classList.add('hidden');
+};
+FPField.toggle = function () { this.panelOpen ? this.close() : this.open(); };
+
+// 측정이 기록될 때마다 화면 구석 배지를 잠깐 밝힌다 (패널을 안 열어놔도 남은 걸 알게)
+FPField.flash = function () {
+  if (!this.badge) return;
+  this.badge.classList.add('on');
+  clearTimeout(this._flashT);
+  this._flashT = setTimeout(() => this.badge.classList.remove('on'), 700);
+};
+
+FPField.refresh = function () {
+  if (!this.el) return;
+  const cnt = document.getElementById('fieldCount');
+  if (cnt) cnt.textContent = this.rows.length;
+  if (this.badge) this.badge.textContent = `야장 ${this.rows.length}`;
+  const tb = document.getElementById('fieldTBody');
+  if (tb) {
+    const recent = this.rows.slice(-12).reverse();
+    tb.innerHTML = recent.length ? recent.map(r =>
+      `<tr><td>${r.n}</td><td>${r.kindKo}</td><td>${r.spotKo}</td>` +
+      `<td class="num">${r.value.toFixed(r.unit === 'ppm' ? 0 : 2)} ${r.unit}</td>` +
+      `<td class="num dim">${(r.x * 50).toFixed(0)}, ${(r.z * 50).toFixed(0)}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">아직 기록이 없습니다. 도구를 들고 좌클릭해 측정하세요.</td></tr>';
+  }
+  const sb = document.getElementById('fieldSummary');
+  if (sb) {
+    const s = this.summary();
+    sb.innerHTML = s.length ? s.map(r =>
+      `<tr><td>${r.kindKo}</td><td>${r.spotKo}</td><td class="num">${r.n}</td>` +
+      `<td class="num">${r.mean.toFixed(r.unit === 'ppm' ? 0 : 2)}</td>` +
+      `<td class="num">${r.sd == null ? '—' : '±' + r.sd.toFixed(r.unit === 'ppm' ? 1 : 3)}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">같은 지점을 두 번 이상 재면 평균과 표준편차가 나옵니다.</td></tr>';
+  }
+  const tBtn = document.getElementById('fieldTransectBtn');
+  if (tBtn) tBtn.textContent = this.transect ? '횡단 조사 종료' : '횡단 조사 시작';
+  const tState = document.getElementById('fieldTransectState');
+  if (tState) {
+    if (this.transect) {
+      const parts = [...this.transect.byKind].map(([k, v]) => `${KIND_KO[k]} ${v.length}점`);
+      tState.textContent =
+        `시작점 (${(this.transect.x0 * 50).toFixed(0)}, ${(this.transect.z0 * 50).toFixed(0)}) 기준 · ` +
+        (parts.length ? parts.join(' · ') : '아직 측정 없음');
+    } else {
+      tState.textContent = '시작할 지점에 서서 버튼을 누르고, 일직선으로 걸으며 일정 간격마다 측정하세요.';
+    }
+  }
+  this.drawTransect();
+};
+
+// 거리-값 그래프. 외부 라이브러리 없이 캔버스에 직접 그린다
+// (1인칭 모드는 three.js 말고는 의존성을 안 두는 게 원칙이라서).
+FPField.drawTransect = function () {
+  const cv = document.getElementById('fieldChart');
+  if (!cv) return;
+  const c = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  c.clearRect(0, 0, W, H);
+  const T = this.transect;
+  const series = this.transectSeries();
+  const pts = series ? series.points : [];
+  const PAD_L = 46, PAD_R = 12, PAD_T = 12, PAD_B = 26;
+
+  c.fillStyle = '#0d1418';
+  c.fillRect(0, 0, W, H);
+  if (pts.length < 2) {
+    c.fillStyle = '#5b6a72';
+    c.font = '13px sans-serif';
+    c.textAlign = 'center';
+    c.fillText(T ? '두 지점 이상 측정하면 그래프가 그려집니다' : '횡단 조사를 시작하세요', W / 2, H / 2);
+    return;
+  }
+  const dMax = Math.max(...pts.map(p => p.d)) || 1;
+  let vMin = Math.min(...pts.map(p => p.v)), vMax = Math.max(...pts.map(p => p.v));
+  if (vMax - vMin < 1e-6) { vMax += 1; vMin -= 1; }
+  const pad = (vMax - vMin) * 0.15;
+  vMin -= pad; vMax += pad;
+  const X = d => PAD_L + (d / dMax) * (W - PAD_L - PAD_R);
+  const Y = v => H - PAD_B - ((v - vMin) / (vMax - vMin)) * (H - PAD_T - PAD_B);
+
+  // 축 + 눈금
+  c.strokeStyle = '#2a3a42'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(PAD_L, PAD_T); c.lineTo(PAD_L, H - PAD_B); c.lineTo(W - PAD_R, H - PAD_B); c.stroke();
+  c.fillStyle = '#7e8f99'; c.font = '11px sans-serif'; c.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const v = vMin + (vMax - vMin) * i / 3;
+    c.fillText(v.toFixed(1), PAD_L - 5, Y(v) + 4);
+    c.strokeStyle = '#1c2a31';
+    c.beginPath(); c.moveTo(PAD_L, Y(v)); c.lineTo(W - PAD_R, Y(v)); c.stroke();
+  }
+  c.textAlign = 'center';
+  c.fillText('0', PAD_L, H - 8);
+  c.fillText(dMax.toFixed(0) + ' m', W - PAD_R, H - 8);
+
+  // 구역별 점 색: 해양 파랑 / 녹지 초록 / 도심 주황
+  const ZC = { ocean: '#5aa9d6', green: '#6fbf5a', city: '#e2934b' };
+  c.strokeStyle = '#9fb3bd'; c.lineWidth = 2;
+  c.beginPath();
+  pts.forEach((p, i) => { const x = X(p.d), y = Y(p.v); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+  c.stroke();
+  for (const p of pts) {
+    c.fillStyle = ZC[p.zone] || '#9fb3bd';
+    c.beginPath(); c.arc(X(p.d), Y(p.v), 4, 0, Math.PI * 2); c.fill();
+  }
+  c.fillStyle = '#7e8f99'; c.font = '11px sans-serif'; c.textAlign = 'left';
+  c.fillText(KIND_KO[series.kind] || '', PAD_L + 4, PAD_T + 10);
+};

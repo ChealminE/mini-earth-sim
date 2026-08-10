@@ -116,3 +116,56 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
   text-decoration: none; box-sizing: border-box;
 }
 .settings-btn.ghost { background: #2a323c; color: #cfd8e2; font-weight: 600; }
+
+/* ── 야장(野帳) ─────────────────────────────────────────────────────────────
+   설정창과 같은 어두운 계열이되, 표를 읽어야 하므로 훨씬 넓게 잡는다. */
+#fieldBadge {
+  position: fixed; right: 14px; top: 14px; z-index: 6;
+  padding: 6px 12px; border-radius: 8px;
+  background: rgba(14, 20, 24, .72); border: 1px solid rgba(120, 150, 165, .28);
+  color: #9db3bf; font-size: 13px; letter-spacing: .3px;
+  transition: background .25s, color .25s, border-color .25s;
+  pointer-events: none;
+}
+#fieldBadge.on { background: rgba(24, 74, 60, .92); color: #7fe6bc; border-color: #3f9e7d; }
+
+#fieldPanel {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 10, 13, .62);
+}
+#fieldPanel.hidden { display: none; }
+.field-box {
+  width: min(94vw, 780px); max-height: 92vh; overflow-y: auto;
+  padding: 20px 22px 18px;
+  background: #131a1f; border: 1px solid #2b3a43; border-radius: 12px;
+  color: #d6e2e8; box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+}
+.field-box h3 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+.field-box h3 b { color: #7fe6bc; }
+.field-box h4 {
+  margin: 16px 0 7px; font-size: 13px; font-weight: 600; color: #a8bcc6;
+}
+.field-box h4 .sub { font-weight: 400; font-size: 11.5px; color: #6d828d; margin-left: 6px; }
+.field-cols { display: flex; gap: 16px; flex-wrap: wrap; }
+.field-col { flex: 1 1 320px; min-width: 0; }
+.field-col h4 { margin-top: 0; }
+.field-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.field-table th {
+  text-align: left; font-weight: 500; color: #6d828d;
+  border-bottom: 1px solid #2b3a43; padding: 4px 6px;
+}
+.field-table td { padding: 3px 6px; border-bottom: 1px solid #1c262c; }
+.field-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.field-table td.dim { color: #6d828d; }
+.field-table td.empty { color: #5b6a72; text-align: center; padding: 14px 6px; }
+#fieldChart {
+  width: 100%; height: auto; display: block;
+  border: 1px solid #2b3a43; border-radius: 8px; margin-top: 4px;
+}
+.field-note { margin: 6px 0 0; font-size: 11.5px; color: #6d828d; line-height: 1.5; }
+.field-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+/* 설정창의 체크박스 행 */
+.settings-box .row.check { align-items: center; gap: 8px; }
+.settings-box .row.check .lbl { width: auto; font-size: 12.5px; color: #9db3bf; }
