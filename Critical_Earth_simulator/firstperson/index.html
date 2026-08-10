@@ -31,7 +31,7 @@
   <div class="hud-line dim">자동차: <span id="hudCars">-</span></div>
   <div class="hud-line dim">바다: <span id="hudSea">-</span></div>
   <div class="hud-line dim" id="hudTime">낮 12:00</div>
-  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>F</b> 야장 · <b>1~3</b> 도구</div>
+  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>F</b> 야장 · <b>M</b> 지도 · <b>1~3</b> 도구</div>
 </div>
 
 <!-- 기본은 숨김: 펼쳐두면 우하단 도구의 표시창을 가려서 측정값을 못 읽는다 (H로 토글) -->
@@ -50,6 +50,7 @@
     <tr><td><span class="key">E</span></td><td>설정창 열기/닫기 (밝기·CO₂·시각)</td></tr>
     <tr><td><span class="key">F</span></td><td>야장 열기/닫기 (측정 기록·통계·횡단 조사·CSV)</td></tr>
     <tr><td><span class="key">T</span></td><td>시간 흐름 켜기/끄기 (낮↔밤)</td></tr>
+    <tr><td><span class="key">M</span></td><td>미니맵 크기 (보통 → 크게 → 끄기)</td></tr>
     <tr><td><span class="key">1</span>~<span class="key">9</span></td><td>단축바에서 도구 선택</td></tr>
     <tr><td>좌클릭</td><td>든 도구로 바라보는 지점 측정</td></tr>
   </table>
@@ -71,6 +72,9 @@
 
 <!-- 마인크래프트식 단축바 (숫자키 1~9) -->
 <div id="hotbar"></div>
+
+<!-- 미니맵: 하늘에서 내려다본 지도 + 현위치 점 + 시야 부채꼴 (M키) -->
+<canvas id="minimap" width="220" height="124"></canvas>
 
 <!-- 기록된 측정 개수. 패널을 안 열어둬도 뭔가 남고 있다는 걸 알게 한다 -->
 <div id="fieldBadge">야장 0</div>
@@ -174,6 +178,7 @@
 <script src="fp-world.js"></script>
 <script src="fp-weather.js"></script>
 <script src="fp-audio.js"></script>
+<script src="fp-minimap.js"></script>
 <script src="fp-field.js"></script>
 <script src="fp-tools.js"></script>
 <script src="fp-player.js"></script>

@@ -16,6 +16,7 @@ applyWorldCO2(418);
 FPPlayer.init(camera, glCanvas);
 FPTools.init(camera);   // 단축바 + 손에 든 도구 (camera를 씬에 넣는 것도 여기서 처리)
 FPWeather.init(FPWorld.scene);
+FPMinimap.init();
 
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -137,6 +138,7 @@ function animate() {
   FPTools.update(dt);          // 측정 중인 계측기의 값이 안정되어 가는 과정
   updateTime(dt);              // 시간 흐름이 켜져 있을 때만 동작
   FPWeather.update(dt);        // 비/눈 입자, 번개, 스콜 종료, 무작위 전환
+  FPMinimap.update(dt);        // 초당 10회만 다시 그린다
   FPAudio.update(dt);          // 위치·시간·내연차 비율에 맞춰 환경음을 섞는다
   updateSunShadow(FPPlayer.pos.x, FPPlayer.pos.z);
 
