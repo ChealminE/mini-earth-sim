@@ -1154,12 +1154,14 @@ function buildFirstPersonWorld(renderer) {
     group.add(new THREE.Mesh(glassGeo, glassMat));
     const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.008, 12);
     const fenderGeo = new THREE.BoxGeometry(0.024, 0.01, 0.006);
+    const wheels = [];
     [[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]].forEach(([wx, wz]) => {
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
       wheel.rotation.x = Math.PI / 2;
       wheel.position.set(wx, wheelR, wz);
       wheel.castShadow = true;
       group.add(wheel);
+      wheels.push(wheel);
       const fender = new THREE.Mesh(fenderGeo, bodyMat);
       fender.position.set(wx, bodyBottomY, wz);
       group.add(fender);
@@ -1217,37 +1219,120 @@ function buildFirstPersonWorld(renderer) {
     });
 
     return {
-      group, bodyParts, tail, bolts,
+      group, bodyParts, bolts, wheels, wheelR,
+      // 예전엔 이 메시도 tail 이라는 같은 이름으로 내보내고, 아래에서 같은 키에
+      // 배기구 '월드 좌표' Vector3 를 덮어써 버렸다. 그래서 applyWorldCO2()의
+      // car.tail.visible = isGas 가 Vector3 에 쓸모없는 속성을 다는 꼴이 되어
+      // 전기차인데도 배기구가 계속 달려 있었다. 이름을 갈라 놓는다.
+      tailMesh: tail,
       tailLocal: new THREE.Vector3(-0.054, bodyBottomY + 0.004, -0.012),
     };
   }
-  const carSpots = [[-0.65, -0.15], [-0.3, 0.02], [0.05, -0.1], [0.4, 0.05], [0.65, -0.05],
-                    [-0.5, 0.35], [-0.1, 0.32], [0.25, 0.3], [0.55, 0.35],
-                    [-0.6, -0.55], [-0.05, -0.55], [0.5, -0.55]];
+  // ── 주행 ────────────────────────────────────────────────────────────────
+  // 예전엔 도로와 상관없는 자리에 12대가 멈춰 서 있었다. 이제 도로를 따라 달리고
+  // 끝에 닿으면 반대편 끝에서 다시 태어난다(총 10대 유지).
+  //
+  // 좌표는 전부 cityGroup 로컬이다(cityGroup 자체가 x=+ZONE_W 만큼 밀려 있다).
+  //   간선도로 : z = MAIN_ROAD_Z,  x 방향으로 달림
+  //   교차도로 : x = CROSS_ROAD_X, z 방향으로 달림
+  // 차선은 중앙선에서 ±LANE_OFF. 우측통행이라 진행방향 기준 오른쪽에 붙는다.
+  // 모델이 +x를 바라보고 rotation.y=θ 일 때 진행방향은 (cos θ, 0, -sin θ) 이므로
+  //   +x → 0 / -x → π / +z → -π/2 / -z → +π/2
+  const LANE_OFF = 0.03;
+  const MAIN_HALF = (ZONE_W - 0.015) / 2;      // 간선도로 반길이
+  const CROSS_HALF = (BOX_D - 0.02) / 2;       // 교차도로 반길이
+  const CAR_HALF_LEN = 0.048;                  // 차체 절반 길이 (충돌체와 앞차 간격에 씀)
+  const ROADS = {
+    main:  { from: -MAIN_HALF, to: MAIN_HALF, n: 6 },
+    cross: { from: -CROSS_HALF, to: CROSS_HALF, n: 4 },
+  };
+
+  // 차 한 대의 위치·방향을 도로 좌표(s)에서 계산해 씬에 반영한다
+  function placeCar(c) {
+    const g = c.group;
+    if (c.lane === 'main') {
+      g.position.set(c.s, GROUND_BASE, MAIN_ROAD_Z + c.dir * LANE_OFF);
+      g.rotation.y = c.dir > 0 ? 0 : Math.PI;
+    } else {
+      g.position.set(CROSS_ROAD_X - c.dir * LANE_OFF, GROUND_BASE, c.s);
+      g.rotation.y = c.dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+    }
+    // 배기구 월드 좌표: 차가 움직이므로 매번 다시 구해야 한다.
+    // (예전엔 생성 시 한 번 계산한 값을 그대로 써서, 차가 움직이면 배기가스가
+    //  제자리에 남고 CO2 센서도 엉뚱한 곳에서 높게 나왔을 것이다)
+    g.updateMatrixWorld();
+    c.tailPos.copy(c.tailLocal).applyMatrix4(g.matrixWorld);
+    // 충돌체도 같이 따라간다. 차를 뚫고 지나갈 수 없어야 한다.
+    const wx = g.position.x + ZONE_W, wz = g.position.z;
+    const alongX = c.lane === 'main';
+    const hx = alongX ? CAR_HALF_LEN : 0.026;
+    const hz = alongX ? 0.026 : CAR_HALF_LEN;
+    c.box.minX = wx - hx; c.box.maxX = wx + hx;
+    c.box.minZ = wz - hz; c.box.maxZ = wz + hz;
+  }
+
+  // 도로 끝을 넘어가면 반대편 끝에서 다시 태어난다.
+  // 그 자리에 이미 다른 차가 서 있으면(정체 등) 그만큼 더 뒤에서 태어나게 밀어 준다.
+  // 안 그러면 새 차가 기존 차 위에 겹쳐서 나타난다.
+  function respawnCar(c, cars) {
+    const R = ROADS[c.lane];
+    let s = c.dir > 0 ? R.from - CAR_HALF_LEN : R.to + CAR_HALF_LEN;
+    if (cars) {
+      for (const o of cars) {
+        if (o === c || o.lane !== c.lane || o.dir !== c.dir) continue;
+        // 진행방향 기준으로 o가 스폰 지점 앞쪽 가까이에 있으면 그 뒤로 물러난다
+        const d = (o.s - s) * c.dir;
+        if (d > -0.12 && d < 0.12) s = o.s - c.dir * 0.12;
+      }
+    }
+    c.s = s;
+    c.baseSpeed = CAR_SPEED_MIN + Math.random() * (CAR_SPEED_MAX - CAR_SPEED_MIN);
+    c.speed = c.baseSpeed;
+  }
+
   FPWorld.cars = [];
-  carSpots.forEach((pos, i) => {
-    const { group: car, bodyParts, tail, bolts, tailLocal } = buildCarModel();
-    car.position.set(pos[0], GROUND_BASE, pos[1]);
-    car.rotation.y = (i % 3) * 0.04;
-    cityGroup.add(car);
-    FPWorld.cars.push({
-      group: car, bodyParts, tail, bolts, isGas: true,
-      // 배기구 월드 좌표 (cityGroup이 +ZONE_W 밀려 있으므로 더해줌)
-      tail: new THREE.Vector3(pos[0] + tailLocal.x + ZONE_W, GROUND_BASE + tailLocal.y, pos[1] + tailLocal.z),
-    });
-    FPWorld.boxes.push({
-      minX: pos[0] + ZONE_W - 0.048, maxX: pos[0] + ZONE_W + 0.048,
-      minZ: pos[1] - 0.026, maxZ: pos[1] + 0.026,
-      top: GROUND_BASE + 0.062,
-    });
-  });
+  let carIndex = 0;
+  for (const lane of ['main', 'cross']) {
+    const R = ROADS[lane];
+    for (let i = 0; i < R.n; i++) {
+      const built = buildCarModel();
+      cityGroup.add(built.group);
+      const dir = i % 2 === 0 ? 1 : -1;
+      const box = { minX: 0, maxX: 0, minZ: 0, maxZ: 0, top: GROUND_BASE + 0.062 };
+      FPWorld.boxes.push(box);
+      const c = {
+        group: built.group, bodyParts: built.bodyParts, bolts: built.bolts,
+        tailMesh: built.tailMesh, tailLocal: built.tailLocal, wheels: built.wheels,
+        wheelR: built.wheelR, isGas: true, box,
+        tailPos: new THREE.Vector3(),
+        lane, dir,
+        // 같은 차선의 차들을 고르게 흩어 놓는다 (한 덩어리로 몰려 출발하지 않게)
+        s: R.from + (R.to - R.from) * ((i + 0.5) / R.n),
+        baseSpeed: 0, speed: 0,
+      };
+      c.baseSpeed = CAR_SPEED_MIN + Math.random() * (CAR_SPEED_MAX - CAR_SPEED_MIN);
+      c.speed = c.baseSpeed;
+      placeCar(c);
+      FPWorld.cars.push(c);
+      carIndex++;
+    }
+  }
+  FPWorld.placeCar = placeCar;
+  FPWorld.respawnCar = respawnCar;
+  FPWorld.ROADS = ROADS;
+  // 도로 상수는 buildFirstPersonWorld() 스코프 안에 있어서 모듈 레벨 updateCars()가
+  // 직접 못 본다. 주행 계산과 미니맵이 함께 쓰므로 내보낸다.
+  FPWorld.road = {
+    mainZ: MAIN_ROAD_Z, crossX: CROSS_ROAD_X, width: ROAD_W,
+    mainHalf: MAIN_HALF, crossHalf: CROSS_HALF, laneOff: LANE_OFF, carHalfLen: CAR_HALF_LEN,
+  };
   FPWorld.evCarMat = evCarMat;
   FPWorld.gasCarMat = gasCarMat;
 
   // 배기가스 파티클: 내연기관차 대수에 맞춰 파티클을 나눠 배정한다.
   // (전부 전기차가 되면 opacity 0으로 통째로 사라짐)
   const EXHAUST_PER_CAR = 14;
-  const exCount = carSpots.length * EXHAUST_PER_CAR;
+  const exCount = FPWorld.cars.length * EXHAUST_PER_CAR;
   const exGeo = new THREE.BufferGeometry();
   exGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(exCount * 3), 3));
   const exLife = new Float32Array(exCount);
@@ -1620,7 +1705,7 @@ function applyWorldCO2(ppm) {
       car.isGas = isGas;
       const mat = isGas ? FPWorld.gasCarMat : FPWorld.evCarMat;
       car.bodyParts.forEach(p => { p.material = mat; });
-      car.tail.visible = isGas;                             // 전기차엔 배기구 자체가 없음
+      car.tailMesh.visible = isGas;                         // 전기차엔 배기구 자체가 없음
       car.bolts.forEach(b => { b.visible = !isGas; });       // 후드 + 양 옆면 번개 마크
     });
     FPWorld.gasCarCount = gasCount;
@@ -1835,6 +1920,83 @@ function updateWaterWalls(t, intensity, halfD) {
   W.attr.needsUpdate = true;
 }
 
+// ── 자동차 주행 ─────────────────────────────────────────────────────────────
+// 속도는 실척으로 따지면 어색해진다. 이 세계는 걷는 속도부터가 이미 0.09유닛/초
+// (실척 4.5m/s)로 부풀려 있어서, 실제 도심 속도를 그대로 넣으면 순간이동처럼 보인다.
+// 걷는 속도의 2~3배쯤이 '차가 지나간다'로 읽힌다.
+const CAR_SPEED_MIN = 0.17, CAR_SPEED_MAX = 0.27;
+const CAR_LEN = 0.09;          // 차체 길이
+const CAR_MIN_GAP = 0.115;     // 앞차 중심과 이보다 가까워지면 안 된다 (차 길이 + 여유)
+const CAR_GAP = 0.20;          // 이 거리 안으로 들어오면 감속 시작
+const XING_GUARD = 0.11;       // 교차로 충돌 판정 반경
+
+// 같은 차선·같은 방향에서 내 앞에 있는 가장 가까운 차
+function leaderOf(c, cars) {
+  let best = null, gap = Infinity;
+  for (const o of cars) {
+    if (o === c || o.lane !== c.lane || o.dir !== c.dir) continue;
+    const d = (o.s - c.s) * c.dir;         // 진행방향 기준 앞쪽이면 양수
+    if (d > 0 && d < gap) { gap = d; best = o; }
+  }
+  return { leader: best, gap };
+}
+
+function updateCars(dt) {
+  const cars = FPWorld.cars;
+  if (!cars || !cars.length) return;
+
+  // 교차로에 간선도로 차가 들어와 있으면 교차도로 차가 양보한다.
+  // (없으면 두 도로의 차가 같은 지점을 동시에 지나가며 서로를 통과해 버린다)
+  const RD = FPWorld.road;
+  let mainInXing = false;
+  for (const c of cars) {
+    if (c.lane === 'main' && Math.abs(c.s - RD.crossX) < XING_GUARD) mainInXing = true;
+  }
+
+  for (const c of cars) {
+    const { leader, gap } = leaderOf(c, cars);
+    let target = c.baseSpeed;
+    // CAR_GAP 에서 감속을 시작해 CAR_MIN_GAP 에서 완전히 선다.
+    // 정지 거리를 차 길이와 거의 같게 잡으면 평형점이 '겹치기 직전'이 되어
+    // 감속이 한 프레임만 늦어도 앞차를 파고든다(실제로 그랬다). 여유를 둔다.
+    if (gap < CAR_GAP) {
+      target *= Math.min(1, Math.max(0, (gap - CAR_MIN_GAP) / (CAR_GAP - CAR_MIN_GAP)));
+    }
+
+    // 교차로 양보: 교차도로 차가 교차점 직전에서 멈춘다
+    if (c.lane === 'cross' && mainInXing) {
+      const toXing = (RD.mainZ - c.s) * c.dir;         // 교차점까지 남은 거리
+      if (toXing > 0 && toXing < 0.16) target = 0;
+    }
+    // 급출발·급정거로 보이지 않게 부드럽게 따라간다
+    c.speed += (target - c.speed) * Math.min(1, dt * 4);
+
+    c.s += c.dir * c.speed * dt;
+
+    // 부드러운 감속만으로는 겹침을 100% 막지 못한다(프레임이 길거나 앞차가 급정거하면
+    // 파고든다). 최소 간격을 넘으면 위치 자체를 되돌려 물리적으로 막는다.
+    if (leader) {
+      const d = (leader.s - c.s) * c.dir;
+      if (d < CAR_MIN_GAP) {
+        c.s = leader.s - c.dir * CAR_MIN_GAP;
+        c.speed = Math.min(c.speed, leader.speed);
+      }
+    }
+
+    const R = FPWorld.ROADS[c.lane];
+    // 도로 끝을 지나면 반대편에서 새로 태어난다
+    if ((c.dir > 0 && c.s > R.to + RD.carHalfLen) || (c.dir < 0 && c.s < R.from - RD.carHalfLen)) {
+      FPWorld.respawnCar(c, cars);
+    }
+    FPWorld.placeCar(c);
+    // 바퀴는 실제 이동 거리에 맞춰 굴린다 (미끄러지는 것처럼 보이지 않게)
+    if (c.wheels) {
+      const spin = c.speed * dt / c.wheelR;
+      for (const w of c.wheels) w.rotation.y += spin;
+    }
+  }
+}
+
 // ── 자동차 배기가스: 내연기관차 배기구에서만 뿜어져 나옴 ──────────────────────
 function updateExhaust(dt) {
   const ex = FPWorld.exhaust;
@@ -1852,9 +2014,9 @@ function updateExhaust(dt) {
     const L = ex.life[i];
     // 배기구에서 뒤쪽(-x)으로 밀려나며 위로 퍼져 오름
     pos.setXYZ(i,
-      car.tail.x - L * 0.05 + Math.sin(i * 3.7 + L * 6) * 0.006 * L,
-      car.tail.y + L * L * 0.05,
-      car.tail.z + Math.cos(i * 2.3 + L * 5) * 0.008 * L);
+      car.tailPos.x - L * 0.05 + Math.sin(i * 3.7 + L * 6) * 0.006 * L,
+      car.tailPos.y + L * L * 0.05,
+      car.tailPos.z + Math.cos(i * 2.3 + L * 5) * 0.008 * L);
   }
   pos.needsUpdate = true;
 }

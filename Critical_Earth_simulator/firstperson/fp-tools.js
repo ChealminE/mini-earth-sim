@@ -160,7 +160,7 @@ function measureCO2(ppm, x, z, zone, px, pz) {
   v += Math.max(0, 1 - Math.hypot(x - sx, z - sz) / 0.55) * 260 * k;
   for (const c of FPWorld.cars) {
     if (!c.isGas) continue;
-    v += Math.max(0, 1 - Math.hypot(x - c.tail.x, z - c.tail.z) / 0.10) * 110;
+    v += Math.max(0, 1 - Math.hypot(x - c.tailPos.x, z - c.tailPos.z) / 0.10) * 110;
   }
   return Math.max(150, v);   // 산업화 이전보다 낮게는 안 내려가도록
 }
