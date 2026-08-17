@@ -48,6 +48,19 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
+
+# StaticFiles(및 FileResponse)는 Cache-Control 없이 Last-Modified/ETag만 보내서,
+# 브라우저가 자체 판단(heuristic caching)으로 js/css를 한동안 캐싱해버린다. 이 프로젝트는
+# 수업 중에도 index.html/js/*.js가 자주 바뀌는데, 새로고침만으로는 브라우저가 옛날 파일을
+# 계속 쓰는 바람에 "분명히 고쳤는데 반영이 안 된 것처럼 보이는" 혼란이 반복됐다.
+# 학생 수가 많지 않은 로컬/교실용 서버라 캐싱으로 얻는 성능 이득보다 이 혼란을 막는 게 더 중요해서
+# 모든 응답에 no-store를 강제한다.
+@app.middleware("http")
+async def no_cache(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 # PyInstaller로 exe로 묶으면 index.html/js/texture_image 등 번들된 리소스는 실행할 때마다
 # 임시 폴더(sys._MEIPASS)에 풀리므로 거기서 읽어야 하고, data_log.csv처럼 계속 남아있어야
 # 하는 파일은 그 임시 폴더가 아니라 exe가 실제로 놓인 위치(APP_DIR)에 써야 함.
@@ -108,10 +121,21 @@ async def handle_incoming(payload: dict, source: str):
         clients.remove(ws)
 
 
-# ── 1) WiFi 방식 경로: HTTP POST ─────────────────────────────
+# 시작 화면(4개 박스: 현재실태/미래예측/직접실험/1인칭 탐험) - 이제 이게 진입점.
+# 각 대시보드 탭은 더 이상 페이지 안에서 서로 전환하지 않고, 항상 여기로 돌아왔다가
+# 원하는 박스를 다시 골라 들어가는 구조라 "/"는 이 화면이 맡는다.
 @app.get("/")
-async def index():
+async def select_page():
+    return FileResponse(RESOURCE_DIR / "select.html")
+
+
+# 현재실태/미래예측/직접실험 대시보드 (예전엔 "/"였음) - ?tab=current|future|live로 접속
+@app.get("/dashboard")
+async def dashboard():
     return FileResponse(RESOURCE_DIR / "index.html")
+
+
+# ── 1) WiFi 방식 경로: HTTP POST ─────────────────────────────
 
 
 @app.post("/data")
@@ -203,19 +227,27 @@ def _list_candidate_ports() -> List[str]:
     return [p.device for p in sorted(ports, key=lambda p: not looks_like_device(p))]
 
 
-def _probe_serial_port(port: str, baud: int, probe_seconds: float, stop_event: threading.Event) -> bool:
+def _probe_serial_port(port: str, baud: int, probe_seconds: float, stop_event: threading.Event) -> str:
     """포트를 열어서 최대 probe_seconds 동안 JSON 한 줄이 오는지 확인.
-    다른 포트가 먼저 찾아지면(stop_event) 바로 포기한다."""
+    다른 포트가 먼저 찾아지면(stop_event) 바로 포기한다.
+    결과를 "found"/"busy"/"no_data" 세 가지로 구분해서 돌려준다 - 그래야 자동 감지가 실패했을 때
+    "포트가 아예 없음"인지 "포트는 있는데 다른 프로그램이 물고 있음"인지 "포트는 열리는데
+    JSON이 안 옴(보드레이트 불일치 등)"인지 콘솔에서 바로 구분해서 알려줄 수 있다."""
     import serial
 
     try:
         ser = serial.Serial(port, baud, timeout=0.5)
-    except Exception:
-        return False
+    except Exception as e:
+        print(f"[시리얼] {port} 열기 실패 ({e}) — 아두이노 IDE 시리얼 모니터 등 다른 프로그램이 "
+              f"이 포트를 이미 사용 중일 수 있습니다. 닫고 다시 시도해보세요.")
+        return "busy"
     try:
         deadline = time.time() + probe_seconds
         while time.time() < deadline and not stop_event.is_set():
-            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            try:
+                line = ser.readline().decode("utf-8").strip()
+            except UnicodeDecodeError:
+                continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 계속 기다림
             if not line:
                 continue
             try:
@@ -223,8 +255,8 @@ def _probe_serial_port(port: str, baud: int, probe_seconds: float, stop_event: t
             except json.JSONDecodeError:
                 continue  # 보드가 디버그 텍스트를 찍어도 무시하고 계속 기다림
             if isinstance(payload, dict):
-                return True
-        return False
+                return "found"
+        return "no_data"
     finally:
         ser.close()
 
@@ -233,15 +265,19 @@ def find_serial_port(baud: int) -> Optional[str]:
     """연결된 포트 후보들을 동시에 열어보고, 그중 실제로 JSON을 보내는 포트를 찾는다."""
     candidates = _list_candidate_ports()
     if not candidates:
+        print("[시리얼] 연결된 포트가 없습니다 (USB 케이블이 꽂혀 있는지 확인하세요).")
         return None
 
     print(f"[시리얼] 포트 {len(candidates)}개 동시 확인 중 "
           f"(최대 {int(SERIAL_PROBE_SECONDS)}초 — 전송 주기가 긴 실험 코드도 있어서 시간이 걸릴 수 있음)…")
     found: "queue.Queue[str]" = queue.Queue()
+    results: dict[str, str] = {}
     stop_event = threading.Event()
 
     def worker(port: str):
-        if _probe_serial_port(port, baud, SERIAL_PROBE_SECONDS, stop_event):
+        status = _probe_serial_port(port, baud, SERIAL_PROBE_SECONDS, stop_event)
+        results[port] = status
+        if status == "found":
             found.put(port)
 
     threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in candidates]
@@ -253,6 +289,15 @@ def find_serial_port(baud: int) -> Optional[str]:
     except queue.Empty:
         port = None
     stop_event.set()
+    for t in threads:
+        t.join(timeout=1)
+
+    if port is None:
+        no_data_ports = [p for p, s in results.items() if s == "no_data"]
+        if no_data_ports:
+            print(f"[시리얼] {', '.join(no_data_ports)} 포트는 열렸지만 {int(SERIAL_PROBE_SECONDS)}초 동안 올바른 "
+                  f"JSON을 받지 못했습니다 — 보드레이트가 스케치의 Serial.begin() 값과 일치하는지 "
+                  f"(서버는 기본 {baud}bps, 다르면 --baud 옵션으로 지정), 스케치가 JSON을 제대로 출력하는지 확인하세요.")
     return port
 
 
@@ -272,7 +317,11 @@ def serial_reader_thread(port: str, baud: int):
     print(f"[시리얼] 연결됨: {port}")
     while True:
         try:
-            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            # errors="ignore"로 읽으면 배선/보드레이트 문제로 바이트가 깨졌을 때 그 바이트만
+            # 조용히 지워버려서 "temp"가 "tmp"처럼 다른 문자열로 둔갑한 채로도 JSON 파싱에
+            # 성공할 수 있었다 - 대시보드 입장에선 그게 완전히 새로운 센서로 보여 카드가 계속
+            # 늘어나는 것처럼 보인 원인 중 하나. strict로 읽어서 깨진 줄은 통째로 버린다.
+            line = ser.readline().decode("utf-8").strip()
             if not line:
                 continue
             payload = json.loads(line)  # JSON이 아닌 디버그 출력 줄은 여기서 자동으로 걸러짐
@@ -280,6 +329,8 @@ def serial_reader_thread(port: str, baud: int):
                 asyncio.run_coroutine_threadsafe(
                     handle_incoming(payload, source="serial"), main_loop
                 )
+        except UnicodeDecodeError:
+            continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 다음 줄 계속 읽음
         except json.JSONDecodeError:
             continue  # 우노가 중간에 다른 디버그 텍스트를 찍어도 무시하고 계속 진행
         except Exception as e:
@@ -355,6 +406,14 @@ def get_local_ip():
 
 
 if __name__ == "__main__":
+    # 한국어 Windows의 기본 콘솔 인코딩(cp949)은 —, … 같은 특수문자를 못 담아서, 그런 문자가
+    # 섞인 print()가 실행되는 순간 UnicodeEncodeError로 스레드/서버가 죽는다. 백그라운드 스레드에서
+    # 이게 터지면 "포트를 못 찾음"이 아니라 스레드 자체가 조용히 죽어버려서 원인 파악이 훨씬 어려웠다.
+    # 콘솔을 UTF-8로 강제 전환해서 이 클래스의 오류를 원천 차단한다 (exe로 빌드했을 때도 동일 적용).
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", type=str, default=None, help="시리얼 포트 직접 지정 (예: COM5, /dev/ttyUSB0)")
     parser.add_argument("--baud", type=int, default=9600, help="시리얼 통신 속도 (우노 스케치와 반드시 일치)")
@@ -372,15 +431,13 @@ if __name__ == "__main__":
     print(f"  브라우저 접속:        http://{ip}:8000")
     print(f"  WiFi 전송 주소:        http://{ip}:8000/data")
 
-    serial_port = None
-    if not args.no_serial:
-        serial_port = args.serial or find_serial_port(args.baud)
-        if serial_port:
-            print(f"  USB 시리얼 포트: {serial_port} @ {args.baud}bps")
-        else:
-            print("  USB 시리얼: 연결된 포트를 찾지 못함 (연결 후 --serial 로 직접 지정 가능)")
-    else:
+    if args.no_serial:
         print("  시리얼 입력: 비활성화 (--no-serial)")
+    elif args.serial:
+        print(f"  USB 시리얼 포트: {args.serial} @ {args.baud}bps (직접 지정)")
+    else:
+        print(f"  USB 시리얼: 서버가 뜬 뒤 백그라운드에서 자동으로 찾습니다 "
+              f"(최대 {int(SERIAL_PROBE_SECONDS)}초 정도 걸릴 수 있지만, 그동안에도 대시보드는 바로 쓸 수 있습니다)")
 
     if args.ble:
         target_desc = args.ble_address or f"이름에 '{args.ble_name}' 포함된 기기"
@@ -389,15 +446,26 @@ if __name__ == "__main__":
         print("  BLE 입력: 비활성화 (--ble 로 켤 수 있음)")
     print("=" * 55)
 
+    def start_serial_input():
+        """포트 찾기 + 계속 읽기를 전부 이 백그라운드 스레드에서 처리.
+        예전엔 uvicorn을 띄우기 *전에* 여기서 최대 33초를 기다렸기 때문에, 포트를 못 찾으면
+        브라우저 페이지 자체가 그동안 안 열렸다 (학생 입장에선 서버가 멈춘 것처럼 보임).
+        이제 서버가 먼저 뜨고 이 스레드가 뒤에서 찾으므로 대시보드는 바로 쓸 수 있다."""
+        port = args.serial or find_serial_port(args.baud)
+        if not port:
+            print("  USB 시리얼: 연결된 포트를 찾지 못했습니다 "
+                  "(케이블 연결 후 --serial 로 직접 지정하거나 서버를 다시 시작하세요)")
+            return
+        serial_reader_thread(port, args.baud)
+
     @app.on_event("startup")
     async def start_inputs_if_needed():
         global main_loop
         main_loop = asyncio.get_running_loop()
         if not args.no_browser:
             webbrowser.open("http://127.0.0.1:8000")
-        if not args.no_serial and serial_port:
-            t = threading.Thread(target=serial_reader_thread, args=(serial_port, args.baud), daemon=True)
-            t.start()
+        if not args.no_serial:
+            threading.Thread(target=start_serial_input, daemon=True).start()
         if args.ble:
             asyncio.create_task(ble_reader_task(args.ble_name, args.ble_address))
 

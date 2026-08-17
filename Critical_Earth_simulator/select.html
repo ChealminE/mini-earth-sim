@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미니 지구 모델 - 시작 화면</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: radial-gradient(ellipse at 50% 20%, #1c2129 0%, #14171c 60%);
+    color: #e7e9ec;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 40px 20px;
+  }
+  .header { text-align: center; margin-bottom: 36px; }
+  .header h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
+  .header p { font-size: 13px; color: #9198a3; margin: 0; line-height: 1.6; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(2, minmax(220px, 320px)); gap: 18px;
+    width: 100%; max-width: 700px;
+  }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    display: flex; flex-direction: column; gap: 8px;
+    background: #1b1e24; border: 1px solid #2a2e35; border-radius: 14px;
+    padding: 22px 20px; text-decoration: none; color: inherit;
+    transition: border-color .15s, transform .15s, background .15s;
+  }
+  .card:hover { border-color: #5DCAA5; background: #20242b; transform: translateY(-2px); }
+  .card .icon { font-size: 28px; }
+  .card .title { font-size: 15.5px; font-weight: 600; color: #e7e9ec; }
+  .card .desc { font-size: 12px; color: #9198a3; line-height: 1.6; }
+  .card .badge {
+    align-self: flex-start; font-size: 10px; margin-top: 2px; padding: 2px 8px;
+    border-radius: 10px; background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
+  }
+
+  .footer-hint { margin-top: 28px; font-size: 11px; color: #565b62; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>미니 지구 모델 시뮬레이션</h1>
+    <p>보고 싶은 화면을 골라 들어가세요. 언제든 각 화면 상단의 "처음으로"로 여기로 돌아올 수 있습니다.</p>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="/dashboard?tab=current">
+      <div class="icon">🌍</div>
+      <div class="title">현재 실태</div>
+      <div class="desc">1988~2023년 CO₂ 농도·기온편차·해양 pH·화석연료 배출 실측 데이터 그래프</div>
+    </a>
+    <a class="card" href="/dashboard?tab=future">
+      <div class="icon">🔮</div>
+      <div class="title">미래 예측</div>
+      <div class="desc">CO₂ 농도를 슬라이더로 바꿔가며 미래의 기온·해양 산성화를 예측</div>
+    </a>
+    <a class="card" href="/dashboard?tab=live">
+      <div class="icon">🔬</div>
+      <div class="title">직접 실험</div>
+      <div class="desc">아두이노 등 보드로 측정한 센서 데이터를 실시간 그래프로 관찰</div>
+    </a>
+    <a class="card" href="/firstperson/">
+      <div class="icon">🧭</div>
+      <div class="title">탐험</div>
+      <div class="desc">1인칭 시점으로 걸어다니며 환경을 조사하는 탐험 모드</div>
+      <div class="badge">별도 모드</div>
+    </a>
+  </div>
+
+  <div class="footer-hint">server.py가 실행 중이어야 정상적으로 열립니다.</div>
+</body>
+</html>

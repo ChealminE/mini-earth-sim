@@ -93,12 +93,15 @@ function buildXKeyOptionsHtml(selectedKey, keys) {
   return timeOption + buildKeyOptionsHtml(selectedKey, keys);
 }
 
-// 새 센서 키가 들어오면 주 계열(series[0])에 기본값으로 자동 배정 (병합으로 늘어난 계열은 사용자가 직접 골라야 함)
+// 새 센서 키가 들어오면 주 계열(series[0])에 기본값으로 자동 배정 (병합으로 늘어난 계열은 사용자가 직접 골라야 함).
+// 센서가 1개뿐이면 "센서 vs 센서"로 짝지을 두 번째 값이 없으므로, 그 하나뿐인 값을
+// "경과 시간에 따른 변화"로 자동으로 그려준다(실험실에서 가장 흔히 필요한 형태).
 function refreshLiveSelectOptions() {
   const keys = [...liveKnownKeys].sort();
   liveGraphs.forEach(g => {
     const primary = g.series[0];
-    if (!primary.xKey && keys[0]) primary.xKey = keys[0];
+    if (!primary.xKey && keys.length === 1) { primary.xKey = TIME_AXIS_KEY; primary.yKey = keys[0]; }
+    else if (!primary.xKey && keys[0]) primary.xKey = keys[0];
     if (!primary.yKey && keys[1]) primary.yKey = keys[1];
     updateLiveChart(g);
   });
@@ -122,14 +125,19 @@ function updateLiveChart(g) {
       : [];
     const xLabelPart = isTimeX ? TIME_AXIS_LABEL : s.xKey;
     return { label: s.xKey && s.yKey ? `${xLabelPart} / ${s.yKey}` : '(선택 안 됨)', data,
-      backgroundColor: s.color, borderColor: s.color, pointRadius: 3, showLine: true, borderWidth: 1 };
+      backgroundColor: s.color, borderColor: s.color, pointRadius: 3, showLine: true, borderWidth: 1,
+      hidden: s.visible === false };
   });
 
   if (g.showTrend) {
     g.series.forEach((s, idx) => {
-      const reg = linearRegression(g.chart.data.datasets[idx].data);
+      let pts = g.chart.data.datasets[idx].data;
+      // 추세선 구간을 지정했으면(빈 값이면 전체 데이터) 그 X 범위 안의 점만 회귀에 사용
+      if (g.trendXMin !== '' && g.trendXMin != null) pts = pts.filter(p => p.x >= Number(g.trendXMin));
+      if (g.trendXMax !== '' && g.trendXMax != null) pts = pts.filter(p => p.x <= Number(g.trendXMax));
+      const reg = linearRegression(pts);
       if (!reg) return;
-      const xs = g.chart.data.datasets[idx].data.map(p => p.x);
+      const xs = pts.map(p => p.x);
       const xMin = Math.min(...xs), xMax = Math.max(...xs);
       g.chart.data.datasets.push({
         label: `추세선 (기울기 ${reg.slope.toFixed(3)}, R²=${reg.r2.toFixed(3)})`,
@@ -143,10 +151,11 @@ function updateLiveChart(g) {
   const yLabel = yKeys.join(' / ') || 'Y축 변인';
   g.chart.options.scales.x.title.text = g.xUnit ? `${xLabel} (${g.xUnit})` : xLabel;
   g.chart.options.scales.y.title.text = g.yUnit ? `${yLabel} (${g.yUnit})` : yLabel;
-  g.chart.options.scales.x.min = g.xMin !== '' ? Number(g.xMin) : undefined;
-  g.chart.options.scales.x.max = g.xMax !== '' ? Number(g.xMax) : undefined;
-  g.chart.options.scales.y.min = g.yMin !== '' ? Number(g.yMin) : undefined;
-  g.chart.options.scales.y.max = g.yMax !== '' ? Number(g.yMax) : undefined;
+  // 자동 스케일이면 min/max를 아예 안 넘겨서 Chart.js가 매 update마다 데이터 범위로 다시 계산하게 둔다
+  g.chart.options.scales.x.min = (!g.xAuto && g.xMin !== '') ? Number(g.xMin) : undefined;
+  g.chart.options.scales.x.max = (!g.xAuto && g.xMax !== '') ? Number(g.xMax) : undefined;
+  g.chart.options.scales.y.min = (!g.yAuto && g.yMin !== '') ? Number(g.yMin) : undefined;
+  g.chart.options.scales.y.max = (!g.yAuto && g.yMax !== '') ? Number(g.yMax) : undefined;
   g.chart.options.plugins.legend.display = g.series.length > 1 || g.showTrend;
   g.chart.update();
 }
@@ -187,11 +196,12 @@ function renderGraphCard(g) {
     <div class="graph-card-top">
       <div class="graph-title-display" id="titleDisplay-${g.id}">${g.title || ''}</div>
       <div class="graph-card-icons">
+        <button class="icon-btn" onclick="openGraphZoom(${g.id})" title="크게 보기">⛶</button>
         <button class="icon-btn" onclick="openGraphSettings(${g.id})" title="그래프 설정">⚙</button>
         <button class="icon-btn remove-btn" onclick="removeLiveGraph(${g.id})" title="그래프 삭제">✕</button>
       </div>
     </div>
-    <div class="chart-wrap" style="height:160px"><canvas id="liveChart-${g.id}"></canvas></div>
+    <div class="chart-wrap" style="height:230px"><canvas id="liveChart-${g.id}"></canvas></div>
     <div class="merge-drop-hint">다른 그래프를 여기로 드래그하면 합칠 수 있어요</div>`;
 }
 
@@ -207,10 +217,71 @@ function openGraphSettings(id) {
   document.getElementById('gsYMin').value = g.yMin;
   document.getElementById('gsYMax').value = g.yMax;
   document.getElementById('gsYUnit').value = g.yUnit;
+  document.getElementById('gsXAuto').checked = g.xAuto !== false;
+  document.getElementById('gsYAuto').checked = g.yAuto !== false;
+  document.getElementById('gsXMin').disabled = document.getElementById('gsXMax').disabled = g.xAuto !== false;
+  document.getElementById('gsYMin').disabled = document.getElementById('gsYMax').disabled = g.yAuto !== false;
   document.getElementById('gsTrendToggle').checked = !!g.showTrend;
+  document.getElementById('gsTrendXMin').value = g.trendXMin;
+  document.getElementById('gsTrendXMax').value = g.trendXMax;
   renderSettingsSeriesList(g);
   document.getElementById('graphSettingsModal').classList.add('visible');
 }
+
+function setAxisAuto(graphId, axis, checked) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g) return;
+  g[axis + 'Auto'] = checked;
+  document.getElementById(axis === 'x' ? 'gsXMin' : 'gsYMin').disabled = checked;
+  document.getElementById(axis === 'x' ? 'gsXMax' : 'gsYMax').disabled = checked;
+  updateLiveChart(g);
+}
+
+// ── 그래프 크게 보기 (⛶ 클릭 시) ──────────────────────────
+// 별도 Chart 인스턴스를 새로 만들지 않고, 카드에 있던 canvas(=차트 인스턴스)를 그대로
+// 모달 안으로 옮겼다가 닫을 때 원래 자리로 되돌린다 - 데이터/설정을 복제·동기화할 필요가 없어서 간단하고 항상 최신 상태.
+let zoomOriginalParent = null;
+let zoomGraphId = null;
+
+function openGraphZoom(id) {
+  const g = liveGraphs.find(x => x.id === id);
+  if (!g) return;
+  const canvas = document.getElementById(`liveChart-${id}`);
+  const zoomWrap = document.getElementById('zoomChartWrap');
+  document.getElementById('zoomTitle').textContent = g.title || `그래프 ${g.id}`;
+  // 모달을 먼저 보이게 한 다음에 canvas를 옮기고 resize해야 한다. 순서가 바뀌면(모달이
+  // display:none인 상태에서 resize) 옮길 컨테이너 크기가 0으로 측정돼서 차트가 새까맣게
+  // 깨져서 보이는 문제가 있었다.
+  document.getElementById('graphZoomModal').classList.add('visible');
+  // 이미 이 canvas가 확대 모달 안에 있으면(예: 확대 상태에서 ⚙설정 → 구간 드래그 선택으로
+  // openGraphZoom이 다시 불리는 경우) 원래 자리를 다시 기록하면 안 된다 - 그러면 원래 자리가
+  // 모달 자신으로 덮어써져서 나중에 closeGraphZoom이 canvas를 카드로 못 돌려보낸다.
+  if (canvas.parentElement !== zoomWrap) {
+    zoomOriginalParent = canvas.parentElement;
+    zoomGraphId = id;
+    zoomWrap.appendChild(canvas);
+    g.chart.resize();
+  }
+}
+
+function closeGraphZoom() {
+  document.getElementById('graphZoomModal').classList.remove('visible');
+  const g = liveGraphs.find(x => x.id === zoomGraphId);
+  if (g && zoomOriginalParent) {
+    zoomOriginalParent.appendChild(document.getElementById(`liveChart-${zoomGraphId}`));
+    g.chart.resize();
+  }
+  zoomOriginalParent = null;
+  zoomGraphId = null;
+}
+
+document.getElementById('zoomCloseBtn').addEventListener('click', () => {
+  if (trendRangeSelectGraphId != null) finishTrendRangeSelect(false);
+  else closeGraphZoom();
+});
+document.getElementById('zoomClearMarksBtn').addEventListener('click', () => {
+  if (zoomGraphId != null) clearGraphMarks(zoomGraphId);
+});
 
 function setTrendVisible(graphId, checked) {
   const g = liveGraphs.find(x => x.id === graphId);
@@ -275,7 +346,9 @@ function renderSettingsSeriesList(g) {
       <input type="color" class="series-color" value="${s.color}" onchange="setSeriesColor(${g.id}, ${s.sid}, this.value)" title="계열 색상">
       <select class="modal-input" onchange="setSeriesKey(${g.id}, ${s.sid}, 'xKey', this.value)"><option value="">X축 변인</option>${buildXKeyOptionsHtml(s.xKey, keys)}</select>
       <select class="modal-input" onchange="setSeriesKey(${g.id}, ${s.sid}, 'yKey', this.value)"><option value="">Y축 변인</option>${buildKeyOptionsHtml(s.yKey, keys)}</select>
-      ${idx > 0 ? `<button class="gs-remove-series-btn" onclick="removeSeriesFromGraph(${g.id}, ${s.sid})" title="병합 해제">✕</button>` : ''}
+      <button class="gs-remove-series-btn" onclick="toggleSeriesVisible(${g.id}, ${s.sid})" title="${s.visible === false ? '표시하기' : '숨기기'}">${s.visible === false ? '🚫' : '👁'}</button>
+      ${idx > 0 ? `<button class="gs-remove-series-btn" onclick="splitSeriesToNewGraph(${g.id}, ${s.sid})" title="별도 그래프로 분리">⇱</button>` : ''}
+      ${idx > 0 ? `<button class="gs-remove-series-btn" onclick="removeSeriesFromGraph(${g.id}, ${s.sid})" title="계열 삭제">✕</button>` : ''}
     </div>`).join('');
 }
 
@@ -366,35 +439,262 @@ function removeSeriesFromGraph(graphId, sid) {
   if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
 }
 
-function addLiveGraph() {
-  if (liveGraphs.length >= MAX_LIVE_GRAPHS) return;
+// 합쳤던 계열을 다시 독립된 그래프 카드로 되돌린다 (병합의 반대 동작).
+function splitSeriesToNewGraph(graphId, sid) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g || g.series.length <= 1) return;
+  if (liveGraphs.length >= MAX_LIVE_GRAPHS) {
+    alert(`그래프는 최대 ${MAX_LIVE_GRAPHS}개까지만 만들 수 있어요. 다른 그래프를 먼저 지우거나 합쳐주세요.`);
+    return;
+  }
+  const idx = g.series.findIndex(s => s.sid === sid);
+  if (idx === -1) return;
+  const [moved] = g.series.splice(idx, 1);
+  moved.visible = true;
+
+  const newG = createGraphObject([moved]);
+  updateLiveChart(newG);
+  updateLiveChart(g);
+  if (gsCurrentGraphId === g.id) renderSettingsSeriesList(g);
+}
+
+// ── 계열 표시/숨기기 (범례 클릭 또는 설정 팝업의 눈 아이콘) ──────────────
+// Chart.js 기본 범례 클릭도 비슷하게 동작하긴 하지만, 매 데이터 수신마다 datasets
+// 배열을 통째로 새로 만들어서 넘기기 때문에(updateLiveChart) 내부 캐시에 기대지 않고
+// s.visible 값을 직접 관리해야 새로고침 때마다 숨김 상태가 안 풀린다.
+function toggleSeriesVisible(graphId, sid) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  const s = g?.series.find(x => x.sid === sid);
+  if (!s) return;
+  s.visible = s.visible === false ? true : false;
+  updateLiveChart(g);
+  if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
+}
+
+function legendClickHandler(evt, item, legend) {
+  const chart = legend.chart;
+  const g = liveGraphs.find(x => x.chart === chart);
+  const s = g?.series[item.datasetIndex];
+  if (g && s) { toggleSeriesVisible(g.id, s.sid); return; }
+  // 추세선 등 series에 안 걸리는 계열은 Chart.js 기본 토글 동작 그대로 사용
+  const meta = chart.getDatasetMeta(item.datasetIndex);
+  meta.hidden = meta.hidden === null ? !chart.data.datasets[item.datasetIndex].hidden : null;
+  chart.update();
+}
+
+// ── 클릭한 지점에 (x, y) 값을 표시하는 마크 찍기 ──────────────
+// 별도 데이터셋이 아니라 캔버스에 직접 그리는 커스텀 플러그인으로 구현 - 그래야
+// 실시간으로 datasets가 계속 새로 그려져도(updateLiveChart) 마크가 안 사라진다.
+function fmtNum(n) {
+  return Number.isInteger(n) ? String(n) : Number(n).toFixed(2);
+}
+
+const markPointPlugin = {
+  id: 'markPoints',
+  afterDatasetsDraw(chart) {
+    const g = liveGraphs.find(x => x.chart === chart);
+    if (!g || !g.marks || g.marks.length === 0) return;
+    const { ctx, scales } = chart;
+    if (!scales.x || !scales.y) return;
+    ctx.save();
+    g.marks.forEach(m => {
+      const px = scales.x.getPixelForValue(m.x);
+      const py = scales.y.getPixelForValue(m.y);
+      ctx.strokeStyle = '#E24B4A';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(px - 5, py - 5); ctx.lineTo(px + 5, py + 5);
+      ctx.moveTo(px - 5, py + 5); ctx.lineTo(px + 5, py - 5);
+      ctx.stroke();
+      const label = `(${fmtNum(m.x)}, ${fmtNum(m.y)})`;
+      ctx.font = '11px system-ui, sans-serif';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(20,23,28,0.88)';
+      ctx.fillRect(px + 7, py - 17, tw + 8, 15);
+      ctx.fillStyle = '#eee';
+      ctx.fillText(label, px + 11, py - 6);
+    });
+    ctx.restore();
+  }
+};
+Chart.register(markPointPlugin);
+
+function chartClickHandler(evt, elements, chart) {
+  const g = liveGraphs.find(x => x.chart === chart);
+  if (!g) return;
+  if (trendRangeSelectGraphId === g.id) return; // 구간 드래그 선택 중엔 마크 찍기 비활성화
+  g.marks = g.marks || [];
+
+  // 이미 찍힌 마크를 다시 클릭하면(X자 표시 근처) 새로 찍는 대신 그 마크만 지운다
+  const hitIdx = g.marks.findIndex(m => {
+    const px = chart.scales.x.getPixelForValue(m.x);
+    const py = chart.scales.y.getPixelForValue(m.y);
+    return Math.hypot(evt.x - px, evt.y - py) <= 10;
+  });
+  if (hitIdx !== -1) {
+    g.marks.splice(hitIdx, 1);
+    chart.update('none');
+    return;
+  }
+
+  const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+  if (points.length === 0) return;
+  const p = points[0];
+  const data = chart.data.datasets[p.datasetIndex]?.data[p.index];
+  if (!data) return;
+  g.marks.push({ x: data.x, y: data.y });
+  chart.update('none');
+}
+
+function clearGraphMarks(graphId) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g) return;
+  g.marks = [];
+  g.chart.update('none');
+}
+
+// ── 추세선 구간을 숫자로 직접 입력하는 대신, 확대 그래프에서 골라 찍는 기능 ──
+// 그래프 설정 팝업을 잠깐 닫고 확대 모달을 띄운 뒤, 첫 클릭으로 구간 시작을, 두 번째
+// 클릭으로 구간 끝을 찍으면(누르고 있는 드래그가 아니라 클릭-클릭 방식) 다시 설정
+// 팝업으로 돌아가서 구간 시작/끝 입력칸에 값이 채워져 있게 한다.
+// (처음엔 마우스를 누른 채로 끄는 드래그로 만들었는데, 두 번째 클릭이 매번 mousedown을
+// 새로 발생시켜서 시작점이 계속 새 위치로 리셋되는 바람에 끝점이 찍히지 않는 버그가 있었다.)
+let trendRangeSelectGraphId = null;
+let rangeSelectDrag = null; // { startPx, currentPx, locked } - 캔버스 기준 픽셀 좌표. locked=true면 끝점까지 확정된 상태
+
+const rangeSelectPlugin = {
+  id: 'rangeSelect',
+  afterDraw(chart) {
+    const g = liveGraphs.find(x => x.chart === chart);
+    if (!g || g.id !== trendRangeSelectGraphId || !rangeSelectDrag) return;
+    const { ctx, chartArea } = chart;
+    const x1 = Math.max(chartArea.left, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    const x2 = Math.min(chartArea.right, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    ctx.save();
+    ctx.fillStyle = 'rgba(93,202,165,0.18)';
+    ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
+    ctx.strokeStyle = '#5DCAA5';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
+    ctx.restore();
+  }
+};
+Chart.register(rangeSelectPlugin);
+
+function rangeSelectPxToX(g, px) {
+  return g.chart.scales.x.getValueForPixel(px);
+}
+
+function trendRangeCanvasClick(e) {
+  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
+  if (!g) return;
+  const rect = g.chart.canvas.getBoundingClientRect();
+  const px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+  if (!rangeSelectDrag || rangeSelectDrag.locked) {
+    // 첫 클릭(또는 이미 구간을 찍은 뒤 다시 클릭해서 새로 고르기 시작)
+    rangeSelectDrag = { startPx: px, currentPx: px, locked: false };
+    document.getElementById('rangeSelectText').textContent = '이제 구간의 끝 지점을 클릭하세요';
+  } else {
+    // 두 번째 클릭 - 끝점 확정
+    rangeSelectDrag.currentPx = px;
+    rangeSelectDrag.locked = true;
+    const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    document.getElementById('rangeSelectText').textContent =
+      `구간: ${fmtNum(xMinVal)} ~ ${fmtNum(xMaxVal)} · 확인을 누르면 적용됩니다 (다시 클릭하면 새로 선택)`;
+  }
+  g.chart.update('none');
+}
+
+function trendRangeMouseMove(e) {
+  if (!rangeSelectDrag || rangeSelectDrag.locked) return; // 시작점만 찍힌 상태에서만 끝점 미리보기가 마우스를 따라다님
+  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
+  if (!g) return;
+  const rect = g.chart.canvas.getBoundingClientRect();
+  rangeSelectDrag.currentPx = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+  g.chart.update('none');
+  const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+  const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+  document.getElementById('rangeSelectText').textContent = `${fmtNum(xMinVal)} ~ ${fmtNum(xMaxVal)} (끝 지점을 클릭하세요)`;
+}
+
+function startTrendRangeSelect(graphId) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g) return;
+  document.getElementById('graphSettingsModal').classList.remove('visible');
+  trendRangeSelectGraphId = graphId;
+  rangeSelectDrag = null;
+  openGraphZoom(graphId);
+  document.getElementById('rangeSelectBar').style.display = 'flex';
+  document.getElementById('rangeSelectText').textContent = '그래프 위를 클릭해서 구간 시작 지점을 찍으세요';
+  g.chart.canvas.addEventListener('click', trendRangeCanvasClick);
+  window.addEventListener('mousemove', trendRangeMouseMove);
+}
+
+function finishTrendRangeSelect(apply) {
+  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
+  if (g && apply && rangeSelectDrag && rangeSelectDrag.locked) {
+    const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
+    g.trendXMin = Number(xMinVal.toFixed(3));
+    g.trendXMax = Number(xMaxVal.toFixed(3));
+    updateLiveChart(g);
+  }
+  if (g) g.chart.canvas.removeEventListener('click', trendRangeCanvasClick);
+  window.removeEventListener('mousemove', trendRangeMouseMove);
+  document.getElementById('rangeSelectBar').style.display = 'none';
+  rangeSelectDrag = null;
+  const graphId = trendRangeSelectGraphId;
+  trendRangeSelectGraphId = null;
+  closeGraphZoom();
+  if (graphId != null) openGraphSettings(graphId);
+}
+
+document.getElementById('rangeSelectConfirmBtn').addEventListener('click', () => finishTrendRangeSelect(true));
+document.getElementById('rangeSelectCancelBtn').addEventListener('click', () => finishTrendRangeSelect(false));
+
+// ── 그래프 카드 하나(=Chart.js 인스턴스 하나) 생성 - addLiveGraph와 splitSeriesToNewGraph가 공유 ──
+function buildLiveChart(canvasEl) {
+  return new Chart(canvasEl, {
+    type: 'scatter',
+    data: { datasets: [] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'nearest', intersect: false }, // 선에 딱 안 맞아도 가까이만 가면 툴팁이 뜨게
+      onClick: chartClickHandler,
+      plugins: {
+        legend: { display: false, labels: { color: textColor, boxWidth: 10, font: { size: 9 } }, onClick: legendClickHandler },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label || ''}: (${fmtNum(ctx.parsed.x)}, ${fmtNum(ctx.parsed.y)})` } },
+      },
+      scales: {
+        x: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+        y: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
+      } } });
+}
+
+function createGraphObject(seriesArr) {
   const id = ++liveGraphSeq;
-  const sid = ++liveSeriesSeq;
   const card = document.createElement('div');
   card.className = 'graph-card';
   card.draggable = true;
   document.getElementById('liveGraphs').appendChild(card);
 
   const g = { id, card, title: '', xMin: '', xMax: '', xUnit: '', yMin: '', yMax: '', yUnit: '', showTrend: false,
-    series: [{ sid, color: liveColorFor(String(sid)), xKey: '', yKey: '' }] };
+    xAuto: true, yAuto: true, trendXMin: '', trendXMax: '', marks: [],
+    series: seriesArr };
   renderGraphCard(g);
-
-  g.chart = new Chart(document.getElementById(`liveChart-${id}`), {
-    type: 'scatter',
-    data: { datasets: [] },
-    options: { responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: { legend: { display: false, labels: { color: textColor, boxWidth: 10, font: { size: 9 } } } },
-      scales: {
-        x: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
-        y: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
-      } } });
-
+  g.chart = buildLiveChart(document.getElementById(`liveChart-${id}`));
   liveGraphs.push(g);
+  attachGraphDragHandlers(g);
+  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  return g;
+}
+
+function addLiveGraph() {
+  if (liveGraphs.length >= MAX_LIVE_GRAPHS) return;
+  const sid = ++liveSeriesSeq;
+  const g = createGraphObject([{ sid, color: liveColorFor(String(sid)), xKey: '', yKey: '', visible: true }]);
   refreshLiveSelectOptions();
   updateLiveChart(g);
-  attachGraphDragHandlers(g);
-
-  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
 }
 
 function removeLiveGraph(id) {
@@ -436,8 +736,11 @@ function connectLiveSocket() {
     lastDataAt = Date.now();
     if (sessionStartTime === null) sessionStartTime = new Date(payload.timestamp || Date.now()).getTime();
     let newKey = false;
-    for (const [k, v] of Object.entries(payload)) {
-      if (k === 'timestamp' || k === '_source') continue;
+    // 키 이름에 눈에 안 보이는 공백이 섞여 들어오면(배선 잡음 등으로 시리얼 줄이 깨졌을 때
+    // 흔함) 같은 센서인데 다른 문자열로 취급돼서 카드가 계속 새로 생기므로 trim해서 합친다.
+    for (const [rawKey, v] of Object.entries(payload)) {
+      const k = typeof rawKey === 'string' ? rawKey.trim() : rawKey;
+      if (!k || k === 'timestamp' || k === '_source') continue;
       if (typeof v !== 'number' && typeof v !== 'string') continue;
       liveLatest[k] = { value: v, timestamp: payload.timestamp || new Date().toISOString() };
       if (!liveKnownKeys.has(k)) { liveKnownKeys.add(k); newKey = true; }

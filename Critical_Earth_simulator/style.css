@@ -1,12 +1,18 @@
 html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif;
   background: #14171c; }
+/* 화면을 세로 3등분 x 가로 2등분 = 6칸: 좌측 위 1칸 = 아크릴 모형, 그 아래 1칸 = 탭 제목/설명,
+   나머지 우측 2x2(4칸)는 그래프 패널 하나로 합쳐서 그래프/데이터를 크게 본다. */
 #app {
   display: grid;
-  grid-template-columns: 1fr 360px;
-  grid-template-rows: 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
   height: 100vh;
 }
-#gl-container { grid-column: 1; grid-row: 1; position: relative; background: radial-gradient(ellipse at 50% 35%, #f4f4f2 0%, #dcdcd8 100%); }
+#gl-container {
+  grid-column: 1; grid-row: 1; position: relative;
+  background: radial-gradient(ellipse at 50% 35%, #f4f4f2 0%, #dcdcd8 100%);
+  border-right: 1px solid #2a2e35; border-bottom: 1px solid #2a2e35;
+}
 canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 #hint {
   position: absolute; top: 14px; left: 14px; color: #cfd3da; font-size: 12px;
@@ -20,33 +26,36 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 }
 #brightnessControl input[type="range"] { width: 120px; accent-color: #5DCAA5; cursor: pointer; }
 
-#graph-panel {
-  grid-column: 2; grid-row: 1; background: #1b1e24; color: #e7e9ec;
-  padding: 18px 18px 16px; overflow-y: auto; border-left: 1px solid #2a2e35;
+#tab-header-panel {
+  grid-column: 1; grid-row: 2; background: #1b1e24; color: #e7e9ec;
+  padding: 16px 18px; overflow-y: auto; border-right: 1px solid #2a2e35;
 }
-#graph-panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
-#graph-panel .sub { font-size: 11px; color: #9198a3; margin-bottom: 14px; line-height: 1.5; }
+#tab-header-panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+#tab-header-panel .sub { font-size: 11px; color: #9198a3; line-height: 1.6; }
+.home-link { display: inline-block; font-size: 11px; color: #7d838d; text-decoration: none; margin-bottom: 10px; }
+.home-link:hover { color: #5DCAA5; }
 
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid #2a2e35; margin-bottom: 16px; }
-.tab-btn { background: none; border: none; font-size: 13px; font-weight: 500; color: #7d838d;
-  padding: 9px 4px; margin-right: 16px; cursor: pointer; border-bottom: 2px solid transparent; }
-.tab-btn.active { color: #e7e9ec; border-bottom-color: #85B7EB; }
+#graph-panel {
+  grid-column: 2 / span 2; grid-row: 1 / span 2; background: #1b1e24; color: #e7e9ec;
+  padding: 18px 18px 16px; overflow-y: auto;
+}
+
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
-.stat-box { background: #23272f; border-radius: 10px; padding: 10px 12px; }
-.stat-box .label { font-size: 10px; color: #9198a3; margin-bottom: 4px; }
-.stat-box .value { font-size: 16px; font-weight: 600; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.stat-box { background: #23272f; border-radius: 10px; padding: 12px 14px; }
+.stat-box .label { font-size: 10.5px; color: #9198a3; margin-bottom: 5px; }
+.stat-box .value { font-size: 19px; font-weight: 600; }
 .stat-box .value.temp { color: #f0997b; }
 .stat-box .value.ph { color: #5DCAA5; }
-.stat-box .delta { font-size: 10px; color: #7d838d; margin: 3px 0 0; }
+.stat-box .delta { font-size: 10.5px; color: #7d838d; margin: 4px 0 0; }
 
-.chart-block { margin-bottom: 18px; }
-.chart-block .chart-title { font-size: 11px; color: #9198a3; margin: 0 0 6px; }
-.chart-wrap { position: relative; width: 100%; height: 150px; }
-.charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.charts-2col .chart-wrap { height: 130px; }
+.chart-block { margin-bottom: 20px; }
+.chart-block .chart-title { font-size: 12px; color: #9198a3; margin: 0 0 8px; }
+.chart-wrap { position: relative; width: 100%; height: 260px; }
+.charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.charts-2col .chart-wrap { height: 260px; }
 
 .co2-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; }
 .co2-row .name { font-size: 11px; color: #9198a3; white-space: nowrap; }
@@ -66,7 +75,8 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 .experiment-btn.end { background: #2a2e35; color: #e7e9ec; }
 .experiment-btn.end:hover:not(:disabled) { background: #3a3f47; }
 .experiment-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.graph-card { background: #1f2329; border: 1px solid #2a2e35; border-radius: 8px; padding: 10px; margin-bottom: 10px;
+#liveGraphs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+.graph-card { background: #1f2329; border: 1px solid #2a2e35; border-radius: 8px; padding: 10px; margin-bottom: 0;
   cursor: grab; }
 .graph-card.drag-over { outline: 2px solid #5DCAA5; outline-offset: 2px; }
 
@@ -86,7 +96,7 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
   font-size: 11px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 16px; }
 .add-graph-btn:hover { color: #e7e9ec; border-color: #5DCAA5; }
 .add-graph-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 16px; }
 .sensor-card { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5;
   border-radius: 8px; padding: 10px 12px; }
 .sensor-card .key { font-size: 10px; color: #9198a3; text-transform: uppercase; letter-spacing: .04em;
