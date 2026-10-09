@@ -105,8 +105,11 @@ function spotBaseTemp(spot, ppm, hour) {
 }
 function measureTemperature(spot, x, z, ppm, aboveGround) {
   const S = SPOT[spot];
-  // 어류는 변온동물이라 체온이 곧 주변 수온이다. 해수와 정확히 같은 값을 돌려준다.
-  if (spot === 'bodyFish') return seaTemperature(ppm);
+  // 해수는 fp-world.js의 seaTempAt() 하나만 쓴다. 해수 분석기·pH미터·산호가 읽는 수온과
+  // 반드시 같아야 하므로 여기서는 지점 흔들림·일교차·날씨 보정을 얹지 않는다.
+  // (바다는 열용량이 커서 원래 일교차가 0.6°C뿐이었고, 지점 간 차이는 이제 냉수대가 만든다.)
+  // 어류는 변온동물이라 체온이 곧 그 자리의 수온이다.
+  if (spot === 'sea' || spot === 'bodyFish') return seaTempAt(x, z, ppm);
   // 곰은 겨울에 동면해 체온이 크게 내려간다
   if (spot === 'bodyBear' && FPWorld.season === 'winter') {
     return BEAR_HIBERNATE_T + Math.sin(x * 37.1 + z * 21.7) * 0.3;
@@ -125,10 +128,18 @@ function measureTemperature(spot, x, z, ppm, aboveGround) {
   return v;
 }
 
-// 해양 pH: 산호 백화·생물 감소와 반드시 같은 값을 써야 하므로
-// fp-world.js의 oceanPH() 하나만 쓴다 (측정값과 세계 상태가 어긋나지 않게)
-function measurePH(ppm) {
-  return oceanPH(ppm);
+// 해양 pH: 예전엔 슬라이더 CO2 하나만 넣어서 바다 어디서 재도 같은 값이었다.
+// 이제 그 지점의 해수 상태(seaStateAt: 수온 + 해수 pCO2)에서 읽는다.
+// 산호·해수 분석기와 같은 함수라 측정값과 세계 상태가 어긋나지 않는다.
+// TA 일정 모형에서는 수온이 pH를 거의 못 움직인다(냉수대와 개방 해역 차이 ≈ 0.02).
+// 온도 효과의 주 신호는 용존 CO2와 Ω이고, 그건 4번 해수 분석기가 맡는다.
+function measurePH(ppm, x, z) {
+  return seaStateAt(x, z, ppm).pH;
+}
+// 바다를 겨눴는가. pH미터·해수 분석기 공통 - 해양 구역이면서 수면 아래인 지점만 유효.
+function isSeaHit(hit) {
+  const waterY = FPPlayer.waterHeightAt(hit.point.x, hit.point.z, performance.now() / 1000);
+  return hit.zone === 'ocean' && (hit.isWater || hit.point.y <= waterY + 0.002);
 }
 
 // ── 대기 CO2 ────────────────────────────────────────────────────────────────
@@ -276,7 +287,18 @@ const TOOL_SPEC = {
   temp: { res: 0.1,  sigma: 0.15, settle: 1.2, cold: 20,  unit: '°C' },
   ph:   { res: 0.01, sigma: 0.02, settle: 2.5, cold: 7.00, unit: 'pH' },
   co2:  { res: 1,    sigma: 8,    settle: 3.0, cold: 400, unit: 'ppm' },
+  // 해수 분석기: 한 번 떠서 네 값을 함께 낸다. 채널마다 분해능·재현성이 다르다.
+  // 수온 채널은 온도계와 같은 사양 - 같은 물을 재면 같은 분포에서 값이 나와야 한다.
+  // Ω 재현성 0.03은 418ppm 냉수대(≈2.2)와 개방 해역(≈2.9) 차이보다 훨씬 작아서
+  // 한 번에 구분되지만, 같은 수온 안의 미세한 차이는 반복 측정이 있어야 보인다.
+  sea:  { settle: 3.5, unit: 'Ω', ch: [
+    { key: 'co2aq', name: 'CO₂',  res: 0.1,  sigma: 0.3,  cold: 10,   unit: 'µmol/kg' },
+    { key: 'dic',   name: 'DIC',  res: 1,    sigma: 3,    cold: 2000, unit: 'µmol/kg' },
+    { key: 'omega', name: 'Ω',    res: 0.01, sigma: 0.03, cold: 3,    unit: '' },
+    { key: 'temp',  name: '수온', res: 0.1,  sigma: 0.15, cold: 20,   unit: '°C' },
+  ] },
 };
+const UMOL = 1e6;   // mol/kg -> µmol/kg
 // 표준정규난수 (Box-Muller). 균등난수를 쓰면 오차 분포가 실제와 달라서
 // 평균을 내도 참값으로 수렴하는 맛이 안 난다.
 function gaussNoise() {
@@ -320,26 +342,73 @@ function drawDisplay(tool, big, small, color, progress) {
   tool.lastResult = { big, small };   // 캔버스 픽셀을 읽지 않고도 결과를 확인할 수 있게 보관
 }
 
+// 해수 분석기 표시창: 네 값을 2x2 칸에. 손에 든 작은 화면이라 칸마다 작은 이름표 + 큰 숫자.
+// Ω가 1 밑이면 빨간색 = 골격이 녹는 물.
+function drawAnalyzer(tool, vals, status, color, progress) {
+  const cv = tool.canvas, c = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  c.fillStyle = '#0a1512';
+  c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#1d3a32'; c.lineWidth = 4;
+  c.strokeRect(2, 2, W - 4, H - 4);
+  c.strokeStyle = '#16302a'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(W / 2, 8); c.lineTo(W / 2, 118); c.moveTo(8, 63); c.lineTo(W - 8, 63); c.stroke();
+  const LABEL = { co2aq: '용존CO₂ µmol/kg', dic: 'DIC µmol/kg', omega: 'Ω 포화도', temp: '수온 °C' };
+  TOOL_SPEC.sea.ch.forEach((ch, i) => {
+    const cx = (i % 2) * (W / 2) + W / 4, top = Math.floor(i / 2) * 55 + 6;
+    const v = vals ? vals[ch.key] : null;
+    c.textAlign = 'center';
+    c.fillStyle = '#7fa89a';
+    c.font = '13px sans-serif';
+    c.fillText(LABEL[ch.key], cx, top + 14);
+    let col = color;
+    const settled = progress == null && v != null;
+    if (ch.key === 'omega' && settled) col = v < 1 ? '#ff6a5c' : (v < 2 ? '#f0b45c' : color);
+    c.fillStyle = col;
+    c.font = 'bold 30px "Courier New", monospace';
+    c.fillText(v == null ? '--' : fmtValue(v, ch.res) + (ch.key === 'omega' && settled && v < 1 ? '!' : ''), cx, top + 46);
+  });
+  c.textAlign = 'center';
+  c.fillStyle = '#7fa89a';
+  c.font = '12px sans-serif';
+  c.fillText(status, W / 2, H - 13);
+  if (progress != null && progress < 1) {
+    c.fillStyle = '#16302a';
+    c.fillRect(8, H - 8, W - 16, 4);
+    c.fillStyle = '#5dcaa5';
+    c.fillRect(8, H - 8, (W - 16) * progress, 4);
+  }
+  tool.tex.needsUpdate = true;
+  tool.lastResult = {
+    big: vals ? fmtValue(vals.omega, 0.01) : '--',
+    small: status,
+    values: vals ? { ...vals } : null,
+  };
+}
+
 function buildTool(kind) {
   const g = new THREE.Group();
   const canvas = makeDisplayCanvas();
+  // 해수 분석기는 네 줄을 띄워야 해서 표시창 해상도와 크기를 키운다 (가로세로 비는 그대로)
+  if (kind === 'sea') { canvas.width = 240; canvas.height = 144; }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
 
   const caseMat = new THREE.MeshStandardMaterial({
-    color: kind === 'temp' ? 0xe8e8ea : (kind === 'ph' ? 0xf0a33c : 0x3c7fd0),
+    color: { temp: 0xe8e8ea, ph: 0xf0a33c, co2: 0x3c7fd0, sea: 0x2f9e8f }[kind],
     roughness: 0.5, metalness: 0.1,
   });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.6 });
 
   // 공통: 손에 쥐는 본체 + 정면 표시창
-  const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.011, 0.016, 0.005), caseMat);
+  const big = kind === 'sea' ? 1.4 : 1;
+  const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.011 * big, 0.016, 0.005), caseMat);
   g.add(bodyMesh);
   const screen = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.0085, 0.0052),
+    new THREE.PlaneGeometry(0.0085 * big, 0.0052 * big),
     new THREE.MeshBasicMaterial({ map: tex })
   );
-  screen.position.set(0, 0.0042, 0.00256);
+  screen.position.set(0, 0.0042 - (big - 1) * 0.004, 0.00256);
   g.add(screen);
 
   // 측정부는 전부 본체 '아래'로, 본체 중심축을 그대로 따라 내려온다.
@@ -362,6 +431,15 @@ function buildTool(kind) {
       new THREE.MeshPhysicalMaterial({ color: 0xbfe6ff, roughness: 0.1, transmission: 0.6, thickness: 0.001 }));
     bulb.position.set(0, -0.0238, PROBE_Z);
     g.add(bulb);
+  } else if (kind === 'sea') {
+    // 해수 분석기: 아래로 내려온 채수관 + 그 끝의 투명 시료 셀
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.0009, 0.0009, 0.016, 8), darkMat);
+    tube.position.set(0, -0.0155, PROBE_Z);
+    g.add(tube);
+    const cell = new THREE.Mesh(new THREE.CylinderGeometry(0.0024, 0.0024, 0.005, 12),
+      new THREE.MeshPhysicalMaterial({ color: 0x9fe3d6, roughness: 0.1, transmission: 0.5, thickness: 0.001 }));
+    cell.position.set(0, -0.0245, PROBE_Z);
+    g.add(cell);
   } else {
     // CO2 센서: 아래로 내려온 흡입관 + 그 끝의 격자 흡입구
     const inlet = new THREE.Mesh(new THREE.CylinderGeometry(0.0022, 0.0022, 0.012, 10), darkMat);
@@ -380,7 +458,8 @@ function buildTool(kind) {
   }
 
   const tool = { kind, group: g, canvas, tex };
-  drawDisplay(tool, '--', kind === 'temp' ? '°C' : (kind === 'ph' ? 'pH' : 'ppm'), '#5dcaa5');
+  if (kind === 'sea') drawAnalyzer(tool, null, '해수 분석기', '#5dcaa5');
+  else drawDisplay(tool, '--', kind === 'temp' ? '°C' : (kind === 'ph' ? 'pH' : 'ppm'), '#5dcaa5');
   return tool;
 }
 
@@ -450,6 +529,7 @@ FPTools.init = function (camera) {
   this.slots[0] = buildTool('temp');
   this.slots[1] = buildTool('ph');
   this.slots[2] = buildTool('co2');
+  this.slots[3] = buildTool('sea');
   this.slots.forEach(t => {
     if (!t) return;
     t.group.visible = false;
@@ -488,10 +568,48 @@ FPTools.beginReading = function (tool, trueValue, label, color) {
   // 직전 측정값이 한 프레임 더 남아 있어서, 새로 누른 건지 아닌지 헷갈린다.
   drawDisplay(tool, fmtValue(quantize(tool.reading.from, spec.res), spec.res), '측정 중…', '#8fb7c9', 0);
 };
+// 다채널 계측기(해수 분석기). 채널마다 따로 오차를 뽑고, 응답 곡선은 같이 탄다.
+FPTools.beginMultiReading = function (tool, trueVals, label, color) {
+  const spec = TOOL_SPEC[tool.kind];
+  const last = tool.lastValue || {};
+  const target = {}, from = {};
+  for (const ch of spec.ch) {
+    target[ch.key] = trueVals[ch.key] + gaussNoise() * ch.sigma;
+    from[ch.key] = last[ch.key] != null ? last[ch.key] : ch.cold;
+  }
+  tool.reading = { multi: true, target, from, t: 0, dur: spec.settle, spec, label, color };
+  drawAnalyzer(tool, this._quantizeAll(spec, from), '측정 중…', '#8fb7c9', 0);
+};
+FPTools._quantizeAll = function (spec, vals) {
+  const out = {};
+  // 문자열을 거쳐 숫자로 되돌려 19.200000000000003 같은 부동소수 찌꺼기를 없앤다 (야장·CSV용)
+  for (const ch of spec.ch) out[ch.key] = Number(fmtValue(quantize(vals[ch.key], ch.res), ch.res));
+  return out;
+};
+FPTools._updateMulti = function (tool, dt) {
+  const r = tool.reading;
+  r.t = Math.min(r.dur, r.t + dt);
+  const p = r.t / r.dur;
+  const done = r.t >= r.dur;
+  const shown = {};
+  for (const ch of r.spec.ch) {
+    const a = r.from[ch.key], b = r.target[ch.key];
+    shown[ch.key] = done ? b : a + (b - a) * (1 - Math.exp(-3.5 * p));
+  }
+  const q = this._quantizeAll(r.spec, shown);
+  drawAnalyzer(tool, q, done ? r.label : '측정 중…', done ? r.color : '#8fb7c9', done ? null : p);
+  if (done) {
+    tool.lastValue = r.target;
+    tool.reading = null;
+    r.values = q;
+    if (FPTools.onMeasured) FPTools.onMeasured(tool, q.omega, r);
+  }
+};
 // 매 프레임 호출. 여러 도구가 동시에 측정 중일 일은 없지만 슬롯 전체를 훑는다.
 FPTools.update = function (dt) {
   for (const tool of this.slots) {
     if (!tool || !tool.reading) continue;
+    if (tool.reading.multi) { this._updateMulti(tool, dt); continue; }
     const r = tool.reading;
     r.t = Math.min(r.dur, r.t + dt);
     const p = r.t / r.dur;
@@ -533,14 +651,27 @@ FPTools.use = function () {
     this.beginReading(tool, v, `°C · ${SPOT[hit.spot].label}`, '#ff8f6b');
   } else if (tool.kind === 'ph') {
     // pH는 바다에서만. 해양 구역이면서 수면 아래인 지점만 유효.
-    const waterY = FPPlayer.waterHeightAt(hit.point.x, hit.point.z, performance.now() / 1000);
-    const inSea = hit.zone === 'ocean' && (hit.isWater || hit.point.y <= waterY + 0.002);
-    if (!inSea) {
+    if (!isSeaHit(hit)) {
       tool.reading = null;
       drawDisplay(tool, '--', '바다에서만 측정', '#8a949c');
       return;
     }
-    this.beginReading(tool, measurePH(ppm), 'pH · 해수', '#7fd8ff');
+    // 표시창에 수온을 병기한다 (pH미터의 온도 보상 탐침 - 온도계와 같은 사양)
+    const st = seaStateAt(hit.point.x, hit.point.z, ppm);
+    const wt = quantize(st.temp + gaussNoise() * TOOL_SPEC.temp.sigma, TOOL_SPEC.temp.res);
+    this.beginReading(tool, st.pH, `pH · 수온 ${wt.toFixed(1)}°C`, '#7fd8ff');
+    tool.reading.waterTemp = wt;
+  } else if (tool.kind === 'sea') {
+    // 해수 분석기: 바다를 겨눴을 때만. 육지·하늘이면 ERR.
+    if (!isSeaHit(hit)) {
+      tool.reading = null;
+      drawAnalyzer(tool, null, 'ERR · 바다에서만 측정', '#e2705f');
+      return;
+    }
+    const st = seaStateAt(hit.point.x, hit.point.z, ppm);
+    this.beginMultiReading(tool, {
+      co2aq: st.co2aq * UMOL, dic: st.dic * UMOL, omega: st.omega, temp: st.temp,
+    }, '해수 분석 완료', '#7fe0c8');
   }
   // 야장이 기록할 수 있게 이번 측정의 지점 정보를 붙여 둔다
   if (tool.reading) {
@@ -552,8 +683,8 @@ FPTools.use = function () {
 };
 
 // ── 단축바 UI ───────────────────────────────────────────────────────────────
-const HOTBAR_LABELS = ['온도계', 'pH미터', 'CO₂센서', '', '', '', '', '', ''];
-const HOTBAR_ICONS = ['🌡️', '🧪', '🌫️', '', '', '', '', '', ''];
+const HOTBAR_LABELS = ['온도계', 'pH미터', 'CO₂센서', '해수분석기', '', '', '', '', ''];
+const HOTBAR_ICONS = ['🌡️', '🧪', '🌫️', '🌊', '', '', '', '', ''];
 function buildHotbarUI() {
   const bar = document.getElementById('hotbar');
   bar.innerHTML = '';

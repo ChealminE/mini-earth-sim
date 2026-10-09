@@ -26,12 +26,14 @@ const SPOT_KO = {
   bodyRabbit: '토끼 체온', bodyDeer: '사슴 체온', bodyWolf: '늑대 체온',
   bodyBear: '곰 체온', bodyFish: '어류 체온',
 };
-const KIND_KO = { temp: '온도', ph: 'pH', co2: 'CO2' };
+const KIND_KO = { temp: '온도', ph: 'pH', co2: 'CO2', sea: '해수분석' };
 
 // ── 기록 ────────────────────────────────────────────────────────────────────
 // FPTools가 측정을 '확정'했을 때만 부른다(수렴 중인 값은 기록하지 않는다).
 FPField.record = function (tool, value, reading) {
-  const spec = { temp: '°C', ph: 'pH', co2: 'ppm' }[tool.kind];
+  // 해수 분석기는 한 번에 네 값(용존CO2·DIC·Ω·수온)을 낸다. 대표값은 Ω로 두고
+  // 나머지는 sw에 함께 담는다. pH미터가 병기한 수온은 waterTemp에 둔다.
+  const spec = { temp: '°C', ph: 'pH', co2: 'ppm', sea: 'Ω' }[tool.kind];
   const row = {
     n: this.rows.length + 1,
     kind: tool.kind,
@@ -44,6 +46,9 @@ FPField.record = function (tool, value, reading) {
     x: reading.at ? reading.at.x : FPPlayer.pos.x,
     z: reading.at ? reading.at.z : FPPlayer.pos.z,
     co2: FPWorld.co2,
+    sw: reading.values ? { ...reading.values } : null,
+    waterTemp: reading.waterTemp != null ? reading.waterTemp
+             : (reading.values ? reading.values.temp : null),
     hour: FPWorld.hour,
     iso: new Date().toISOString(),
   };

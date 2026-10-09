@@ -1709,6 +1709,23 @@ function seaTempAt(x, z, ppm) {
   const base = seaTemperature(ppm);     // CO2·계절 반영 (개방 해역 수온)
   return Math.max(SEA_FREEZE_T, base - COLD_POOL_DT * iceProximity(x, z));
 }
+
+// ── 지점의 해수 상태 ────────────────────────────────────────────────────────
+// 해수가 녹이고 있는 CO2(pCO2)와 그 지점의 수온으로 탄산 평형을 한 번 푼다.
+// pH미터·해수 분석기·산호가 전부 이 함수 하나만 읽는다 - 측정값과 세계 상태가
+// 어긋나지 않게 하려는 것이다. 돌려주는 값은 seawaterState()의 결과(mol/kg)에
+// 수온(temp)과 pCO2를 덧붙인 것이다.
+function seaPCO2(ppm) {
+  return ppm;
+}
+function seaStateAt(x, z, ppm) {
+  const temp = seaTempAt(x, z, ppm);
+  const pco2 = seaPCO2(ppm);
+  const s = seawaterState(pco2, temp);
+  s.temp = temp;
+  s.pco2 = pco2;
+  return s;
+}
 function coralBleaching(ppm) {
   const excess = seaTemperature(ppm) - (SEA_BASE_T + BLEACH_ON);
   return Math.min(1, Math.max(0, excess / (BLEACH_FULL - BLEACH_ON)));
