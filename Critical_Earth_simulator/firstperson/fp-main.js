@@ -18,6 +18,8 @@ FPTools.init(camera);   // 단축바 + 손에 든 도구 (camera를 씬에 넣�
 FPWeather.init(FPWorld.scene);
 FPMinimap.init();
 FPAir.reset();          // 구역 대기 CO2를 지금 시각의 정상 상태에서 시작
+equilibrateSeaCO2();    // 해수 pCO2도 지금 해양 대기와 평형에서 시작
+FPAir.onTick.push(stepSeaCO2);   // 해수는 대기와 같은 0.2초 틱에서 천천히 따라간다
 
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -48,6 +50,10 @@ co2Slider.addEventListener('input', () => {
   co2Out.textContent = co2Slider.value;
   applyWorldCO2(Number(co2Slider.value));
 });
+
+// ── 해수 평형 상태 + 즉시 평형 버튼 (해수 pCO2는 대기를 τ_sw로 천천히 따라간다) ──
+const seaEqState = document.getElementById('seaEqState');
+document.getElementById('seaEqBtn').addEventListener('click', () => equilibrateSeaCO2());
 
 // ── 시각 슬라이더 ───────────────────────────────────────────────────────────
 // 기본은 정오에 멈춰 있다. 조사 도중에 시간이 흐르면 같은 지점을 다시 재도 값이 달라져
@@ -210,8 +216,15 @@ function animate() {
       + ` · ${SEASONS[FPWorld.season].ko} · ${WEATHER[FPWeather.kind].ko} · ${FPAir.windLabel()}`;
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
+    // 개방 해역 대표값. 해수 pCO2가 해양 대기와 아직 다르면 '평형 중'임을 같이 보여준다.
+    const sea = openSeaState(FPWorld.co2), air = oceanAirCO2();
+    const gap = air - sea.pco2;
+    seaEqState.textContent = `해수 pCO₂ ${sea.pco2.toFixed(0)} / 해양 대기 ${air.toFixed(0)} ppm` +
+      (Math.abs(gap) >= 3 ? ' · 평형 중' : ' · 평형');
     hudSea.textContent =
-      `${FPWorld.seaTemp.toFixed(1)}°C · pH ${oceanPH(FPWorld.co2).toFixed(2)} · Ω ${FPWorld.aragonite.toFixed(2)}` +
+      `${sea.temp.toFixed(1)}°C · 해수 pCO₂ ${sea.pco2.toFixed(0)}` +
+      (Math.abs(gap) >= 3 ? ` (대기 ${air.toFixed(0)} 쪽으로 ${gap > 0 ? '↑' : '↓'})` : '') +
+      ` · pH ${sea.pH.toFixed(2)} · Ω ${sea.omega.toFixed(2)}` +
       ` · 백화 ${Math.round(FPWorld.coralBleaching * 100)}%` +
       ` · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plantTotal}`;
   }

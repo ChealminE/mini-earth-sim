@@ -143,6 +143,14 @@
       <span class="val"><span id="co2Out">418</span> ppm</span>
     </label>
     <p class="note">CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <div class="row">
+      <span class="lbl">바다</span>
+      <span class="sea-eq" id="seaEqState">-</span>
+      <div class="btn-row" style="flex:0 0 auto"><button id="seaEqBtn">즉시 평형</button></div>
+    </div>
+    <p class="note">바다는 대기 CO₂를 <b>천천히</b> 따라갑니다(약 2게임일 ≈ 실시간 10분에 63 %).
+      CO₂를 바꾼 직후 pH를 재면 아직 옛 값에 가깝습니다 — 시간을 두고 반복 측정해 보세요.
+      수업 시간이 부족하면 <b>즉시 평형</b>을 누르면 해수가 지금 해양 대기와 바로 평형이 됩니다.</p>
     <label class="row">
       <span class="lbl">시각</span>
       <input type="range" id="timeSlider" min="0" max="23.99" step="0.05" value="12">

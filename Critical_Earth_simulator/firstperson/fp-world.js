@@ -1644,13 +1644,15 @@ function updateTime(dt) {
 // 1인칭은 6.15를 내놓는 상태가 됐다. 학생이 잰 값과 예측값이 다르면 도구를 못 믿는다.
 // (게다가 pH 6.15는 탄산음료 영역이라 산호가 하얘지는 게 아니라 골격이 녹는다.)
 //
-// 이제 두 모드가 js/earth-model.js 의 seawaterPH() 하나만 쓴다. 탄산 평형을 직접 푼
-// 값이라 관측 35점을 RMSE 0.007로 재현한다.
-//   280ppm -> 8.19 / 418ppm -> 8.04 / 600ppm -> 7.91 / 1000ppm -> 7.71
+// 이제 두 모드가 js/earth-model.js 의 seawaterState() 하나만 쓴다. 탄산 평형을 직접 푼
+// 값이라 관측 35점을 RMSE 0.008로 재현한다. 같은 pCO2·같은 수온이면 조감 모드와 같은 값이다.
+//   (25 °C) 280ppm -> 8.18 / 418ppm -> 8.04 / 600ppm -> 7.91 / 1000ppm -> 7.71
 // 변화폭이 0.48로 줄어든 만큼, '눈에 보이는 변화'는 pH 자체가 아니라
-// 아라고나이트 포화도 Ω(4.44 -> 1.78)와 수온으로 만든다. 아래 백화/석회화 참고.
+// 아라고나이트 포화도 Ω와 수온으로 만든다. 아래 백화/석회화 참고.
+// 1인칭에서는 바다가 슬라이더 값이 아니라 해수 pCO2(위 동적 평형)를 녹이고 있으므로
+// 개방 해역 수온·해수 pCO2로 푼 값을 돌려준다 (HUD 표시용).
 function oceanPH(ppm) {
-  return seawaterPH(ppm);
+  return openSeaState(ppm).pH;
 }
 
 // ── 산호에 일어나는 두 가지 서로 다른 일 ────────────────────────────────────
@@ -1710,17 +1712,45 @@ function seaTempAt(x, z, ppm) {
   return Math.max(SEA_FREEZE_T, base - COLD_POOL_DT * iceProximity(x, z));
 }
 
+// ── 해수 pCO2의 동적 평형 ───────────────────────────────────────────────────
+// 바다는 바로 위 해양 대기와 CO2를 주고받지만 즉시 맞춰지지는 않는다:
+//   dpCO2_sw/dt = (C_ocean − pCO2_sw) / τ_sw
+// C_ocean은 해양 구역 대기 CO2(fp-tools.js FPAir - 해륙풍이 도심 공기를 실어 오면 오른다).
+// 대기를 갑자기 바꿔도 해수 pH가 바로 안 따라오고 시간에 걸쳐 수렴한다 =
+// "평형은 즉시가 아니라 시간에 걸쳐 도달한다"를 측정으로 보이는 장치다.
+// τ_sw 2게임일(실시간 10분)은 실제 표층 해양의 평형 시간(수개월)을 압축한 값이다.
+// 바다 전체가 한 값을 쓴다(공간 변이는 수온이 만든다). 0.2초 틱에서 FPAir와 같이 돈다.
+const SEA_TAU_SW = 2;          // 해수 pCO2가 해양 대기를 따라가는 시간 [게임 일]
+FPWorld.pco2Sea = null;        // 해수 pCO2 [µatm ≈ ppm]. null이면 아직 초기화 전
+function oceanAirCO2() {
+  return typeof FPAir !== 'undefined' ? FPAir.zoneCO2('ocean') : FPWorld.co2;
+}
+function stepSeaCO2(dtDay) {
+  if (FPWorld.pco2Sea == null) FPWorld.pco2Sea = oceanAirCO2();
+  FPWorld.pco2Sea += (oceanAirCO2() - FPWorld.pco2Sea) * dtDay / SEA_TAU_SW;
+}
+// 해수를 지금 해양 대기와 바로 평형으로 맞춘다 (처음 열 때 / 설정창 버튼)
+function equilibrateSeaCO2() { FPWorld.pco2Sea = oceanAirCO2(); }
+
 // ── 지점의 해수 상태 ────────────────────────────────────────────────────────
 // 해수가 녹이고 있는 CO2(pCO2)와 그 지점의 수온으로 탄산 평형을 한 번 푼다.
 // pH미터·해수 분석기·산호가 전부 이 함수 하나만 읽는다 - 측정값과 세계 상태가
 // 어긋나지 않게 하려는 것이다. 돌려주는 값은 seawaterState()의 결과(mol/kg)에
 // 수온(temp)과 pCO2를 덧붙인 것이다.
 function seaPCO2(ppm) {
-  return ppm;
+  return FPWorld.pco2Sea != null ? FPWorld.pco2Sea : ppm;
 }
 function seaStateAt(x, z, ppm) {
   const temp = seaTempAt(x, z, ppm);
   const pco2 = seaPCO2(ppm);
+  const s = seawaterState(pco2, temp);
+  s.temp = temp;
+  s.pco2 = pco2;
+  return s;
+}
+// 개방 해역(냉수대 밖)의 해수 상태 - HUD가 쓰는 '바다 대표값'
+function openSeaState(ppm) {
+  const temp = seaTemperature(ppm), pco2 = seaPCO2(ppm);
   const s = seawaterState(pco2, temp);
   s.temp = temp;
   s.pco2 = pco2;
