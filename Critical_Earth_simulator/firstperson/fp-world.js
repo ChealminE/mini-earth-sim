@@ -1678,6 +1678,37 @@ function seaTemperature(ppm) {
   const S = SEASONS[FPWorld.season] || SEASONS.summer;
   return SEA_BASE_T + SEA_WARM_AMP * warmingSince280(ppm) + (S.seaT - SEASONS.summer.seaT);
 }
+
+// ── 빙하 냉수대 ─────────────────────────────────────────────────────────────
+// seaTemperature()는 바다 전체가 한 값이라, 탄산 평형이 수온의 함수가 된 뒤에도
+// 바다 어디서 재든 pH·Ω가 같았다. 1유닛 ≈ 50m인 작은 세계에 열대-극지 기온차를
+// 그대로 넣을 수는 없으므로, 유빙 주변에 녹은 물이 만드는 냉수대로 공간 변이를 만든다.
+// (빙하 녹은 물이 차고 Ω를 낮추는 건 실제 피오르·극지 연안에서 관측되는 현상이다.)
+//
+// 온도계(해수)·해수 분석기·산호가 전부 이 함수 하나를 읽는다. 셋이 같은 값을 써야
+// "내가 잰 수온"과 "산호가 반응하는 수온"이 어긋나지 않는다.
+const COLD_POOL_DT = 12;      // 유빙 바로 옆에서 개방 해역보다 낮아지는 폭 [°C]
+const COLD_POOL_R = 0.35;     // 유빙 가장자리에서 냉수대가 사라지는 거리 [유닛] (≈ 17m)
+const SEA_FREEZE_T = -1.9;    // 염분 35 해수의 어는점 [°C] - 이보다 차가워질 수는 없다
+// 0 = 냉수대 밖, 1 = 유빙 바로 옆. 가장 가까운 유빙 하나가 정한다.
+// 거리는 유빙 '중심'이 아니라 '가장자리'에서 잰다 - 계절마다 유빙 크기가 바뀌므로
+// (겨울 1.35배, 여름 0.75배) 충돌체 반지름을 그대로 쓴다. 충돌체 좌표는 이미 월드 좌표다.
+function iceProximity(x, z) {
+  let p = 0;
+  for (const ice of FPWorld.iceMeshes) {
+    const c = ice.userData.collider;
+    if (!c) continue;
+    const d = Math.max(0, Math.hypot(x - c.x, z - c.z) - c.r) / COLD_POOL_R;
+    if (d >= 1) continue;
+    const s = 1 - d * d * (3 - 2 * d);   // smoothstep 감쇠: 경계에서 꺾이지 않고 0이 된다
+    if (s > p) p = s;
+  }
+  return p;
+}
+function seaTempAt(x, z, ppm) {
+  const base = seaTemperature(ppm);     // CO2·계절 반영 (개방 해역 수온)
+  return Math.max(SEA_FREEZE_T, base - COLD_POOL_DT * iceProximity(x, z));
+}
 function coralBleaching(ppm) {
   const excess = seaTemperature(ppm) - (SEA_BASE_T + BLEACH_ON);
   return Math.min(1, Math.max(0, excess / (BLEACH_FULL - BLEACH_ON)));
