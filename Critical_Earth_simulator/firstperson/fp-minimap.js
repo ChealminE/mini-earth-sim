@@ -24,6 +24,29 @@ const FPMinimap = {
 const MINI_SIZES = [0, 220, 310];
 const MINI_REFRESH = 0.1;              // 초당 10회면 충분하다 (매 프레임 그릴 이유가 없다)
 
+// ── 측정값 색점 ─────────────────────────────────────────────────────────────
+// 이 시뮬의 강점은 공간 변이(열섬·나무 밑 CO2·냉수대)인데, 측정하면 숫자 하나만 나와서
+// 패턴이 안 보였다. 지금 손에 든 도구의 기록만 골라 값에 따라 색을 칠한다.
+// 축은 고정이다 - 기록 범위에 맞춰 늘이면 도심만 열 번 재도 노이즈가 빨강~파랑으로 퍼진다.
+//   온도  : 0 → 36 °C, 파랑 → 흰색 → 빨강 (18 °C 근처가 흰색)
+//   CO2   : 설정 CO2 대비 −60 → +120 ppm, 초록 → 노랑 → 주황 (슬라이더를 바꿔도 공간 패턴이 같게)
+//   pH    : 7.65 → 8.25, 주황 → 노랑 → 파랑
+//   해수 분석기: Ω 0.8 → 3.5, 빨강(1 밑 = 용해) → 주황 → 청록
+const DOT_SCALE = {
+  temp: { lo: 0, hi: 36, stops: ['#38a0ff', '#f2ecdc', '#e8402f'], label: '온도', fmt: v => v.toFixed(0) + '°', val: r => r.value },
+  co2:  { lo: -60, hi: 120, stops: ['#4fc36a', '#e8d25a', '#e8642a'], label: 'CO₂ 평균 대비', fmt: v => (v > 0 ? '+' : '') + v.toFixed(0), val: r => r.value - r.co2 },
+  ph:   { lo: 7.65, hi: 8.25, stops: ['#e8683a', '#e2d35c', '#4a9be0'], label: 'pH', fmt: v => v.toFixed(2), val: r => r.value },
+  sea:  { lo: 0.8, hi: 3.5, stops: ['#e2483a', '#f0b45c', '#5dcaa5'], label: 'Ω', fmt: v => v.toFixed(1), val: r => r.value },
+};
+function _hex(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+for (const k in DOT_SCALE) DOT_SCALE[k].rgb = DOT_SCALE[k].stops.map(_hex);
+function dotColor(S, v) {
+  const t = Math.min(1, Math.max(0, (v - S.lo) / (S.hi - S.lo))) * (S.rgb.length - 1);
+  const i = Math.min(S.rgb.length - 2, Math.floor(t)), f = t - i;
+  const a = S.rgb[i], b = S.rgb[i + 1];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+
 FPMinimap.init = function () {
   this.el = document.getElementById('minimap');
   if (!this.el) return;
@@ -110,16 +133,34 @@ FPMinimap.draw = function () {
     c.fillRect(X(wx) - 1.5, Y(wz) - 1.5, 3, 3);
   }
 
-  // 야장 측정 지점 - 조사한 경로가 지도에 남는다
+  // 야장 측정 지점 - 조사한 경로가 지도에 남는다.
+  // 손에 든 도구의 기록은 값에 따라 색점으로, 나머지 기록은 흐린 십자로.
   if (typeof FPField !== 'undefined' && FPField.rows.length) {
-    c.strokeStyle = 'rgba(255,214,120,.9)';
+    const held = typeof FPTools !== 'undefined' ? FPTools.slots[FPTools.selected] : null;
+    const S = held ? DOT_SCALE[held.kind] : null;
+    c.strokeStyle = S ? 'rgba(255,214,120,.35)' : 'rgba(255,214,120,.9)';
     c.lineWidth = 1;
+    let colored = 0;
     for (const r of FPField.rows) {
+      if (S && r.kind === held.kind) { colored++; continue; }
       const x = X(r.x), y = Y(r.z);
       c.beginPath();
       c.moveTo(x - 2, y); c.lineTo(x + 2, y);
       c.moveTo(x, y - 2); c.lineTo(x, y + 2);
       c.stroke();
+    }
+    if (S && colored) {
+      // 작은 지도라 점은 크게, 테두리는 밝게 - 파란 바다 위 파란 점도 묻히지 않게
+      const rad = this.mode === 2 ? 3.6 : 2.8;
+      c.strokeStyle = 'rgba(255,255,255,.85)';
+      for (const r of FPField.rows) {
+        if (r.kind !== held.kind) continue;
+        c.fillStyle = dotColor(S, S.val(r));
+        c.beginPath(); c.arc(X(r.x), Y(r.z), rad, 0, Math.PI * 2); c.fill(); c.stroke();
+      }
+      this._legend = S;   // 범례는 아래 글자 줄에 ('M 지도' 자리) - 지도 위를 가리지 않게
+    } else {
+      this._legend = null;
     }
     // 횡단 조사 중이면 시작점에서 현위치까지 선을 그어 준다
     const T = FPField.transect;
@@ -162,8 +203,27 @@ FPMinimap.draw = function () {
   c.font = '10px sans-serif';
   c.textAlign = 'left';
   c.fillText(FPPlayer.currentZone(), PAD, H - 3);
+  const L = FPField && FPField.rows.length ? this._legend : null;
+  if (!L) {
+    c.textAlign = 'right';
+    c.fillText('M 지도', W - PAD, H - 3);
+    return;
+  }
+  // 범례: [이름 최소 ▬▬▬ 최대] 를 오른쪽 아래에
+  c.font = '9px sans-serif';
+  const hiTxt = L.fmt(L.hi), loTxt = L.fmt(L.lo);
+  const LW = Math.round(W * 0.2), LH = 4;
+  const xr = W - PAD - c.measureText(hiTxt).width - 3;
+  const lx = xr - LW, ly = H - 9;
   c.textAlign = 'right';
-  c.fillText('M 지도', W - PAD, H - 3);
+  c.fillStyle = '#d6e2e8';
+  c.fillText(hiTxt, W - PAD, H - 3);
+  const g = c.createLinearGradient(lx, 0, lx + LW, 0);
+  L.stops.forEach((col, i) => g.addColorStop(i / (L.stops.length - 1), col));
+  c.fillStyle = g;
+  c.fillRect(lx, ly, LW, LH);
+  c.fillStyle = '#d6e2e8';
+  c.fillText(`${L.label} ${loTxt}`, lx - 3, H - 3);
 };
 
 function roundRect(c, x, y, w, h, r) {
