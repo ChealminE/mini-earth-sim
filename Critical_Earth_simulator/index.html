@@ -156,15 +156,33 @@
       <p class="hint">실측 범위: 350~418ppm (1988~2023). 해양 pH는 회귀가 아니라 <b>탄산 평형식</b>을 직접 풀어 구합니다(관측 35점을 RMSE 0.008로 재현). 기온편차는 복사강제력이 농도의 로그에 비례하는 점을 반영해 <b>log₂ 형태로 회귀</b>했습니다. 그래도 실측 범위 밖은 추정치이고, 기후 시스템은 임계점을 지나면 관계가 깨질 수 있어 극단값은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬과 <b>1인칭 탐험 모드</b>에도 똑같이 반영됩니다.</p>
 
       <div class="stat-grid">
-        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.62°C</div></div>
-        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.043</div></div>
-        <div class="stat-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.43</div></div>
+        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.60°C</div></div>
+        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.042</div></div>
+        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.51</div></div>
       </div>
 
       <div class="charts-2col">
         <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (관측 r=0.924)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (관측 r=-0.972 · 곡선=탄산평형)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
       </div>
+
+      <!-- 화학종 분포: seawaterState()가 이미 계산하는 [CO2(aq)]·[HCO3-]·[CO3^2-]를 그대로 보여준다 -->
+      <div class="chart-block speciation-block">
+        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 수온 25 °C)</div>
+        <div class="spec-bar-row">
+          <span class="spec-bar-label">산업화 이전<br>280 ppm</span>
+          <div class="spec-bar" id="specBarRef"></div>
+        </div>
+        <div class="spec-bar-row">
+          <span class="spec-bar-label">현재 설정<br><b id="specBarCo2">418</b> ppm</span>
+          <div class="spec-bar" id="specBarNow"></div>
+        </div>
+        <table class="spec-table">
+          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>280 ppm 대비</th></tr></thead>
+          <tbody id="specTableBody"></tbody>
+        </table>
+      </div>
+      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b>(280 → 1000 ppm에서 약 60 % 감소) <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다.</p>
 
       <p class="reg-note">기온편차 = 4.258 × log₂(CO₂/280) − 1.858 (r=0.924) · 여기서 4.258°C/배증이 이 관측 기록에서 읽어낸 기후민감도입니다 (IPCC 최적추정 3.0, 범위 2.5~4.0).<br>해양 pH는 회귀식이 아니라 탄산 평형(K₀·K₁·K₂ + 총알칼리도 일정)을 풀어 계산합니다 — 관측 35점 RMSE 0.008.</p>
     </div>
