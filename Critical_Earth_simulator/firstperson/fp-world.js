@@ -1878,6 +1878,25 @@ function cullByDistance(group, x, z, limit) {
 //   산호 색   <- 수온 (백화는 열 스트레스 현상이다)
 //   개체수    <- 아라고나이트 포화도 Ω (서식지 골격을 만들 수 있는가)
 // 살아남는 개체를 앞에서부터 세는 방식이라 CO2를 되돌리면 그대로 복원된다.
+// 가장 가까운 산호까지 거리 [유닛] - 야장이 "산호 곁에서 잰 기록"을 가려내는 데 쓴다
+function nearestCoralDist(x, z) {
+  let best = Infinity;
+  for (const im of FPWorld.corals || []) {
+    const S = im.userData.sites;
+    if (!S) continue;
+    for (let i = 0; i < S.lx.length; i++) {
+      const d = Math.hypot(S.lx[i] - ZONE_W - x, S.lz[i] - z);
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+// 바다 지점 분류 (야장 지점명·탐구 과제 판정용). 수온 같은 '값'이 아니라 위치로 나눈다.
+function seaZoneClass(x, z) {
+  const p = iceProximity(x, z);
+  return p >= 0.5 ? 'cold' : (p > 0 ? 'edge' : 'open');
+}
+
 const _coralColor = new THREE.Color();
 const _coralScale = new THREE.Vector3();
 const _coralMat4 = new THREE.Matrix4();

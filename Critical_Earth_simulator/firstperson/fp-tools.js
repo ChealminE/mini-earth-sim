@@ -192,6 +192,7 @@ const FPAir = {
   windK: 1,      // 바람 세기 배수. 0이면 바람 끔 (보정·비교용)
   w: 0,          // 지금의 해륙풍 (+해풍 / −육풍)
   _acc: 0,
+  elapsedDays: 0,   // 공기·바다가 흘러온 게임 시간 [일]. 시각을 멈춰도 흐른다 (야장 game_time)
   onTick: [],    // 같은 틱에 같이 돌아야 하는 다른 상태 (해수 pCO2 등)
 };
 // 국지 평형값 = 예전 고정 오프셋 그대로 (낮 값과 밤 값 사이를 햇빛 세기로 섞는다)
@@ -218,6 +219,7 @@ FPAir.step = function (dtDay) {
     next[z] = D[z] + d * dtDay;
   });
   Object.assign(D, next);
+  this.elapsedDays += dtDay;
   for (const f of this.onTick) f(dtDay);
 };
 // 처음 열었을 때는 지금 시각의 정상 상태에서 시작한다 (바람 포함 정상 상태를 직접 굴려서 구함)
@@ -228,6 +230,7 @@ FPAir.reset = function () {
     this.step(0.01);
     this.onTick = saved;
   }
+  this.elapsedDays = 0;
 };
 // 매 프레임 불리지만 실제 적분은 0.2초마다 한 번
 FPAir.update = function (dt) {
