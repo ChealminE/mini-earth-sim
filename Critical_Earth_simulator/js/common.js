@@ -783,7 +783,7 @@ const lineOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, an
   plugins: { legend: { display: false } } });
 const scatterOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, animation: false,
   scales: {
-    x: { min: 280, max: 600, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+    x: { min: CO2_MIN, max: CO2_MAX, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
     y: { title: { display: true, text: yLabel, color: textColor, font: { size: 9 } },
          ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
   },
