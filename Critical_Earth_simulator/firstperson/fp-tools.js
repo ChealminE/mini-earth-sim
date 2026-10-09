@@ -161,6 +161,91 @@ const CO2_ZONE = {
   green: { off: -30, rise: -40,  nightOff: 35,  nightRise: 45 },
   ocean: { off: -15, rise: -30,  nightOff: -10, nightRise: -25 },
 };
+// ── 구역 대기 CO2를 상태 변수로 (해륙풍 이류) ──────────────────────────────────
+// 위 CO2_ZONE은 원래 측정값에 바로 더하는 고정 오프셋이었다. 구역마다 차이(공간 변이)는
+// 있어도 서로 주고받는 흐름(상호작용)이 없었다. 이제 그 오프셋을 '국지 평형값(목표)'으로
+// 다시 읽고, 실제 값은 그 목표를 향해 다가가면서 바람을 타고 이웃 구역과 섞이게 한다.
+//
+//   dC_z/dt = (C_bg + off_z(t) − C_z) / τ_z            국지 평형으로 수렴 (기존 오프셋 재현)
+//           + w(t) · (C_upwind(z) − C_z) / τ_adv       해륙풍에 의한 이류
+//
+// C_bg는 슬라이더(전 지구 평균) + 계절 진동이다. 공간적으로 균일하므로 이류항에서는 빠지고,
+// 실제로 상태로 들고 있는 건 '배경에서 벗어난 몫' D_z = C_z − C_bg 이다. 식은 같고
+// 정상 상태도 같다. 다른 점은 슬라이더를 옮겼을 때뿐인데, 슬라이더는 배출 사건이 아니라
+// "어떤 세상인가"를 고르는 장치라서 배경은 즉시 바뀌는 쪽이 맞다 - 그래야 CO2센서가
+// 예전처럼 슬라이더에 바로 반응한다. 느리게 따라가는 건 바다다(fp-world.js 해수 pCO2).
+//
+// w(t) = 해륙풍. 낮에는 해풍(바다 → 해변 → 녹지 → 도심), 밤에는 육풍(반대).
+// 이미 있는 낮·밤 주기(daylight)에 그대로 얹는다: w = 2·daylight − 1 (+1 한낮 해풍, −1 한밤 육풍).
+// 해변은 바다 구역 동쪽 끝(해양-녹지 경계)이라 바람 사슬은 바다 → 녹지 → 도심 세 칸이다.
+// 사슬 맨 앞 구역은 바람이 불어오는 쪽에 이웃이 없으므로 이류항이 0이다.
+//
+// 시간 단위: τ는 게임 시간(하루 = 실시간 300초)이다. 시각을 멈춰 둬도(기본값) 공기는
+// 계속 섞인다 - 시각 정지는 "그 시각의 조건을 붙잡아 둔 것"이지 물리를 멈춘 게 아니다.
+// 그래서 정오에 멈춰 두면 낮 정상 상태로, 자정에 멈추면 밤 정상 상태로 수렴한다.
+const AIR_TAU_Z = 0.1;       // 국지 평형 수렴 시간 [게임 일] = 실시간 30초
+const AIR_TAU_ADV = 0.25;    // 해륙풍 이류 시간 [게임 일] = 실시간 75초
+const AIR_TICK = 0.2;        // 상태 갱신 주기 [실시간 초] - 렌더 루프가 아니라 이 틱에서 돈다
+const AIR_CHAIN = ['ocean', 'green', 'city'];   // 해풍이 지나가는 순서 (서 → 동)
+const FPAir = {
+  D: { ocean: 0, green: 0, city: 0 },   // 배경(슬라이더+계절)에서 벗어난 몫 [ppm]
+  windK: 1,      // 바람 세기 배수. 0이면 바람 끔 (보정·비교용)
+  w: 0,          // 지금의 해륙풍 (+해풍 / −육풍)
+  _acc: 0,
+  onTick: [],    // 같은 틱에 같이 돌아야 하는 다른 상태 (해수 pCO2 등)
+};
+// 국지 평형값 = 예전 고정 오프셋 그대로 (낮 값과 밤 값 사이를 햇빛 세기로 섞는다)
+function zoneCO2Target(zone, hour) {
+  const Z = CO2_ZONE[zone] || CO2_ZONE.green;
+  const k = FPWorld.co2k;
+  const lit = daylight(hour == null ? FPWorld.hour : hour);   // 1=한낮, 0=한밤
+  const off = Z.nightOff + (Z.off - Z.nightOff) * lit;
+  const rise = Z.nightRise + (Z.rise - Z.nightRise) * lit;
+  return off + rise * k;
+}
+function seaBreeze(hour) {
+  return (2 * daylight(hour == null ? FPWorld.hour : hour) - 1) * FPAir.windK;
+}
+// 한 번 적분. dtDay = 게임 시간 [일]. 틱이 짧아(τ의 1% 미만) 오일러로 충분하다.
+FPAir.step = function (dtDay) {
+  const w = seaBreeze();
+  this.w = w;
+  const D = this.D, next = {};
+  AIR_CHAIN.forEach((z, i) => {
+    const up = w > 0 ? AIR_CHAIN[i - 1] : AIR_CHAIN[i + 1];   // 바람이 불어오는 쪽 이웃
+    let d = (zoneCO2Target(z) - D[z]) / AIR_TAU_Z;
+    if (up) d += Math.abs(w) * (D[up] - D[z]) / AIR_TAU_ADV;
+    next[z] = D[z] + d * dtDay;
+  });
+  Object.assign(D, next);
+  for (const f of this.onTick) f(dtDay);
+};
+// 처음 열었을 때는 지금 시각의 정상 상태에서 시작한다 (바람 포함 정상 상태를 직접 굴려서 구함)
+FPAir.reset = function () {
+  for (const z of AIR_CHAIN) this.D[z] = zoneCO2Target(z);
+  for (let i = 0; i < 400; i++) {
+    const saved = this.onTick; this.onTick = [];
+    this.step(0.01);
+    this.onTick = saved;
+  }
+};
+// 매 프레임 불리지만 실제 적분은 0.2초마다 한 번
+FPAir.update = function (dt) {
+  this._acc += dt;
+  while (this._acc >= AIR_TICK) {
+    this._acc -= AIR_TICK;
+    this.step(AIR_TICK / DAY_SECONDS);
+  }
+};
+// 구역 대기 CO2 [ppm] = 배경 + 그 구역의 몫
+FPAir.zoneCO2 = function (zone, ppm) {
+  return (ppm == null ? FPWorld.co2 : ppm) + seasonDef().co2 + (this.D[zone] != null ? this.D[zone] : this.D.green);
+};
+FPAir.windLabel = function () {
+  if (Math.abs(this.w) < 0.15) return '무풍';
+  return this.w > 0 ? '해풍' : '육풍';
+};
+
 // 어떤 지점이 나무 수관에 얼마나 가까운지 (0=밖, 1=줄기 바로 옆)
 function treeShadeAt(x, z) {
   let s = 0;
@@ -168,15 +253,12 @@ function treeShadeAt(x, z) {
   return Math.max(0, s);
 }
 function measureCO2(ppm, x, z, zone, px, pz) {
-  const Z = CO2_ZONE[zone] || CO2_ZONE.green;
   const k = FPWorld.co2k;
   const lit = FPWorld.daylight != null ? FPWorld.daylight : 1;   // 1=한낮, 0=한밤
-  // 낮 값과 밤 값 사이를 햇빛 세기로 섞는다 (여명·황혼에는 그 중간)
-  const off = Z.nightOff + (Z.off - Z.nightOff) * lit;
-  const rise = Z.nightRise + (Z.rise - Z.nightRise) * lit;
-  // 계절 진동(킬링 곡선): 북반구 식생이 봄에 CO2를 뱉고 여름내 빨아들여 가을에 최저가 된다.
+  // 구역 대기 = 배경 + 그 구역 상태(FPAir). 국지 평형(낮·밤 오프셋)과 해륙풍 이류가 정한다.
+  // 배경의 계절 진동(킬링 곡선): 북반구 식생이 봄에 CO2를 뱉고 여름내 빨아들여 가을에 최저가 된다.
   // 슬라이더 값은 연평균이고, 실제로 재는 값은 이만큼 계절을 탄다.
-  let v = ppm + seasonDef().co2 + off + rise * k;
+  let v = FPAir.zoneCO2(zone, ppm);
 
   // 나무 그늘 아래는 낮에 특히 낮다. 잎이 바로 위에서 CO2를 빨아들이는 자리라
   // 같은 녹지 안에서도 확연히 차이가 난다.

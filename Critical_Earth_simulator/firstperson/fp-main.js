@@ -17,6 +17,7 @@ FPPlayer.init(camera, glCanvas);
 FPTools.init(camera);   // 단축바 + 손에 든 도구 (camera를 씬에 넣는 것도 여기서 처리)
 FPWeather.init(FPWorld.scene);
 FPMinimap.init();
+FPAir.reset();          // 구역 대기 CO2를 지금 시각의 정상 상태에서 시작
 
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -136,6 +137,7 @@ function animate() {
 
   FPPlayer.update(dt, t);
   FPTools.update(dt);          // 측정 중인 계측기의 값이 안정되어 가는 과정
+  FPAir.update(dt);            // 구역 대기 CO2·해수 pCO2 (0.2초 틱, 매 프레임 적분하지 않음)
   updateTime(dt);              // 시간 흐름이 켜져 있을 때만 동작
   FPWeather.update(dt);        // 비/눈 입자, 번개, 스콜 종료, 무작위 전환
   FPMinimap.update(dt);        // 초당 10회만 다시 그린다
@@ -205,7 +207,7 @@ function animate() {
     else if (FPPlayer.sprinting) mode.push('달리기');
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
     hudTime.textContent = hourLabel(FPWorld.hour) + (FPWorld.timeFlowing ? '' : ' · 정지 (T)')
-      + ` · ${SEASONS[FPWorld.season].ko} · ${WEATHER[FPWeather.kind].ko}`;
+      + ` · ${SEASONS[FPWorld.season].ko} · ${WEATHER[FPWeather.kind].ko} · ${FPAir.windLabel()}`;
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
     hudSea.textContent =
