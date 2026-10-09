@@ -46,5 +46,6 @@ co2slider.addEventListener('input', () => {
   chart2.data.datasets[2].data = [{x: co2, y: p}];
   chart2.update('none');
   sceneFuture.state.co2 = co2; // 3D 대기 효과와 파도 진폭이 참조하는 값
+  sceneFuture.state.ph = p;    // 해양 산성화가 물 색·탁도·투명도에 반영되도록
   applyState(sceneFuture);
 });

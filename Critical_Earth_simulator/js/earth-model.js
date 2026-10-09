@@ -32,34 +32,65 @@ const CO2_MIN = 280, CO2_MAX = 1000, CO2_NOW = 418;
 // 두 농도를 [H+]로 정리해 넣으면 [H+]에 대한 2차방정식이 되어 근의 공식으로 풀린다:
 //     TA·h² - C·h - 2·C·K2 = 0,   C = K0·K1·pCO2
 //
-// 이렇게 얻은 곡선은 관측 35점을 RMSE 0.007 (최대오차 0.013)로 맞춘다.
+// 이렇게 얻은 곡선은 관측 35점을 RMSE 0.008 (최대오차 0.015)로 맞춘다.
 // 회귀로 맞춘 게 아니라 화학 상수만 넣었는데 관측과 겹친다는 점이 이 모형의 요지다.
 // 곡선이 아래로 휘는 이유(= 완충)도 식에서 바로 설명된다.
+//
+// 기본 수온을 25 °C로 두는 이유: 검증에 쓴 관측 35점이 하와이 ALOHA(HOT) 해역
+// 자료이고, 그 해역 표층 수온이 실제로 약 25 °C다. 즉 "관측 RMSE가 가장 작아지는
+// 수온"을 고른 게 아니라 "관측이 이뤄진 해역의 수온"을 넣은 것이다. RMSE만 보면
+// 18~20 °C가 0.0070으로 더 낮지만, 그렇게 고르는 순간 이 모형은 다시 관측에
+// 맞춘 회귀가 되어 버린다. 그래서 0.008을 그대로 받아들인다.
+//
+// ── 평형상수는 수온의 함수다 ────────────────────────────────────────────────
+// 예전엔 25 °C 값 하나를 상수로 박아 뒀다. 그러면 빙하 앞 2 °C 바다와 적도
+// 바다가 같은 답을 내서, 르샤틀리에 원리나 헨리 법칙이 등장할 자리가 없다.
+// 문헌식으로 바꾼다 (염분 S는 35로 고정, TA 일정 가정은 그대로):
+//   K0  (CO2 용해도, 헨리 상수)      : Weiss (1974)
+//   K1·K2 (탄산 1·2차 해리, total scale): Lueker et al. (2000)
+//   Ksp (아라고나이트)               : Mucci (1983)
+// TA 일정 모형에서는 수온이 올라가면 K0은 줄고 K1·K2는 커져 효과가 거의 상쇄되므로
+// pH 차이는 0.016 정도로 작다. 수온의 주 신호는 pH가 아니라 용존 CO2와 Ω로 나온다.
 const OCEAN_TA = 2.3e-3;    // 총알칼리도 [mol/kg] - 표층 해수 대표값
-const OCEAN_K0 = 0.0283;    // CO2 용해도 [mol/(kg·atm)]  25°C, 염분 35
-const OCEAN_K1 = 1.42e-6;   // 1차 해리상수  (pK1 ≈ 5.85)
-const OCEAN_K2 = 1.08e-9;   // 2차 해리상수  (pK2 ≈ 8.97)
+const OCEAN_S = 35;         // 염분 [PSU] - 표층 해수 대표값으로 고정
+const OCEAN_CA = 0.0103;    // [Ca2+] [mol/kg] - 해수에서 거의 일정
+const T_REF = 25;           // 기본 수온 [°C] - HOT 검증 해역. 기존 호출부의 기본값
 
-function seawaterPH(ppm) {
-  const pCO2 = Math.max(1, ppm) * 1e-6;              // ppm -> atm
-  const C = OCEAN_K0 * OCEAN_K1 * pCO2;
-  const h = (C + Math.sqrt(C * C + 8 * OCEAN_TA * C * OCEAN_K2)) / (2 * OCEAN_TA);
-  return -Math.log10(h);
+function carbonateConstants(tC, S = OCEAN_S) {
+  const T = tC + 273.15;                              // °C -> K
+  const K0 = Math.exp(-60.2409 + 93.4517 * (100 / T) + 23.3585 * Math.log(T / 100)
+             + S * (0.023517 - 0.023656 * (T / 100) + 0.0047036 * (T / 100) ** 2));
+  const pK1 = 3633.86 / T - 61.2172 + 9.67770 * Math.log(T) - 0.011555 * S + 0.0001152 * S * S;
+  const pK2 = 471.78 / T + 25.9290 - 3.16967 * Math.log(T) - 0.01781 * S + 0.0001122 * S * S;
+  const logKsp = -171.945 - 0.077993 * T + 2903.293 / T + 71.595 * Math.log10(T)
+               + (-0.068393 + 0.0017276 * T + 88.135 / T) * Math.sqrt(S)
+               - 0.10018 * S + 0.0059415 * S ** 1.5;
+  return { K0, K1: 10 ** -pK1, K2: 10 ** -pK2, KspAr: 10 ** logKsp };
 }
 
-// 아라고나이트 포화도 Ω - 산호·조개가 골격을 만들 수 있는지를 결정하는 값.
-// Ω < 1이면 이미 만든 탄산칼슘 골격이 녹기 시작한다. 백화(수온 문제)와는 다른 현상이라
-// 따로 계산해서 따로 보여준다.
-//     Ω = [Ca2+][CO3^2-] / Ksp
-// [Ca2+]는 해수에서 거의 일정(0.0103 mol/kg)하므로 [CO3^2-]만 pH에서 구하면 된다.
-const OCEAN_CA = 0.0103;    // [mol/kg]
-const ARAGONITE_KSP = 6.65e-7;
-function aragoniteOmega(ppm) {
-  const pCO2 = Math.max(1, ppm) * 1e-6;
-  const h = Math.pow(10, -seawaterPH(ppm));
-  const co3 = OCEAN_K0 * OCEAN_K1 * OCEAN_K2 * pCO2 / (h * h);
-  return OCEAN_CA * co3 / ARAGONITE_KSP;
+// 해수 상태를 한 번에 푼다. pH·용존CO2·HCO3-·CO3^2-·DIC·Ω를 같은 풀이에서 뽑으므로
+// 서로 어긋날 일이 없다. 아라고나이트 포화도 Ω = [Ca2+][CO3^2-] / Ksp 이고,
+// Ω < 1이면 이미 만들어진 탄산칼슘 골격이 녹기 시작한다(백화와는 다른 현상).
+// 농도 단위는 전부 mol/kg.
+function seawaterState(ppm, tC = T_REF, TA = OCEAN_TA) {
+  const c = carbonateConstants(tC);
+  const pCO2 = Math.max(1, ppm) * 1e-6;               // ppm -> atm
+  const co2aq = c.K0 * pCO2;                          // 헨리 법칙
+  const C = co2aq * c.K1;
+  const h = (C + Math.sqrt(C * C + 8 * TA * C * c.K2)) / (2 * TA);
+  const hco3 = C / h;
+  const co3 = C * c.K2 / (h * h);
+  return {
+    pH: -Math.log10(h),
+    co2aq, hco3, co3,
+    dic: co2aq + hco3 + co3,
+    omega: OCEAN_CA * co3 / c.KspAr,
+  };
 }
+
+// 기존 이름 유지 - 인자 하나로 부르던 호출부는 25 °C 기준으로 그대로 동작한다.
+function seawaterPH(ppm, tC = T_REF) { return seawaterState(ppm, tC).pH; }
+function aragoniteOmega(ppm, tC = T_REF) { return seawaterState(ppm, tC).omega; }
 
 // ============================================================================
 // 2) 기온 편차 - 관측치를 '로그 형태'로 회귀
