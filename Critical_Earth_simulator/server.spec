@@ -8,10 +8,15 @@ a = Analysis(
     binaries=[],
     datas=[
         ('index.html', '.'),
+        # 시작 화면. server.py 가 "/" 에서 이 파일을 돌려준다.
+        ('select.html', '.'),
         ('style.css', '.'),
         ('js', 'js'),
         ('texture_image', 'texture_image'),
         ('basic_experiments', 'basic_experiments'),
+        # 1인칭 탐험 모드. StaticFiles(directory=...) 는 폴더가 없으면 import 시점에
+        # RuntimeError 를 내므로, 빠뜨리면 exe 가 첫 화면도 못 띄우고 죽는다.
+        ('firstperson', 'firstperson'),
     ],
     hiddenimports=[
         'uvicorn.logging',
