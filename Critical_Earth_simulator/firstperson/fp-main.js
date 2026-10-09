@@ -20,6 +20,8 @@ FPMinimap.init();
 FPAir.reset();          // 구역 대기 CO2를 지금 시각의 정상 상태에서 시작
 equilibrateSeaCO2();    // 해수 pCO2도 지금 해양 대기와 평형에서 시작
 FPAir.onTick.push(stepSeaCO2);   // 해수는 대기와 같은 0.2초 틱에서 천천히 따라간다
+FPAir.onTick.push(() => applyOceanHealth(FPWorld.co2));   // 산호·어류·수초도 같은 틱에서
+applyOceanHealth(FPWorld.co2);
 
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -46,6 +48,7 @@ const co2Slider = document.getElementById('co2Slider');
 const co2Out = document.getElementById('co2Out');
 const hudCars = document.getElementById('hudCars');
 const hudSea = document.getElementById('hudSea');
+const hudCoral = document.getElementById('hudCoral');
 co2Slider.addEventListener('input', () => {
   co2Out.textContent = co2Slider.value;
   applyWorldCO2(Number(co2Slider.value));
@@ -225,8 +228,13 @@ function animate() {
       `${sea.temp.toFixed(1)}°C · 해수 pCO₂ ${sea.pco2.toFixed(0)}` +
       (Math.abs(gap) >= 3 ? ` (대기 ${air.toFixed(0)} 쪽으로 ${gap > 0 ? '↑' : '↓'})` : '') +
       ` · pH ${sea.pH.toFixed(2)} · Ω ${sea.omega.toFixed(2)}` +
-      ` · 백화 ${Math.round(FPWorld.coralBleaching * 100)}%` +
       ` · 어류 ${FPWorld.aliveFish}/${FPWorld.fish.length} · 수초 ${FPWorld.alivePlants}/${FPWorld.plantTotal}`;
+    // 산호는 자리마다 다르게 반응한다: 따뜻한 곳은 백화, 차가운 냉수대는 석회화 저해
+    const om = FPWorld.coldPoolOmega;
+    hudCoral.textContent =
+      `백화 ${Math.round(FPWorld.coralBleaching * 100)}% · 석회화 저해 ${Math.round(FPWorld.coralCalcLoss * 100)}%` +
+      ` · 냉수대 Ω ${om.toFixed(2)}` + (om < 1 ? ` ⚠ 골격 용해 (산호 ${FPWorld.coralDissolving}개)` : '');
+    hudCoral.classList.toggle('warn', om < 1);
   }
 
   renderer.render(FPWorld.scene, camera);

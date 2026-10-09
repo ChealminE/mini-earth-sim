@@ -949,8 +949,12 @@ function buildFirstPersonWorld(renderer) {
   const CORAL_BRANCH_HEALTHY = new THREE.Color(0xe8724f);
   const CORAL_BRAIN_HEALTHY = new THREE.Color(0xa06fc4);
   const CORAL_BLEACHED = new THREE.Color(0xf4f2ec);
-  const coralBranchMat = new THREE.MeshStandardMaterial({ color: CORAL_BRANCH_HEALTHY.clone(), roughness: 0.85, flatShading: true });
-  const coralBrainMat = new THREE.MeshStandardMaterial({ color: CORAL_BRAIN_HEALTHY.clone(), roughness: 0.8, flatShading: true });
+  // 녹기 시작한 골격(석회화 저해·용해): 탁한 회갈색. 백화(흰색)와 눈으로 구분되게 한다.
+  const CORAL_DISSOLVED = new THREE.Color(0x857a6e);
+  // 산호마다 사는 자리의 수온·Ω가 달라서(냉수대) 색을 개체별로 칠한다.
+  // 재질 색은 흰색(곱셈의 항등원)으로 두고 인스턴스 색이 실제 색을 정한다.
+  const coralBranchMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true });
+  const coralBrainMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, flatShading: true });
 
   // 산호·수초는 재질 색을 나중에 바꿔야 하거나(백화) 색이 한 가지뿐이라,
   // 정점색 대신 '기존 재질 그대로' 한 덩어리로 굽는다. 백화 로직은 그대로 동작한다.
@@ -1028,9 +1032,12 @@ function buildFirstPersonWorld(renderer) {
   // 이 셋만 인스턴싱해도 수중 드로우콜이 300개 넘게 줄어든다 - 내장 그래픽에서 체감이 크다.
   const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion();
   const _ip = new THREE.Vector3(), _is = new THREE.Vector3(), _iup = new THREE.Vector3(0, 1, 0);
-  function scatterInstanced(geo, mat, count, sizeLo, sizeHi) {
+  // healthy를 넘기면 산호로 보고 자리(위치·회전·크기)와 고유색을 기억해 둔다.
+  // 산호는 자리마다 수온·Ω가 달라 개체별로 색이 바래거나(백화) 쪼그라든다(용해).
+  function scatterInstanced(geo, mat, count, sizeLo, sizeHi, healthy) {
     const im = new THREE.InstancedMesh(geo, mat, count);
     im.castShadow = false;
+    const sites = healthy ? { lx: [], lz: [], pos: [], quat: [], scale: [], healthy } : null;
     for (let i = 0; i < count; i++) {
       const lx = (Math.random() - 0.5) * 2 * SEA_HALF_X;
       const lz = (Math.random() - 0.5) * 2 * SEA_HALF_Z;
@@ -1040,7 +1047,14 @@ function buildFirstPersonWorld(renderer) {
       const k = sizeLo + Math.random() * (sizeHi - sizeLo);
       _is.set(k, k * (0.8 + Math.random() * 0.5), k);
       im.setMatrixAt(i, _im.compose(_ip, _iq, _is));
+      if (sites) {
+        sites.lx.push(lx); sites.lz.push(lz);
+        sites.pos.push(_ip.clone()); sites.quat.push(_iq.clone()); sites.scale.push(_is.clone());
+        // 인스턴스 색을 첫 렌더 전에 만들어 둬야 셰이더가 처음부터 인스턴스 색을 쓴다
+        im.setColorAt(i, healthy);
+      }
     }
+    if (sites) im.userData.sites = sites;
     im.instanceMatrix.needsUpdate = true;
     im.computeBoundingSphere();
     oceanGroup.add(im);
@@ -1051,8 +1065,8 @@ function buildFirstPersonWorld(renderer) {
   FPWorld.corals = [];
   const branchGeos = [buildBranchCoralGeo(), buildBranchCoralGeo(), buildBranchCoralGeo()];
   const branchEach = Math.round(10 * SEA_DENSITY / 3);
-  branchGeos.forEach(g => FPWorld.corals.push(scatterInstanced(g, coralBranchMat, branchEach, 0.8, 1.5)));
-  FPWorld.corals.push(scatterInstanced(buildBrainCoralGeo(), coralBrainMat, 8 * SEA_DENSITY, 0.7, 1.4));
+  branchGeos.forEach(g => FPWorld.corals.push(scatterInstanced(g, coralBranchMat, branchEach, 0.8, 1.5, CORAL_BRANCH_HEALTHY)));
+  FPWorld.corals.push(scatterInstanced(buildBrainCoralGeo(), coralBrainMat, 8 * SEA_DENSITY, 0.7, 1.4, CORAL_BRAIN_HEALTHY));
   FPWorld.coralCount = branchEach * 3 + 8 * SEA_DENSITY;
 
   // 다시마만 개체별 메시로 남는다(마디마다 휘어야 해서 인스턴싱이 안 됨).
@@ -1063,7 +1077,7 @@ function buildFirstPersonWorld(renderer) {
   FPWorld.seagrass = { mesh: scatterInstanced(buildSeagrassGeo(), grassSeaMat, 12 * SEA_DENSITY, 0.8, 1.6), total: 12 * SEA_DENSITY };
   FPWorld.plantTotal = FPWorld.plants.length + FPWorld.seagrass.total;
   FPWorld.coralMats = { branch: coralBranchMat, brain: coralBrainMat };
-  FPWorld.CORAL_COLORS = { branch: CORAL_BRANCH_HEALTHY, brain: CORAL_BRAIN_HEALTHY, bleached: CORAL_BLEACHED };
+  FPWorld.CORAL_COLORS = { branch: CORAL_BRANCH_HEALTHY, brain: CORAL_BRAIN_HEALTHY, bleached: CORAL_BLEACHED, dissolved: CORAL_DISSOLVED };
   FPWorld.SEA_HALF_X = SEA_HALF_X;
   FPWorld.SEA_HALF_Z = SEA_HALF_Z;
   FPWorld.SEA_CEIL = SEA_CEIL;
@@ -1756,21 +1770,36 @@ function openSeaState(ppm) {
   s.pco2 = pco2;
   return s;
 }
-function coralBleaching(ppm) {
-  const excess = seaTemperature(ppm) - (SEA_BASE_T + BLEACH_ON);
+// 백화·석회화 둘 다 '지점'의 함수다. (x, z)를 주면 그 자리의 수온(seaTempAt)·Ω(seaStateAt),
+// 안 주면 개방 해역 값을 쓴다. 온도계·해수 분석기가 읽는 것과 같은 함수라
+// "내가 잰 수온·Ω"와 "산호가 반응하는 수온·Ω"가 반드시 같다.
+// 같은 바다 안에서 따뜻한 곳(개방 해역)은 백화가, 차가운 곳(냉수대)은 석회화 저해가
+// 먼저 온다 - 두 현상의 원인(열 스트레스 vs 산성화)이 다르다는 걸 공간으로 보여준다.
+function bleachFromTemp(t) {
+  const excess = t - (SEA_BASE_T + BLEACH_ON);
   return Math.min(1, Math.max(0, excess / (BLEACH_FULL - BLEACH_ON)));
+}
+function coralBleaching(ppm, x, z) {
+  return bleachFromTemp(x == null ? seaTemperature(ppm) : seaTempAt(x, z, ppm));
 }
 // 석회화 가능성: Ω가 3 아래로 내려가면 성장이 느려지고, 1 밑이면 골격이 녹는다.
 // 어류·수초가 기댈 서식지가 남아 있는지를 이 값이 정한다.
-function calcificationHealth(ppm) {
-  const om = aragoniteOmega(ppm);
+function habitatFromOmega(om) {
   return Math.min(1, Math.max(0, (om - 1.0) / (3.4 - 1.0)));
 }
+function calcificationHealth(ppm, x, z) {
+  return habitatFromOmega(x == null ? openSeaState(ppm).omega : seaStateAt(x, z, ppm).omega);
+}
 // 생태 종합 건강도(0~1). 서식지(Ω)가 주된 요인이고, 백화는 거기에 얹히는 스트레스다.
-// 백화만으로 물고기가 전멸하지는 않으므로 계수를 0.5로 눌러 놨다.
-//   280 -> 1.00 / 418 -> 0.93 / 600 -> 0.41 / 1000 -> 0.16
+// 백화만으로 물고기가 전멸하지는 않으므로 계수를 0.5로 눌러 놨다. 어류·수초는 바다 전체를
+// 돌아다니므로 개방 해역 값으로 정한다 (해수 pCO2·개방 해역 수온 기준).
 function oceanHealth(ppm) {
   return calcificationHealth(ppm) * (1 - 0.5 * coralBleaching(ppm));
+}
+// 가장 차가운 물(유빙 바로 옆)의 Ω - Ω<1 경고는 여기가 먼저 켜진다
+function coldPoolOmega(ppm) {
+  const t = Math.max(SEA_FREEZE_T, seaTemperature(ppm) - COLD_POOL_DT);
+  return seawaterState(seaPCO2(ppm), t).omega;
 }
 function applyWorldCO2(ppm) {
   FPWorld.co2 = ppm;
@@ -1803,8 +1832,8 @@ function applyWorldCO2(ppm) {
     FPWorld.exhaust.points.material.opacity = 0.55 * k;
     FPWorld.exhaust.points.material.size = 0.010 + k * 0.010;
   }
-  // 해양 산성화 -> 산호 백화 + 수초·어류 개체수 감소
-  applyOceanHealth(ppm);
+  // 해양 산성화 -> 산호 백화 + 수초·어류 개체수 감소: 해수 pCO2와 같이 0.2초 틱에서 갱신한다
+  // (시간이 흐르면 applyWorldCO2가 매 프레임 불리므로 여기서 산호 수백 개를 다시 풀지 않는다)
   if (FPWorld.smoke) {
     // CO2가 낮으면 굴뚝 연기가 거의 안 보이고, 높으면 시커멓게 뿜어져 나옴
     FPWorld.smoke.mat.opacity = 0.05 + k * 0.55;
@@ -1849,20 +1878,42 @@ function cullByDistance(group, x, z, limit) {
 //   산호 색   <- 수온 (백화는 열 스트레스 현상이다)
 //   개체수    <- 아라고나이트 포화도 Ω (서식지 골격을 만들 수 있는가)
 // 살아남는 개체를 앞에서부터 세는 방식이라 CO2를 되돌리면 그대로 복원된다.
+const _coralColor = new THREE.Color();
+const _coralScale = new THREE.Vector3();
+const _coralMat4 = new THREE.Matrix4();
 function applyOceanHealth(ppm) {
   if (!FPWorld.fish || !FPWorld.seagrass) return;
-  const bleach = coralBleaching(ppm);        // 0=정상, 1=완전 백화 (수온이 정한다)
-  const habitat = calcificationHealth(ppm);  // 1=골격 잘 자람, 0=녹기 시작 (Ω가 정한다)
   const h = oceanHealth(ppm);
+  const open = openSeaState(ppm);
   FPWorld.oceanHealth = h;
-  FPWorld.coralBleaching = bleach;
-  FPWorld.aragonite = aragoniteOmega(ppm);
-  FPWorld.seaTemp = seaTemperature(ppm);
+  FPWorld.aragonite = open.omega;
+  FPWorld.seaTemp = open.temp;
+  FPWorld.coldPoolOmega = coldPoolOmega(ppm);
 
-  // 산호 백화: 수온이 임계를 넘긴 만큼 고유색 -> 표백된 흰색
+  // 산호: 개체마다 자기 자리의 수온·Ω로 반응한다.
+  //   백화(수온)  = 고유색 -> 표백된 흰색
+  //   석회화 저해(Ω) = 탁한 회갈색으로 바래고 골격이 녹아 작아진다 (Ω<1이면 최대 45% 줄어듦)
   const C = FPWorld.CORAL_COLORS;
-  FPWorld.coralMats.branch.color.lerpColors(C.branch, C.bleached, bleach);
-  FPWorld.coralMats.brain.color.lerpColors(C.brain, C.bleached, bleach);
+  let sumB = 0, sumL = 0, n = 0, nDissolve = 0;
+  for (const im of FPWorld.corals) {
+    const S = im.userData.sites;
+    if (!S) continue;
+    for (let i = 0; i < S.lx.length; i++) {
+      const st = seaStateAt(S.lx[i] - ZONE_W, S.lz[i], ppm);   // 로컬 x -> 월드 x
+      const b = bleachFromTemp(st.temp), hab = habitatFromOmega(st.omega);
+      _coralColor.copy(S.healthy).lerp(C.bleached, b).lerp(C.dissolved, (1 - hab) * 0.75);
+      im.setColorAt(i, _coralColor);
+      _coralScale.copy(S.scale[i]).multiplyScalar(0.55 + 0.45 * hab);
+      im.setMatrixAt(i, _coralMat4.compose(S.pos[i], S.quat[i], _coralScale));
+      sumB += b; sumL += 1 - hab; n++;
+      if (st.omega < 1) nDissolve++;
+    }
+    im.instanceColor.needsUpdate = true;
+    im.instanceMatrix.needsUpdate = true;
+  }
+  FPWorld.coralBleaching = n ? sumB / n : 0;   // 산호 평균 백화율
+  FPWorld.coralCalcLoss = n ? sumL / n : 0;    // 산호 평균 석회화 저해율
+  FPWorld.coralDissolving = nDissolve;         // Ω<1 물에 사는 산호 수
 
   // 수초: 최악이어도 10%는 남겨서 바다가 완전히 텅 비어 보이지 않게
   const survive = 0.10 + 0.90 * h;
