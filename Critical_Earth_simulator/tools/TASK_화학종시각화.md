@@ -119,6 +119,6 @@ CO₂ + CO₃²⁻ + H₂O  →  2 HCO₃⁻
 
 - 기준 브랜치는 `feature/first-person-mode` (`main` 아님). **직접 푸시하지 말 것** — 공유 브랜치다.
 - `feature/speciation-view` 를 새로 따서 **작업 단위로 커밋**하고 PR 을 연다.
-- `Critical_Earth_simulator/yen진행상황.md` 갱신은 마스터 문서의 마무리 절차를 따른다.
+- `Critical_Earth_simulator/철민진행상황.md` 갱신은 마스터 문서의 마무리 절차를 따른다.
 - PR 본문에는 **수용 조건의 실제 출력 숫자**와 레이아웃 **전후 스크린샷**을 넣는다.
 - 어느 항목이든 수용 조건을 못 맞추면 **거기까지만 커밋하고 멈춰라.** 억지로 맞추지 말고 이유를 PR 에 적어라.
