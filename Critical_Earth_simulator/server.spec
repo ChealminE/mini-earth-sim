@@ -30,6 +30,10 @@ a = Analysis(
         'uvicorn.lifespan',
         'uvicorn.lifespan.on',
         'bleak.backends.winrt',
+        # server.py가 함수 안에서 import하는 모듈들 (내장 MQTT 브로커 / Mosquitto 연결용).
+        # PyInstaller가 대개 알아서 찾지만, 빠지면 exe에서 WiFi(MQTT)만 조용히 안 되므로 명시한다.
+        'mqtt_broker',
+        'paho.mqtt.client',
     ],
     hookspath=[],
     runtime_hooks=[],

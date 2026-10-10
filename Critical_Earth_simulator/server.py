@@ -1,31 +1,44 @@
 """
-Mini Earth Model - 실시간 센서 데이터 중계 서버 (WiFi + USB 시리얼 + BLE 겸용)
+Mini Earth Model - 실시간 센서 데이터 중계 서버 (USB 시리얼 + BLE + WiFi(MQTT/HTTP) 겸용)
 ==========================================================================
-세 가지 통신 방식을 동시에 지원합니다 (어떤 보드를 쓰든 무관, 방식만 맞으면 됨):
+네 가지 통신 방식을 동시에 지원합니다 (어떤 보드를 쓰든 무관, 방식만 맞으면 됨):
 
-  1) WiFi 방식 -> HTTP POST로 /data 에 JSON 전송
-  2) USB 시리얼 방식 -> 케이블로 연결, JSON 한 줄씩 Serial.println
-  3) BLE 방식 -> notify로 JSON 한 줄씩 방송
-     (basic_experiments/esp32_ble, basic_experiments/uno_hm10_ble 참고)
+  1) USB 시리얼 -> 케이블로 연결, JSON 한 줄씩 Serial.println (우노 R3 / ESP32 공통)
+                   HC-06(클래식 블루투스)도 윈도우에서 페어링하면 COM 포트로 잡혀서 이 경로를 탄다
+  2) BLE        -> notify로 JSON 한 줄씩 방송 (우노+HM-10 / ESP32 네이티브 BLE)
+  3) WiFi MQTT  -> 이 서버에 내장된 MQTT 브로커(포트 1883)로 발행 (ESP32)
+  4) WiFi HTTP  -> HTTP POST로 /data 에 JSON 전송 (예전 방식, 명령은 못 받음)
 
-셋 다 결국 같은 파이프라인(handle_incoming)을 타기 때문에,
-보드/통신 방식을 섞어 써도(탱크1=WiFi, 탱크2=BLE) 대시보드는 구분 없이 동작합니다.
+전부 같은 파이프라인(handle_incoming)을 타기 때문에 보드/통신 방식을 섞어 써도
+대시보드는 구분 없이 동작합니다.
+
+양방향(명령) - "MiniEarth 표준 프로토콜"
+  보드 → 서버: 센서 값  {"co2": 812, "temp": 24.1}
+               보드 정보 {"_type":"info","dev":"uno-usb","interval":5000,"run":1,
+                          "sensors":[{"id":"co2","name":"MH-Z19B","keys":["co2"],"on":1,"pwr":0}]}
+  서버 → 보드: {"cmd":"info"} / {"cmd":"sensor","id":"co2","on":0} / {"cmd":"interval","ms":5000}
+               {"cmd":"run","on":0} / {"cmd":"reboot"}
+  basic_experiments/std_* 표준 코드가 이 프로토콜을 따릅니다. 예전 코드(값만 보내는 코드)도
+  그대로 동작하고, 화면에 제어 버튼만 안 뜹니다.
+
+MQTT 토픽 (<dev> = 보드 이름)
+  miniearth/<dev>/data   보드 → 서버  센서 값
+  miniearth/<dev>/info   보드 → 서버  보드 정보
+  miniearth/<dev>/status 보드 → 서버  "online" / "offline" (Last Will로 전원이 끊겨도 알 수 있음)
+  miniearth/<dev>/cmd    서버 → 보드  명령
 
 실행 방법:
-  python server.py                     # 시리얼 자동 감지 시도
-  python server.py --serial COM5       # 포트 직접 지정 (Windows 예시)
-  python server.py --serial /dev/ttyUSB0
-  python server.py --no-serial         # 시리얼 아예 안 쓸 때 (WiFi/BLE만 사용)
+  python server.py                     # 시리얼 자동 감지 + 내장 MQTT 브로커
+  python server.py --serial COM5       # 포트 직접 지정 (여러 개면 COM5,COM7)
+  python server.py --no-serial         # 시리얼 아예 안 쓸 때
   python server.py --ble               # BLE 기기 이름으로 스캔해서 연결 (기본 이름: MiniEarth)
   python server.py --ble --ble-name MyBoard
   python server.py --ble --ble-address AA:BB:CC:DD:EE:FF   # 스캔 생략, 바로 연결
+  python server.py --mqtt-host 127.0.0.1   # 내장 브로커 대신 따로 설치한 Mosquitto 사용
+  python server.py --no-mqtt           # MQTT 끄기
   python server.py --no-browser        # 시작할 때 브라우저 자동으로 안 열리게
 
 서버가 시작되면 기본적으로 브라우저가 자동으로 열립니다 (http://127.0.0.1:8000).
-
-WiFi 방식은 같은 와이파이에 보드와 노트북이 있어야 하고,
-USB 시리얼 방식은 케이블로 노트북에 물려 있어야 하며,
-BLE 방식은 노트북의 블루투스가 켜져 있어야 합니다 (별도 페어링 불필요, bleak가 직접 스캔/연결).
 """
 
 import argparse
@@ -40,7 +53,7 @@ import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -73,17 +86,175 @@ else:
     APP_DIR = RESOURCE_DIR
 
 LOG_PATH = APP_DIR / "data_log.csv"
+SESSION_DIR = APP_DIR / "logs"  # 실험(시작~종료) 하나당 파일 하나
 
-clients: list[WebSocket] = []
+clients: List[WebSocket] = []
 csv_fields: Optional[List[str]] = None
 
 main_loop: Optional[asyncio.AbstractEventLoop] = None  # FastAPI(uvicorn)의 이벤트 루프 참조용
+server_info: dict = {"ip": "127.0.0.1", "httpPort": 8000, "mqtt": None}
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ── 보드(장치) 목록 ─────────────────────────────────────────
+# 장치 id는 "통신 경로" 기준으로 고정한다 (usb:COM14, ble:AA:BB.., mqtt:esp32-a, http:192.168.0.5).
+# 보드가 info로 알려주는 이름(dev)은 화면 표시용 name에만 쓴다 - 이름이 바뀌어도
+# 화면 쪽 센서 키 ↔ 장치 연결이 흔들리지 않게.
+class Device:
+    def __init__(self, dev_id: str, link: str, addr: str,
+                 send: Optional[Callable[[str], Awaitable[bool]]] = None,
+                 hw_reset: Optional[Callable[[], Awaitable[bool]]] = None):
+        self.id = dev_id
+        self.link = link          # usb / ble / mqtt / http
+        self.addr = addr
+        self.send = send          # 명령 한 줄 보내기 (못 보내는 경로면 None)
+        self.hw_reset = hw_reset  # USB 케이블의 DTR/RTS 선으로 보드를 강제 리셋 (USB 전용)
+        self.online = True
+        self.info: Optional[dict] = None
+        self.last_seen = 0.0
+
+    @property
+    def name(self) -> str:
+        if self.info and self.info.get("dev"):
+            return str(self.info["dev"])
+        return self.addr
+
+    def to_json(self) -> dict:
+        return {
+            "id": self.id, "link": self.link, "addr": self.addr, "name": self.name,
+            "online": self.online, "lastSeen": self.last_seen * 1000 if self.last_seen else None,
+            "info": self.info, "canCmd": self.send is not None, "canHwReset": self.hw_reset is not None,
+        }
+
+
+devices: Dict[str, Device] = {}
+
+
+async def broadcast(obj: dict):
+    text = json.dumps(obj, ensure_ascii=False)
+    dead = []
+    for ws in clients:
+        try:
+            await ws.send_text(text)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in clients:
+            clients.remove(ws)
+
+
+async def broadcast_devices():
+    await broadcast({"_type": "devices", "devices": [d.to_json() for d in devices.values()]})
+
+
+def register_device(dev: Device):
+    old = devices.get(dev.id)
+    if old is not None:
+        dev.info = old.info  # 재연결이면 마지막으로 알던 보드 정보는 유지
+    devices[dev.id] = dev
+    if main_loop is not None:
+        asyncio.run_coroutine_threadsafe(broadcast_devices(), main_loop)
+
+
+def set_device_online(dev_id: str, online: bool):
+    d = devices.get(dev_id)
+    if d is None or d.online == online:
+        return
+    d.online = online
+    if main_loop is not None:
+        asyncio.run_coroutine_threadsafe(broadcast_devices(), main_loop)
+
+
+# ── 실험 기록 세션 ─────────────────────────────────────────
+# 6시간처럼 긴 실험에서는 브라우저 탭이 새로고침되거나 노트북 화면이 잠깐 꺼지는 일이 흔하다.
+# 그래서 "기록 중인지 / 언제 자동 종료할지 / 지금까지 쌓인 값"은 브라우저가 아니라 서버가 들고 있고,
+# 브라우저는 다시 열리면 /api/session으로 전부 되찾아 온다.
+#   idle → (시작) → armed(조건 대기) → recording → ended
+#   자동 시작 조건이 없으면 armed를 건너뛰고 바로 recording.
+session: dict = {"state": "idle", "config": {}, "armedAt": None, "startedAt": None,
+                 "endsAt": None, "endedAt": None, "endReason": None, "file": None, "records": []}
+_session_file = None
+
+
+def session_public() -> dict:
+    s = {k: v for k, v in session.items() if k != "records"}
+    s["count"] = len(session["records"])
+    return {"_type": "session", **s}
+
+
+def _trigger_met(trigger: dict, payload: dict, dev_id: str) -> bool:
+    key = trigger.get("key")
+    if not key or key not in payload:
+        return False
+    if trigger.get("dev") and trigger["dev"] != dev_id:
+        return False
+    try:
+        v = float(payload[key])
+        target = float(trigger.get("value"))
+    except (TypeError, ValueError):
+        return False
+    return v >= target if trigger.get("op", ">=") == ">=" else v <= target
+
+
+def _begin_recording(at: float):
+    global _session_file
+    session["state"] = "recording"
+    session["startedAt"] = at * 1000
+    dur = session["config"].get("durationSec")
+    session["endsAt"] = (at + dur) * 1000 if dur else None
+    SESSION_DIR.mkdir(exist_ok=True)
+    name = datetime.fromtimestamp(at).strftime("실험_%Y%m%d_%H%M%S")
+    session["file"] = name
+    _session_file = open(SESSION_DIR / f"{name}.jsonl", "a", encoding="utf-8")
+
+
+def _end_session(reason: str):
+    global _session_file
+    if session["state"] not in ("armed", "recording"):
+        return
+    session["state"] = "ended"
+    session["endedAt"] = time.time() * 1000
+    session["endReason"] = reason
+    if _session_file is not None:
+        _session_file.close()
+        _session_file = None
+        _write_session_csv()
+
+
+def _write_session_csv():
+    """실험이 끝나면 기록을 엑셀에서 바로 열리는 CSV로도 남겨 둔다 (logs/실험_날짜_시각.csv)."""
+    recs = session["records"]
+    if not recs or not session["file"]:
+        return
+    fields = ["timestamp", "elapsed_s", "_dev"]
+    for r in recs:
+        for k in r:
+            if k not in fields and not k.startswith("_t"):
+                fields.append(k)
+    t0 = session["startedAt"] or 0
+    with open(SESSION_DIR / f"{session['file']}.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        for r in recs:
+            w.writerow({**r, "elapsed_s": round((r["_t"] - t0) / 1000, 3)})
+
+
+async def session_tick():
+    """자동 종료 시간 확인 (값이 안 들어와도 시간이 되면 끝나야 하므로 1초마다 따로 확인)."""
+    while True:
+        await asyncio.sleep(1)
+        if session["state"] == "recording" and session["endsAt"] and time.time() * 1000 >= session["endsAt"]:
+            _end_session("time")
+            await broadcast(session_public())
 
 
 # ── 공통 파이프라인: 로깅 + 브라우저 브로드캐스트 ─────────────────
 def log_to_csv(payload: dict):
     global csv_fields
-    row = {"timestamp": datetime.now(timezone.utc).isoformat(), **payload}
+    row = {"timestamp": now_iso(), **payload}
 
     file_exists = LOG_PATH.exists()
     if not file_exists:
@@ -104,21 +275,56 @@ def log_to_csv(payload: dict):
         writer.writerow(row)
 
 
-async def handle_incoming(payload: dict, source: str):
-    """WiFi(POST)든 시리얼이든 여기로 들어오면 동일하게 처리."""
-    payload = dict(payload)
-    payload["timestamp"] = datetime.now(timezone.utc).isoformat()
-    payload["_source"] = source  # 어느 경로로 들어왔는지 구분용 (대시보드에서 무시해도 됨)
+async def handle_incoming(payload: dict, dev_id: str):
+    """어느 경로로 들어왔든 여기로 모여서 동일하게 처리."""
+    dev = devices.get(dev_id)
+    if dev is not None:
+        dev.last_seen = time.time()
+        if not dev.online:
+            dev.online = True
+            await broadcast_devices()
+
+    # 보드 정보(센서 목록·켜짐 상태·측정 간격)는 값이 아니므로 기록하지 않고 장치 목록만 갱신
+    if payload.get("_type") == "info":
+        if dev is not None:
+            dev.info = {k: v for k, v in payload.items() if k != "_type"}
+            await broadcast_devices()
+        return
+    if payload.get("_type"):
+        return  # 앞으로 생길 다른 메시지 종류는 일단 무시 (값으로 오인해서 그래프에 섞이지 않게)
+
+    payload = {k: v for k, v in payload.items() if not str(k).startswith("_")}
+    now = time.time()
+    payload["timestamp"] = now_iso()
+    payload["_source"] = dev.link if dev else "unknown"  # 어느 경로로 들어왔는지 구분용
+    payload["_dev"] = dev_id
     log_to_csv(payload)
 
-    dead = []
-    for ws in clients:
-        try:
-            await ws.send_text(json.dumps(payload))
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        clients.remove(ws)
+    changed = False
+    if session["state"] == "armed" and _trigger_met(session["config"].get("trigger") or {}, payload, dev_id):
+        _begin_recording(now)
+        changed = True
+    if session["state"] == "recording":
+        if session["endsAt"] and now * 1000 >= session["endsAt"]:
+            _end_session("time")
+            changed = True
+        else:
+            rec = {**payload, "_t": now * 1000}
+            session["records"].append(rec)
+            if _session_file is not None:
+                _session_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                _session_file.flush()
+            payload["_rec"] = True  # 화면은 이 표시가 붙은 값만 그래프·분석에 쌓는다
+            payload["_t"] = rec["_t"]
+    if changed:
+        await broadcast(session_public())
+    await broadcast(payload)
+
+
+def submit_incoming(payload: dict, dev_id: str):
+    """다른 스레드(시리얼·외부 MQTT)에서 들어온 값을 메인 이벤트 루프로 넘긴다."""
+    if main_loop is not None:
+        asyncio.run_coroutine_threadsafe(handle_incoming(payload, dev_id), main_loop)
 
 
 # 시작 화면(4개 박스: 현재실태/미래예측/직접실험/1인칭 탐험) - 이제 이게 진입점.
@@ -135,19 +341,33 @@ async def dashboard():
     return FileResponse(RESOURCE_DIR / "index.html")
 
 
-# ── 1) WiFi 방식 경로: HTTP POST ─────────────────────────────
-
-
+# ── WiFi HTTP 경로 (예전 방식): POST /data ──────────────────────
 @app.post("/data")
 async def receive_data(request: Request):
-    """WiFi로 통신하는 보드가 여기로 센서 JSON을 POST.
+    """WiFi로 통신하는 보드가 여기로 센서 JSON을 POST. 이 경로로는 명령을 돌려보낼 수 없다.
     예: {"tank1_co2": 812.3, "tank1_temp": 23.4}
     """
     payload = await request.json()
     if not isinstance(payload, dict):
         return JSONResponse({"ok": False, "error": "JSON object가 아닙니다"}, status_code=400)
-    await handle_incoming(payload, source="wifi")
+    host = request.client.host if request.client else "unknown"
+    dev_id = f"http:{host}"
+    if dev_id not in devices:
+        register_device(Device(dev_id, "http", host))
+    await handle_incoming(payload, dev_id)
     return {"ok": True, "received": payload}
+
+
+@app.get("/api/info")
+async def api_info():
+    """화면의 '연결 정보'에 띄울 값 - ESP32 코드에 넣을 서버(브로커) 주소 등."""
+    return server_info
+
+
+@app.get("/api/session")
+async def api_session():
+    """브라우저를 새로 열었을 때 진행 중이던(또는 방금 끝난) 실험 기록을 통째로 되찾는 용도."""
+    return {**session_public(), "records": session["records"]}
 
 
 @app.websocket("/ws")
@@ -155,11 +375,57 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     clients.append(websocket)
     try:
+        await websocket.send_text(json.dumps({"_type": "devices", "devices": [d.to_json() for d in devices.values()]}, ensure_ascii=False))
+        await websocket.send_text(json.dumps(session_public(), ensure_ascii=False))
         while True:
-            await websocket.receive_text()
+            text = await websocket.receive_text()
+            try:
+                msg = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(msg, dict):
+                await handle_ws_message(websocket, msg)
     except WebSocketDisconnect:
+        pass
+    finally:
         if websocket in clients:
             clients.remove(websocket)
+
+
+async def handle_ws_message(ws: WebSocket, msg: dict):
+    kind = msg.get("_type")
+    if kind == "cmd":
+        dev = devices.get(msg.get("dev"))
+        cmd = msg.get("cmd")
+        if dev is None or not isinstance(cmd, dict):
+            ok, why = False, "그런 보드가 없습니다"
+        elif cmd.get("cmd") == "_hwreset":
+            ok = bool(dev.hw_reset) and await dev.hw_reset()
+            why = "" if ok else "USB로 연결된 보드만 강제 리셋할 수 있습니다"
+        elif dev.send is None:
+            ok, why = False, "이 통신 방식(HTTP)으로는 보드에 명령을 보낼 수 없습니다"
+        else:
+            ok = await dev.send(json.dumps(cmd, ensure_ascii=False))
+            why = "" if ok else "보내기 실패 (연결이 끊겼을 수 있음)"
+        await ws.send_text(json.dumps({"_type": "cmd_result", "ok": ok, "msg": why,
+                                       "dev": msg.get("dev"), "cmd": cmd}, ensure_ascii=False))
+    elif kind == "session":
+        action = msg.get("action")
+        if action == "start":
+            if session["state"] in ("armed", "recording"):
+                return
+            cfg = msg.get("config") or {}
+            session.update({"state": "armed", "config": cfg, "armedAt": time.time() * 1000,
+                            "startedAt": None, "endsAt": None, "endedAt": None, "endReason": None,
+                            "file": None, "records": []})
+            if not cfg.get("trigger"):
+                _begin_recording(time.time())
+            await broadcast(session_public())
+        elif action == "stop":
+            _end_session("manual")
+            await broadcast(session_public())
+    elif kind == "rescan":
+        serial_rescan_event.set()
 
 
 # "기본 실험" 목록은 파일로 관리하지 않고 basic_experiments/ 폴더를 직접 스캔해서 만든다.
@@ -203,15 +469,20 @@ async def style_css():
     return FileResponse(RESOURCE_DIR / "style.css")
 
 
-# ── 2) USB 시리얼 방식 경로 ─────────────────────────
+# ── 1) USB 시리얼 경로 ─────────────────────────
 # 학생마다 보드/USB칩/포트 번호가 제각각이라 이름 키워드만으론 못 믿는다
 # (엉뚱한 COM포트를 집어서 열려다 실패하는 사고를 실제로 겪었음).
 # 그래서 후보 포트를 실제로 열어 JSON 한 줄이 오는지까지 확인해서 진짜 장치를 찾는다.
 # basic_experiments의 CO2(MH-Z19B) 예제들은 30초에 한 번만 전송하므로(code.ino의
 # SEND_INTERVAL_MS), 포트마다 순서대로 기다리면 최악의 경우 포트 수 x 30초가 걸린다.
-# 그래서 후보를 전부 동시에 열어서 지켜보고 가장 먼저 JSON을 내놓는 포트를 채택한다
-# (전체 대기 시간이 포트 개수와 무관하게 전송 주기 한 번만큼만 걸리게).
+# 그래서 후보를 전부 동시에 열어서 지켜본다 (전체 대기 시간이 포트 개수와 무관하게 전송 주기 한 번만큼만 걸리게).
+# 우노와 ESP32를 동시에 USB로 꽂는 경우가 생겨서, 이제 JSON을 보내는 포트는 "전부" 채택한다.
 SERIAL_PROBE_SECONDS = 33.0  # 기본 실험 코드 중 가장 긴 전송 주기(30초)보다 살짝 여유
+SERIAL_POLL_SECONDS = 3.0    # 새로 꽂힌 포트가 있는지 확인하는 주기
+
+serial_rescan_event = threading.Event()  # 화면의 '포트 다시 찾기' 버튼
+active_serial: Dict[str, "SerialLink"] = {}
+
 
 def _list_candidate_ports() -> List[str]:
     """연결된 포트 목록. Arduino/USB-Serial 칩(CH340, CP210x, FTDI 등) 이름이 들어간 포트를 우선순위로 정렬."""
@@ -227,121 +498,186 @@ def _list_candidate_ports() -> List[str]:
     return [p.device for p in sorted(ports, key=lambda p: not looks_like_device(p))]
 
 
-def _probe_serial_port(port: str, baud: int, probe_seconds: float, stop_event: threading.Event) -> str:
+def _probe_serial_port(port: str, baud: int, probe_seconds: float):
     """포트를 열어서 최대 probe_seconds 동안 JSON 한 줄이 오는지 확인.
-    다른 포트가 먼저 찾아지면(stop_event) 바로 포기한다.
-    결과를 "found"/"busy"/"no_data" 세 가지로 구분해서 돌려준다 - 그래야 자동 감지가 실패했을 때
-    "포트가 아예 없음"인지 "포트는 있는데 다른 프로그램이 물고 있음"인지 "포트는 열리는데
-    JSON이 안 옴(보드레이트 불일치 등)"인지 콘솔에서 바로 구분해서 알려줄 수 있다."""
+    결과를 ("found", 열린 포트, 첫 JSON) / ("busy", None, None) / ("no_data", None, None) 로 돌려준다 -
+    그래야 자동 감지가 실패했을 때 "포트는 있는데 다른 프로그램이 물고 있음"인지 "포트는 열리는데
+    JSON이 안 옴(보드레이트 불일치 등)"인지 콘솔에서 바로 구분해서 알려줄 수 있다.
+    찾으면 포트를 닫지 않고 그대로 넘긴다 - 우노는 포트를 열 때마다 리셋되므로 닫았다 다시 열면
+    부팅을 두 번 하게 된다."""
     import serial
 
     try:
         ser = serial.Serial(port, baud, timeout=0.5)
     except Exception as e:
-        print(f"[시리얼] {port} 열기 실패 ({e}) — 아두이노 IDE 시리얼 모니터 등 다른 프로그램이 "
-              f"이 포트를 이미 사용 중일 수 있습니다. 닫고 다시 시도해보세요.")
-        return "busy"
-    try:
-        deadline = time.time() + probe_seconds
-        while time.time() < deadline and not stop_event.is_set():
+        print(f"[시리얼] {port} 열기 실패 ({e}) — 아두이노 IDE 시리얼 모니터, CoolTerm 등 다른 프로그램이 "
+              f"이 포트를 이미 사용 중일 수 있습니다. 닫고 '포트 다시 찾기'를 눌러보세요.")
+        return "busy", None, None
+    deadline = time.time() + probe_seconds
+    while time.time() < deadline:
+        try:
+            line = ser.readline().decode("utf-8").strip()
+        except UnicodeDecodeError:
+            continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 계속 기다림
+        except Exception:
+            break
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # 보드가 디버그 텍스트를 찍어도 무시하고 계속 기다림
+        if isinstance(payload, dict):
+            return "found", ser, payload
+    ser.close()
+    return "no_data", None, None
+
+
+class SerialLink:
+    """열린 시리얼 포트 하나 = 보드 하나. 읽기는 전용 스레드, 쓰기(명령)는 잠금을 걸고 바로."""
+
+    def __init__(self, port: str, ser, baud: int):
+        self.port = port
+        self.ser = ser
+        self.baud = baud
+        self.lock = threading.Lock()
+        self.dev_id = f"usb:{port}"
+        register_device(Device(self.dev_id, "usb", port, send=self.send, hw_reset=self.hw_reset))
+
+    async def send(self, line: str) -> bool:
+        try:
+            with self.lock:
+                self.ser.write((line + "\n").encode("utf-8"))
+            return True
+        except Exception:
+            return False
+
+    async def hw_reset(self) -> bool:
+        """USB-시리얼 칩의 DTR/RTS 선을 흔들어서 보드를 리셋한다.
+        우노: DTR이 다시 켜지는 순간 리셋 / ESP32 DevKitC: RTS가 EN(리셋) 핀에 연결돼 있음."""
+        def pulse():
+            with self.lock:
+                self.ser.dtr = False
+                self.ser.rts = True
+                time.sleep(0.1)
+                self.ser.rts = False
+                time.sleep(0.05)
+                self.ser.dtr = True
+        try:
+            await asyncio.get_running_loop().run_in_executor(None, pulse)
+            return True
+        except Exception:
+            return False
+
+    def read_forever(self, first_payload: Optional[dict]):
+        print(f"[시리얼] 연결됨: {self.port}")
+        if first_payload is not None:
+            submit_incoming(first_payload, self.dev_id)
+        # 우노 표준 코드는 부팅할 때 info를 한 번 보내지만, 서버가 늦게 붙으면 놓치므로 한 번 물어본다
+        try:
+            with self.lock:
+                self.ser.write(b'{"cmd":"info"}\n')
+        except Exception:
+            pass
+        while True:
             try:
-                line = ser.readline().decode("utf-8").strip()
+                # errors="ignore"로 읽으면 배선/보드레이트 문제로 바이트가 깨졌을 때 그 바이트만
+                # 조용히 지워버려서 "temp"가 "tmp"처럼 다른 문자열로 둔갑한 채로도 JSON 파싱에
+                # 성공할 수 있었다 - 대시보드 입장에선 그게 완전히 새로운 센서로 보여 카드가 계속
+                # 늘어나는 것처럼 보인 원인 중 하나. strict로 읽어서 깨진 줄은 통째로 버린다.
+                line = self.ser.readline().decode("utf-8").strip()
+                if not line:
+                    continue
+                payload = json.loads(line)  # JSON이 아닌 디버그 출력 줄은 여기서 자동으로 걸러짐
+                if isinstance(payload, dict):
+                    submit_incoming(payload, self.dev_id)
             except UnicodeDecodeError:
-                continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 계속 기다림
-            if not line:
-                continue
-            try:
-                payload = json.loads(line)
+                continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 다음 줄 계속 읽음
             except json.JSONDecodeError:
-                continue  # 보드가 디버그 텍스트를 찍어도 무시하고 계속 기다림
-            if isinstance(payload, dict):
-                return "found"
-        return "no_data"
-    finally:
-        ser.close()
+                continue  # 보드가 중간에 다른 디버그 텍스트를 찍어도 무시하고 계속 진행
+            except Exception as e:
+                print(f"[시리얼] {self.port} 연결 끊김: {e}")
+                break
+        try:
+            self.ser.close()
+        except Exception:
+            pass
+        active_serial.pop(self.port, None)
+        set_device_online(self.dev_id, False)
 
 
-def find_serial_port(baud: int) -> Optional[str]:
-    """연결된 포트 후보들을 동시에 열어보고, 그중 실제로 JSON을 보내는 포트를 찾는다."""
-    candidates = _list_candidate_ports()
-    if not candidates:
-        print("[시리얼] 연결된 포트가 없습니다 (USB 케이블이 꽂혀 있는지 확인하세요).")
-        return None
-
-    print(f"[시리얼] 포트 {len(candidates)}개 동시 확인 중 "
-          f"(최대 {int(SERIAL_PROBE_SECONDS)}초 — 전송 주기가 긴 실험 코드도 있어서 시간이 걸릴 수 있음)…")
-    found: "queue.Queue[str]" = queue.Queue()
-    results: dict[str, str] = {}
-    stop_event = threading.Event()
-
-    def worker(port: str):
-        status = _probe_serial_port(port, baud, SERIAL_PROBE_SECONDS, stop_event)
-        results[port] = status
-        if status == "found":
-            found.put(port)
-
-    threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in candidates]
-    for t in threads:
-        t.start()
-
-    try:
-        port = found.get(timeout=SERIAL_PROBE_SECONDS + 1)
-    except queue.Empty:
-        port = None
-    stop_event.set()
-    for t in threads:
-        t.join(timeout=1)
-
-    if port is None:
-        no_data_ports = [p for p, s in results.items() if s == "no_data"]
-        if no_data_ports:
-            print(f"[시리얼] {', '.join(no_data_ports)} 포트는 열렸지만 {int(SERIAL_PROBE_SECONDS)}초 동안 올바른 "
-                  f"JSON을 받지 못했습니다 — 보드레이트가 스케치의 Serial.begin() 값과 일치하는지 "
-                  f"(서버는 기본 {baud}bps, 다르면 --baud 옵션으로 지정), 스케치가 JSON을 제대로 출력하는지 확인하세요.")
-    return port
+def _adopt_port(port: str, ser, baud: int, first_payload: Optional[dict]):
+    link = SerialLink(port, ser, baud)
+    active_serial[port] = link
+    threading.Thread(target=link.read_forever, args=(first_payload,), daemon=True).start()
 
 
-def serial_reader_thread(port: str, baud: int):
-    """별도 스레드에서 시리얼 포트를 계속 읽으며 JSON 라인을 파싱.
-    아두이노 우노 스케치가 Serial.println(jsonString) 형태로 보낸다고 가정.
-    """
+def serial_manager(baud: int, fixed_ports: Optional[List[str]]):
+    """포트 찾기 + 계속 읽기를 전부 백그라운드 스레드에서 처리.
+    예전엔 uvicorn을 띄우기 *전에* 여기서 최대 33초를 기다렸기 때문에, 포트를 못 찾으면
+    브라우저 페이지 자체가 그동안 안 열렸다 (학생 입장에선 서버가 멈춘 것처럼 보임).
+    이제 서버가 먼저 뜨고 이 스레드가 뒤에서 찾는다. 케이블을 나중에 꽂거나 뺐다 다시 꽂아도
+    포트 목록이 바뀌면 새 포트만 다시 확인한다 (이미 확인해서 JSON이 없던 포트를 계속 열어보면
+    우노가 그때마다 리셋되므로, '포트 다시 찾기'를 누르기 전엔 다시 안 건드린다)."""
     import serial
 
-    print(f"[시리얼] {port} @ {baud}bps 연결 시도")
-    try:
-        ser = serial.Serial(port, baud, timeout=2)
-    except Exception as e:
-        print(f"[시리얼] 연결 실패: {e}")
-        return
+    if fixed_ports:
+        while True:
+            for port in fixed_ports:
+                if port in active_serial:
+                    continue
+                try:
+                    ser = serial.Serial(port, baud, timeout=2)
+                    print(f"[시리얼] {port} @ {baud}bps (직접 지정)")
+                    _adopt_port(port, ser, baud, None)
+                except Exception as e:
+                    print(f"[시리얼] {port} 연결 실패: {e} — 5초 뒤 다시 시도")
+            time.sleep(5)
 
-    print(f"[시리얼] 연결됨: {port}")
+    tried: set = set()
+    announced_empty = False
     while True:
-        try:
-            # errors="ignore"로 읽으면 배선/보드레이트 문제로 바이트가 깨졌을 때 그 바이트만
-            # 조용히 지워버려서 "temp"가 "tmp"처럼 다른 문자열로 둔갑한 채로도 JSON 파싱에
-            # 성공할 수 있었다 - 대시보드 입장에선 그게 완전히 새로운 센서로 보여 카드가 계속
-            # 늘어나는 것처럼 보인 원인 중 하나. strict로 읽어서 깨진 줄은 통째로 버린다.
-            line = ser.readline().decode("utf-8").strip()
-            if not line:
-                continue
-            payload = json.loads(line)  # JSON이 아닌 디버그 출력 줄은 여기서 자동으로 걸러짐
-            if isinstance(payload, dict) and main_loop is not None:
-                asyncio.run_coroutine_threadsafe(
-                    handle_incoming(payload, source="serial"), main_loop
-                )
-        except UnicodeDecodeError:
-            continue  # 잡음으로 깨진 줄 - 이번 줄만 버리고 다음 줄 계속 읽음
-        except json.JSONDecodeError:
-            continue  # 우노가 중간에 다른 디버그 텍스트를 찍어도 무시하고 계속 진행
-        except Exception as e:
-            print(f"[시리얼] 읽기 오류: {e}")
-            break
+        if serial_rescan_event.is_set():
+            serial_rescan_event.clear()
+            tried.clear()
+            print("[시리얼] 포트 다시 찾기 요청 받음")
+        present = _list_candidate_ports()
+        tried &= set(present)  # 뽑힌 포트는 잊어버려서, 다시 꽂히면 새로 확인
+        new_ports = [p for p in present if p not in active_serial and p not in tried]
+        if not present and not active_serial and not announced_empty:
+            print("[시리얼] 연결된 포트가 없습니다 (USB 케이블이 꽂혀 있는지 확인하세요). 꽂으면 자동으로 찾습니다.")
+            announced_empty = True
+        if new_ports:
+            announced_empty = False
+            print(f"[시리얼] 포트 {len(new_ports)}개 확인 중 ({', '.join(new_ports)}, "
+                  f"최대 {int(SERIAL_PROBE_SECONDS)}초 — 전송 주기가 긴 실험 코드도 있어서 시간이 걸릴 수 있음)…")
+            results: Dict[str, str] = {}
+
+            def worker(port: str):
+                status, ser, first = _probe_serial_port(port, baud, SERIAL_PROBE_SECONDS)
+                results[port] = status
+                if status == "found":
+                    _adopt_port(port, ser, baud, first)
+
+            threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in new_ports]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(SERIAL_PROBE_SECONDS + 2)
+            tried.update(new_ports)
+            no_data_ports = [p for p, s in results.items() if s == "no_data"]
+            if no_data_ports:
+                print(f"[시리얼] {', '.join(no_data_ports)} 포트는 열렸지만 {int(SERIAL_PROBE_SECONDS)}초 동안 올바른 "
+                      f"JSON을 받지 못했습니다 — 보드레이트가 스케치의 Serial.begin() 값과 일치하는지 "
+                      f"(서버는 기본 {baud}bps, 다르면 --baud 옵션으로 지정), 스케치가 JSON을 제대로 출력하는지 확인하세요.")
+        serial_rescan_event.wait(SERIAL_POLL_SECONDS)
 
 
-# ── 3) BLE 방식 경로 ─────────────────────────
-# basic_experiments/esp32_ble, basic_experiments/uno_hm10_ble가 같은 UUID를 쓰기 때문에
-# 보드 종류를 몰라도 이 코드 하나로 둘 다 처리됨.
+# ── 2) BLE 경로 ─────────────────────────
+# basic_experiments의 ESP32 BLE 코드와 우노+HM-10이 같은 UUID를 쓰기 때문에
+# 보드 종류를 몰라도 이 코드 하나로 둘 다 처리됨. 같은 특성(FFE1)에 써서 명령도 보낸다.
 BLE_CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
+BLE_CHUNK = 20  # HM-10은 한 번에 20바이트까지만 받으므로 명령을 잘라서 보낸다
 
 
 async def ble_reader_task(name_filter: str, address: Optional[str]):
@@ -351,24 +687,8 @@ async def ble_reader_task(name_filter: str, address: Optional[str]):
     """
     from bleak import BleakClient, BleakScanner
 
-    buffer = ""
-
-    def handle_notify(_, data: bytearray):
-        nonlocal buffer
-        buffer += data.decode("utf-8", errors="ignore")
-        while "\n" in buffer:
-            line, buffer = buffer.split("\n", 1)
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                payload = json.loads(line)  # 우노 디버그 출력이 섞여 들어와도 여기서 자동으로 걸러짐
-            except json.JSONDecodeError:
-                continue
-            if isinstance(payload, dict):
-                asyncio.create_task(handle_incoming(payload, source="ble"))
-
     while True:
+        buffer = ""
         try:
             target = address
             if not target:
@@ -383,14 +703,121 @@ async def ble_reader_task(name_filter: str, address: Optional[str]):
                 target = device.address
 
             async with BleakClient(target) as client:
+                dev_id = f"ble:{target}"
+
+                async def send(line: str) -> bool:
+                    try:
+                        data = (line + "\n").encode("utf-8")
+                        for i in range(0, len(data), BLE_CHUNK):
+                            await client.write_gatt_char(BLE_CHAR_UUID, data[i:i + BLE_CHUNK], response=False)
+                            await asyncio.sleep(0.02)
+                        return True
+                    except Exception:
+                        return False
+
+                def handle_notify(_, data: bytearray):
+                    nonlocal buffer
+                    buffer += data.decode("utf-8", errors="ignore")
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            payload = json.loads(line)  # 디버그 출력이 섞여 들어와도 여기서 자동으로 걸러짐
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(payload, dict):
+                            asyncio.create_task(handle_incoming(payload, dev_id))
+
+                register_device(Device(dev_id, "ble", target, send=send))
                 print(f"[BLE] 연결됨: {target}")
                 await client.start_notify(BLE_CHAR_UUID, handle_notify)
+                await send('{"cmd":"info"}')
                 while client.is_connected:
                     await asyncio.sleep(1)
+                set_device_online(dev_id, False)
                 print("[BLE] 연결 끊김, 재접속 시도")
         except Exception as e:
             print(f"[BLE] 오류: {e}, 5초 후 재시도")
             await asyncio.sleep(5)
+
+
+# ── 3) WiFi MQTT 경로 ─────────────────────────
+MQTT_PREFIX = "miniearth"
+mqtt_publish: Optional[Callable[[str, bytes], None]] = None
+
+
+def mqtt_on_message(topic: str, payload: bytes):
+    parts = topic.split("/")
+    if len(parts) != 3 or parts[0] != MQTT_PREFIX:
+        return
+    _, dev, kind = parts
+    dev_id = f"mqtt:{dev}"
+    if kind == "cmd":
+        return  # 서버 자신이 보낸 명령이 되돌아온 것
+    if dev_id not in devices:
+        def send_factory(name: str):
+            async def send(line: str) -> bool:
+                if mqtt_publish is None:
+                    return False
+                mqtt_publish(f"{MQTT_PREFIX}/{name}/cmd", line.encode("utf-8"))
+                return True
+            return send
+        register_device(Device(dev_id, "mqtt", dev, send=send_factory(dev)))
+    if kind == "status":
+        text = payload.decode("utf-8", errors="ignore").strip().lower()
+        set_device_online(dev_id, text != "offline")
+        return
+    if kind not in ("data", "info"):
+        return
+    try:
+        obj = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return
+    if not isinstance(obj, dict):
+        return
+    if kind == "info":
+        obj["_type"] = "info"
+    submit_incoming(obj, dev_id)
+
+
+async def start_embedded_broker(port: int) -> bool:
+    global mqtt_publish
+    from mqtt_broker import MiniBroker
+    broker = MiniBroker(on_message=mqtt_on_message)
+    try:
+        await broker.start("0.0.0.0", port)
+    except OSError:
+        return False
+    mqtt_publish = lambda topic, data: broker.publish(topic, data)
+    return True
+
+
+def start_external_mqtt(host: str, port: int) -> bool:
+    """Mosquitto 등 따로 켜 둔 브로커에 '구독자'로 붙는다 (paho-mqtt 필요)."""
+    global mqtt_publish
+    try:
+        import paho.mqtt.client as paho
+    except ImportError:
+        print("[MQTT] paho-mqtt가 설치돼 있지 않아 외부 브로커에 붙을 수 없습니다 (pip install paho-mqtt)")
+        return False
+    client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id=f"miniearth-server-{int(time.time())}")
+
+    def on_connect(c, userdata, flags, reason_code, properties=None):
+        print(f"[MQTT] 외부 브로커 {host}:{port} 연결됨")
+        c.subscribe(f"{MQTT_PREFIX}/#")
+
+    client.on_connect = on_connect
+    client.on_message = lambda c, u, m: mqtt_on_message(m.topic, m.payload)
+    try:
+        client.connect(host, port, keepalive=30)
+    except Exception as e:
+        print(f"[MQTT] 외부 브로커 {host}:{port} 연결 실패: {e}")
+        return False
+    client.loop_start()
+    mqtt_publish = lambda topic, data: client.publish(topic, data)
+    return True
 
 
 def get_local_ip():
@@ -415,21 +842,27 @@ if __name__ == "__main__":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--serial", type=str, default=None, help="시리얼 포트 직접 지정 (예: COM5, /dev/ttyUSB0)")
-    parser.add_argument("--baud", type=int, default=9600, help="시리얼 통신 속도 (우노 스케치와 반드시 일치)")
-    parser.add_argument("--no-serial", action="store_true", help="시리얼 입력을 사용하지 않음 (ESP32만 사용)")
+    parser.add_argument("--serial", type=str, default=None, help="시리얼 포트 직접 지정 (예: COM5 또는 COM5,COM7)")
+    parser.add_argument("--baud", type=int, default=9600, help="시리얼 통신 속도 (스케치의 Serial.begin 값과 반드시 일치)")
+    parser.add_argument("--no-serial", action="store_true", help="시리얼 입력을 사용하지 않음")
     parser.add_argument("--ble", action="store_true", help="BLE(ESP32 네이티브 BLE 또는 우노+HM-10) 입력 사용")
     parser.add_argument("--ble-name", type=str, default="MiniEarth", help="BLE 기기 이름에 포함될 문자열 (기본: MiniEarth)")
     parser.add_argument("--ble-address", type=str, default=None, help="BLE 기기 MAC/UUID 직접 지정 (스캔 생략, 더 빠름)")
+    parser.add_argument("--mqtt-port", type=int, default=1883, help="내장 MQTT 브로커 포트 (기본 1883)")
+    parser.add_argument("--mqtt-host", type=str, default=None, help="내장 브로커 대신 이 주소의 브로커(Mosquitto 등)에 연결")
+    parser.add_argument("--no-mqtt", action="store_true", help="MQTT를 사용하지 않음")
     parser.add_argument("--no-browser", action="store_true", help="서버 시작 시 브라우저 자동으로 열지 않음")
+    parser.add_argument("--port", type=int, default=8000, help="웹 서버 포트 (기본 8000)")
     args = parser.parse_args()
 
     import uvicorn
 
     ip = get_local_ip()
+    server_info["ip"] = ip
+    server_info["httpPort"] = args.port
     print("=" * 55)
-    print(f"  브라우저 접속:        http://{ip}:8000")
-    print(f"  WiFi 전송 주소:        http://{ip}:8000/data")
+    print(f"  브라우저 접속:        http://{ip}:{args.port}")
+    print(f"  WiFi(HTTP) 전송 주소:  http://{ip}:{args.port}/data")
 
     if args.no_serial:
         print("  시리얼 입력: 비활성화 (--no-serial)")
@@ -444,29 +877,35 @@ if __name__ == "__main__":
         print(f"  BLE 입력: 활성화 ({target_desc})")
     else:
         print("  BLE 입력: 비활성화 (--ble 로 켤 수 있음)")
-    print("=" * 55)
-
-    def start_serial_input():
-        """포트 찾기 + 계속 읽기를 전부 이 백그라운드 스레드에서 처리.
-        예전엔 uvicorn을 띄우기 *전에* 여기서 최대 33초를 기다렸기 때문에, 포트를 못 찾으면
-        브라우저 페이지 자체가 그동안 안 열렸다 (학생 입장에선 서버가 멈춘 것처럼 보임).
-        이제 서버가 먼저 뜨고 이 스레드가 뒤에서 찾으므로 대시보드는 바로 쓸 수 있다."""
-        port = args.serial or find_serial_port(args.baud)
-        if not port:
-            print("  USB 시리얼: 연결된 포트를 찾지 못했습니다 "
-                  "(케이블 연결 후 --serial 로 직접 지정하거나 서버를 다시 시작하세요)")
-            return
-        serial_reader_thread(port, args.baud)
 
     @app.on_event("startup")
     async def start_inputs_if_needed():
         global main_loop
         main_loop = asyncio.get_running_loop()
+        asyncio.create_task(session_tick())
+
+        if not args.no_mqtt:
+            if args.mqtt_host:
+                ok = await main_loop.run_in_executor(None, start_external_mqtt, args.mqtt_host, args.mqtt_port)
+                if ok:
+                    server_info["mqtt"] = {"mode": "external", "host": args.mqtt_host, "port": args.mqtt_port}
+            elif await start_embedded_broker(args.mqtt_port):
+                server_info["mqtt"] = {"mode": "embedded", "host": ip, "port": args.mqtt_port}
+                print(f"  WiFi(MQTT) 브로커:     {ip}:{args.mqtt_port} (서버에 내장, ESP32 코드의 MQTT_SERVER에 이 주소)")
+            else:
+                # 1883 포트가 이미 쓰이고 있으면 대개 Mosquitto가 서비스로 켜져 있는 경우라 그쪽에 붙는다
+                print(f"  [MQTT] {args.mqtt_port} 포트를 이미 다른 프로그램(Mosquitto 등)이 쓰고 있어 그 브로커에 연결합니다")
+                ok = await main_loop.run_in_executor(None, start_external_mqtt, "127.0.0.1", args.mqtt_port)
+                if ok:
+                    server_info["mqtt"] = {"mode": "external", "host": ip, "port": args.mqtt_port}
+        print("=" * 55)
+
         if not args.no_browser:
-            webbrowser.open("http://127.0.0.1:8000")
+            webbrowser.open(f"http://127.0.0.1:{args.port}")
         if not args.no_serial:
-            threading.Thread(target=start_serial_input, daemon=True).start()
+            fixed = [p.strip() for p in args.serial.split(",")] if args.serial else None
+            threading.Thread(target=serial_manager, args=(args.baud, fixed), daemon=True).start()
         if args.ble:
             asyncio.create_task(ble_reader_task(args.ble_name, args.ble_address))
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=args.port)

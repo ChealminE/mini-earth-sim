@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>미니 지구 모델 - 통합 시뮬레이션</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 <style>
   /* ── 실시간 실험 안내 모달 (index.html 자체 내장 스타일, style.css와 무관하게 동작) ── */
   .modal-overlay {
@@ -91,12 +91,6 @@
   }
   .basic-exp-card:hover { border-color: #5DCAA5; }
   .basic-exp-card .title { font-size: 13.5px; font-weight: 600; color: #eee; margin-bottom: 4px; }
-  .basic-exp-card .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .basic-exp-badge {
-    font-size: 10.5px; padding: 2px 7px; border-radius: 10px;
-    background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
-  }
-  .basic-exp-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .basic-exp-sensor-checks { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
   .basic-exp-sensor-check {
     display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #ccc;
@@ -128,6 +122,15 @@
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
     <div class="sub" id="tabHeaderDesc">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+    <div id="liveSidePanel">
+      <div class="live-side-head">
+        <span class="live-side-title">보드 · 센서</span>
+        <button class="mini-btn" id="connInfoBtn" title="보드 코드에 넣을 서버·브로커 주소">ⓘ 연결 정보</button>
+        <button class="mini-btn" id="rescanPortsBtn" title="USB 케이블을 새로 꽂았는데 안 잡힐 때">⟳ 포트 다시 찾기</button>
+      </div>
+      <div id="liveDeviceList"></div>
+      <div id="liveToast" class="live-toast"></div>
+    </div>
   </div>
 
   <div id="graph-panel">
@@ -195,7 +198,8 @@ Serial.println();</pre>
             <li>측정하는 센서만 넣으면 됩니다. 전부 다 있을 필요는 없습니다.</li>
             <li>3D 효과 연동: 키 이름이 <code>temp</code>, <code>ph</code>, <code>co2</code>와 정확히 일치할 때만 자동으로 연결됩니다. (예: <code>water_temp</code>처럼 이름이 다르면 카드/그래프에는 뜨지만 3D 효과는 연결되지 않습니다)</li>
             <li>이름이 안 맞거나 같은 종류 센서가 여러 개면(예: 온도 센서 2개), 센서 카드 아래 드롭다운에서 "기온"/"수온" 등 역할을 직접 지정하면 그 값이 3D 효과에 연결됩니다.</li>
-            <li>어떤 보드든 이 JSON 형식으로 보내면 자동 인식됩니다 (WiFi POST / USB 시리얼 / BLE 전부 지원)</li>
+            <li>어떤 보드든 이 JSON 형식으로 보내면 자동 인식됩니다 (USB 시리얼 / BLE / WiFi MQTT / WiFi POST 전부 지원)</li>
+            <li>'기본 실험'의 <b>표준 코드</b>를 쓰면 왼쪽 아래 패널에서 센서 켜기·끄기, 측정 간격 바꾸기, 재부팅을 할 수 있습니다.</li>
           </ul>
 
           <label class="modal-checkbox">
@@ -228,7 +232,6 @@ Serial.println();</pre>
       <div id="basicExpDetailModal" class="modal-overlay">
         <div class="modal-box">
           <h3 id="basicExpTitle"></h3>
-          <div class="basic-exp-meta" id="basicExpMeta"></div>
           <p id="basicExpSummary"></p>
 
           <div class="modal-example" id="basicExpPinmapSection" style="display:none">
@@ -242,13 +245,20 @@ Serial.println();</pre>
             <button class="modal-close-btn secondary" id="basicExpNotesBtn" style="display:none">연결 유의사항</button>
           </div>
 
+          <div class="modal-example" id="codeSettingsSection" style="display:none">
+            <div class="modal-label">설정 바꿔서 받기 — 여기서 고친 값이 아래 코드와 다운로드 파일에 그대로 들어가요</div>
+            <div id="codeSettingsForm" class="cs-form"></div>
+            <div class="cs-footer"><span id="codeSettingsChanged" class="cs-changed"></span>
+              <button class="mini-btn" id="codeSettingsResetBtn" style="display:none">원래 값으로</button></div>
+          </div>
+
           <div class="modal-example">
             <div class="modal-label">코드 미리보기</div>
-            <pre id="basicExpCode"></pre>
+            <pre id="basicExpCode" class="code-preview"></pre>
           </div>
 
           <div class="modal-actions-row">
-            <a id="basicExpDownloadBtn" class="modal-close-btn" download>코드 다운로드</a>
+            <button id="basicExpDownloadBtn" class="modal-close-btn">코드 다운로드</button>
             <button id="basicExpCopyBtn" class="modal-close-btn secondary">코드 복사</button>
           </div>
           <button class="modal-close-btn secondary" id="basicExpDetailBackBtn">센서 목록으로</button>
@@ -321,10 +331,24 @@ Serial.println();</pre>
           </div>
 
           <div class="modal-example">
-            <label class="modal-checkbox">
-              <input type="checkbox" id="gsTrendToggle" onchange="setTrendVisible(gsCurrentGraphId, this.checked)">
-              추세선(선형 회귀) 표시 — 기울기·R² 자동 계산
-            </label>
+            <div class="modal-label">시간 축 단위 (X축이 '경과 시간'일 때)</div>
+            <select class="modal-input" id="gsTimeUnit" onchange="setGraphTimeUnit(gsCurrentGraphId, this.value)">
+              <option value="auto">자동 (10분 미만 초 · 3시간 미만 분 · 그 이상 시간)</option>
+              <option value="s">초</option><option value="min">분</option><option value="h">시간</option>
+            </select>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">추세선 — 식과 R²를 범례에 표시</div>
+            <select class="modal-input" id="gsTrendModel" onchange="setTrendModel(gsCurrentGraphId, this.value)">
+              <option value="none">그리지 않음</option>
+              <option value="linear">직선 (일차식)</option>
+              <option value="poly2">이차식 (포물선)</option>
+              <option value="poly3">삼차식</option>
+              <option value="exp">지수 함수 (y = a·eᵇˣ)</option>
+              <option value="log">로그 함수 (y = a + b·ln x)</option>
+              <option value="power">거듭제곱 (y = a·xᵇ)</option>
+            </select>
             <div class="gs-axis-row">
               <input type="number" class="modal-input" id="gsTrendXMin" placeholder="구간 시작 X (비우면 전체)" oninput="setAxisConfig(gsCurrentGraphId, 'trendXMin', this.value)">
               <input type="number" class="modal-input" id="gsTrendXMax" placeholder="구간 끝 X (비우면 전체)" oninput="setAxisConfig(gsCurrentGraphId, 'trendXMax', this.value)">
@@ -377,16 +401,133 @@ Serial.println();</pre>
         </div>
       </div>
 
+      <div id="expSettingsModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>실험 설정</h3>
+          <p>둘 다 <b>선택 기능</b>이에요. 체크하지 않으면 '실험 시작'을 누르는 즉시 기록을 시작하고, '실험 종료'를 누를 때까지 계속 기록합니다.</p>
+
+          <div class="modal-example">
+            <label class="modal-checkbox"><input type="checkbox" id="esTriggerOn"> 조건이 맞으면 기록 자동 시작</label>
+            <div class="gs-axis-row">
+              <select class="modal-input" id="esTrigKey"></select>
+              <select class="modal-input" id="esTrigOp" style="flex:0 0 92px">
+                <option value=">=">이상 (≥)</option>
+                <option value="<=">이하 (≤)</option>
+              </select>
+              <input type="number" class="modal-input" id="esTrigValue" step="any" style="flex:0 0 110px" placeholder="값">
+            </div>
+            <p class="hint" style="margin:6px 0 0">'실험 시작'을 누르면 <b>조건 대기</b> 상태가 되고, 센서 값이 조건을 처음 만족하는 순간부터 기록합니다. 그 전의 값은 화면에만 보이고 기록되지 않아요.</p>
+          </div>
+
+          <div class="modal-example">
+            <label class="modal-checkbox"><input type="checkbox" id="esStopOn"> 정해진 시간이 지나면 자동 종료</label>
+            <div class="gs-axis-row" style="align-items:center">
+              <input type="number" class="modal-input" id="esStopH" min="0" step="1" style="flex:0 0 80px"> <span class="hint" style="margin:0">시간</span>
+              <input type="number" class="modal-input" id="esStopM" min="0" max="59" step="1" style="flex:0 0 80px"> <span class="hint" style="margin:0">분</span>
+            </div>
+            <p class="hint" style="margin:6px 0 0">기록이 <b>시작된 순간</b>부터 잽니다 (자동 시작을 쓰면 조건을 만족한 때부터). 서버가 시간을 재므로 그 사이 브라우저를 닫거나 새로고침해도 제시간에 끝나요.</p>
+          </div>
+
+          <div class="modal-actions-row">
+            <button class="modal-close-btn" id="expSettingsSaveBtn">저장</button>
+            <button class="modal-close-btn secondary" id="expSettingsCancelBtn">취소</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="connInfoModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>연결 정보</h3>
+          <p>보드 코드에 넣을 주소들이에요. 노트북과 보드가 <b>같은 와이파이</b>에 있어야 WiFi 방식이 됩니다.</p>
+          <div id="connInfoContent"></div>
+          <ul class="modal-notes">
+            <li>USB: 케이블을 꽂으면 서버가 자동으로 찾습니다. CoolTerm·아두이노 시리얼 모니터가 그 포트를 열고 있으면 못 찾아요 (한 포트는 한 프로그램만 열 수 있음).</li>
+            <li>BLE(HM-10·ESP32): 서버를 <code>--ble</code> 옵션으로 켜야 합니다.</li>
+            <li>HC-06(클래식 블루투스): 윈도우 설정에서 먼저 페어링하면 COM 포트가 생기고, USB와 똑같이 자동으로 잡힙니다.</li>
+            <li>WiFi가 안 붙으면 윈도우 방화벽이 1883(MQTT) 포트를 막고 있는지 확인하세요.</li>
+          </ul>
+          <button class="modal-close-btn secondary" id="connInfoCloseBtn">닫기</button>
+        </div>
+      </div>
+
+      <div id="liveConfirmModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>확인</h3>
+          <p id="liveConfirmText"></p>
+          <div class="modal-actions-row">
+            <button class="modal-close-btn" id="liveConfirmYesBtn">확인</button>
+            <button class="modal-close-btn secondary" id="liveConfirmNoBtn">취소</button>
+          </div>
+        </div>
+      </div>
+
       <div class="live-status">
-        <span class="live-dot" id="liveDot"></span><span id="liveStatusText">실험 대기중</span>
+        <span class="live-dot" id="liveDot"></span>
+        <div class="live-status-text"><span id="liveStatusText">실험 대기 중</span><span id="expSettingsSummary" class="exp-settings-summary"></span></div>
         <button id="basicExperimentsBtn" class="experiment-btn end">기본 실험</button>
-        <button id="startExperimentBtn" class="experiment-btn start">실험 시작</button>
+        <button id="expSettingsBtn" class="experiment-btn end">실험 설정</button>
+        <button id="startExperimentBtn" class="experiment-btn start" disabled>실험 시작</button>
         <button id="endExperimentBtn" class="experiment-btn end" disabled>실험 종료</button>
       </div>
-      <div id="liveGraphs"></div>
-      <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
-      <div class="sensor-grid" id="sensorGrid">
-        <div class="empty-hint">'실험 시작' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>
+      <div class="live-graphs-area">
+        <div id="liveGraphs"></div>
+        <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
+      </div>
+      <div class="live-splitter" id="liveSplitter" title="끌어서 크기 조절 · 더블클릭하면 접기/펴기"></div>
+      <div class="live-analysis" id="liveAnalysis">
+        <div class="an-head">
+          <span class="an-title">데이터 분석·편집</span>
+          <label>X <select class="modal-input" id="anXKey"></select></label>
+          <label>Y <select class="modal-input" id="anYKey"></select></label>
+          <label>시간 단위 <select class="modal-input" id="anTimeUnit">
+            <option value="auto">자동</option><option value="s">초</option><option value="min">분</option><option value="h">시간</option>
+          </select></label>
+        </div>
+        <div class="an-body">
+          <div class="an-controls">
+            <div class="an-lock-note" id="anLockNote" style="display:none">기록 중이에요. 통계와 추세식은 실시간으로 계산되고, <b>편집은 실험이 끝난 뒤</b>에 할 수 있어요.</div>
+            <div id="anSteps">
+              <div class="an-section-title">편집 단계 <span class="hint" style="margin:0">(위에서부터 차례로 적용 · 원본은 그대로)</span></div>
+              <label class="an-step"><input type="checkbox" data-step="trim.on"> 구간 자르기 — X
+                <input type="number" step="any" class="an-num" data-step="trim.xMin" placeholder="처음"> ~
+                <input type="number" step="any" class="an-num" data-step="trim.xMax" placeholder="끝"></label>
+              <label class="an-step" title="평균에서 표준편차의 이 배수보다 멀리 떨어진 값을 뺍니다"><input type="checkbox" data-step="outlier.on"> 이상값 빼기 — 평균 ± 표준편차 ×
+                <input type="number" step="0.5" min="0.5" class="an-num" data-step="outlier.k" value="3"> 밖</label>
+              <label class="an-step"><input type="checkbox" data-step="block.on">
+                <input type="number" step="1" min="2" class="an-num" data-step="block.n" value="5">개씩 묶어 평균</label>
+              <label class="an-step"><input type="checkbox" data-step="moving.on"> 이동 평균 — 직전
+                <input type="number" step="1" min="2" class="an-num" data-step="moving.n" value="5">개씩</label>
+              <button class="mini-btn" id="anResetBtn">편집 모두 끄기</button>
+            </div>
+            <div class="an-section-title">추세식</div>
+            <div class="an-fit-row">
+              <select class="modal-input" id="anFitModel">
+                <option value="none">그리지 않음</option>
+                <option value="linear" selected>직선 (일차식)</option>
+                <option value="poly2">이차식 (포물선)</option>
+                <option value="poly3">삼차식</option>
+                <option value="exp">지수 함수 (y = a·eᵇˣ)</option>
+                <option value="log">로그 함수 (y = a + b·ln x)</option>
+                <option value="power">거듭제곱 (y = a·xᵇ)</option>
+              </select>
+              <button class="mini-btn" id="anCompareBtn">식 종류별 비교</button>
+            </div>
+            <div id="anFitResult"></div>
+            <div class="an-section-title">내보내기</div>
+            <div class="an-fit-row">
+              <button class="mini-btn primary" id="anExportXlsxBtn">엑셀(.xlsx)로 저장</button>
+              <button class="mini-btn" id="anExportPngBtn">그래프 이미지(PNG)</button>
+            </div>
+            <p class="hint" style="margin:6px 0 0">엑셀 파일에는 원본 데이터 전체 · 편집한 데이터 · 통계와 추세식이 시트별로 들어가요.</p>
+          </div>
+          <div class="an-main">
+            <div class="chart-wrap an-chart-wrap"><canvas id="anChart"></canvas></div>
+            <div class="an-tables">
+              <div id="anStats"></div>
+              <div id="anCompare"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -398,7 +539,10 @@ Serial.println();</pre>
 <script src="js/common.js?v=3"></script>
 <script src="js/tab-current.js?v=3"></script>
 <script src="js/tab-future.js?v=3"></script>
-<script src="js/tab-live.js?v=3"></script>
-<script src="js/main.js?v=3"></script>
+<script src="js/live-fit.js?v=4"></script>
+<script src="js/xlsx-lite.js?v=4"></script>
+<script src="js/tab-live.js?v=4"></script>
+<script src="js/live-analysis.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

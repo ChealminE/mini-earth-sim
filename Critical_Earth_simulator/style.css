@@ -96,13 +96,6 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
   font-size: 11px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 16px; }
 .add-graph-btn:hover { color: #e7e9ec; border-color: #5DCAA5; }
 .add-graph-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 16px; }
-.sensor-card { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5;
-  border-radius: 8px; padding: 10px 12px; }
-.sensor-card .key { font-size: 10px; color: #9198a3; text-transform: uppercase; letter-spacing: .04em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sensor-card .val { font-size: 18px; font-weight: 600; margin-top: 4px; color: #e7e9ec; }
-.sensor-card .updated { font-size: 9.5px; color: #7d838d; margin-top: 2px; }
 .sensor-role-select { width: 100%; background: #1a1d22; border: 1px solid #2a2e35; color: #9198a3;
   font-size: 10px; padding: 3px 4px; border-radius: 5px; margin-top: 6px; }
 .empty-hint { grid-column: 1 / -1; font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
@@ -110,3 +103,120 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
   line-height: 1.6; margin-bottom: 2px; }
 .conn-status-hint.error { background: rgba(226,75,74,.12); color: #E24B4A; border: 1px solid rgba(226,75,74,.3); }
 .conn-status-hint.warn { background: rgba(239,159,39,.12); color: #EF9F27; border: 1px solid rgba(239,159,39,.3); }
+
+/* ── 직접 실험 탭: 4칸 화면 ───────────────────────────────────────
+   왼쪽 위 = 아크릴 3D(#gl-container 그대로) / 왼쪽 아래 = 보드·센서 패널(#tab-header-panel 자리)
+   오른쪽 위 = 그래프 카드 / 오른쪽 아래 = 데이터 분석·편집. 오른쪽 위·아래 경계는 끌어서 조절(--an-pct). */
+#liveSidePanel { display: none; }
+body.live-mode #tab-header-panel { display: flex; flex-direction: column; min-height: 0; padding: 12px 14px; overflow: hidden; }
+body.live-mode #tab-header-panel .home-link { margin-bottom: 4px; }
+body.live-mode #tab-header-panel h2 { margin: 0 0 8px; }
+body.live-mode #tab-header-panel .sub { display: none; }
+body.live-mode #liveSidePanel { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; }
+.live-side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.live-side-title { font-size: 12px; font-weight: 600; color: #cfd3da; margin-right: auto; }
+#liveDeviceList { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
+
+body.live-mode #graph-panel { overflow: hidden; padding: 12px 14px 10px; }
+body.live-mode #tab-live.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.live-status { flex-wrap: wrap; row-gap: 6px; margin-bottom: 10px; }
+.live-status .experiment-btn { margin-left: 0; }
+.live-status-text { margin-right: auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exp-settings-summary { font-size: 10px; color: #EF9F27; }
+.exp-settings-summary:empty { display: none; }
+.live-dot.armed { background: #EF9F27; }
+.live-dot.rec { animation: rec-blink 1.4s infinite; }
+@keyframes rec-blink { 50% { opacity: .35; } }
+.live-graphs-area { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
+.live-graphs-area .add-graph-btn { margin-bottom: 4px; }
+.live-splitter { flex: 0 0 9px; cursor: row-resize; position: relative; margin: 2px 0; }
+.live-splitter::after { content: ''; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px;
+  margin-left: -23px; border-radius: 2px; background: #3a3f47; }
+.live-splitter:hover::after { background: #5DCAA5; }
+.live-analysis { flex: 0 0 var(--an-pct, 42%); min-height: 0; overflow: auto; background: #1f2329;
+  border: 1px solid #2a2e35; border-radius: 8px; padding: 10px 12px; }
+
+/* 보드 카드 */
+.dev-card { background: #20242b; border: 1px solid #2a2e35; border-radius: 8px; padding: 9px 10px; }
+.dev-card.offline { opacity: .6; }
+.dev-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #9198a3; flex-wrap: wrap; }
+.dev-name { font-size: 12.5px; font-weight: 600; color: #e7e9ec; }
+.dev-addr { font-size: 10px; color: #6b7178; }
+.dev-seen { margin-left: auto; font-size: 10px; color: #7d838d; }
+.dev-dot { width: 8px; height: 8px; border-radius: 50%; background: #565b62; flex-shrink: 0; }
+.dev-dot.on { background: #5DCAA5; }
+.dev-dot.warn { background: #EF9F27; }
+.dev-dot.off { background: #E24B4A; }
+.tag { font-size: 9.5px; padding: 1px 6px; border-radius: 9px; background: #2a2e35; color: #9198a3; white-space: nowrap; }
+.tag.ok { background: #10231c; color: #5DCAA5; }
+.tag.warn { background: #2a2118; color: #EF9F27; }
+.dev-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin: 8px 0 2px; font-size: 10.5px; color: #9198a3; }
+.dev-controls input { width: 52px; background: #111; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 3px 5px; font-size: 11px; }
+.dev-sensor { margin-top: 8px; padding-top: 7px; border-top: 1px dashed #2a2e35; }
+.dev-sensor.off .value-chips { opacity: .45; }
+.dev-sensor-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.dev-sensor-name { font-size: 11.5px; color: #cfd3da; font-weight: 600; }
+.toggle-btn { margin-left: auto; border: 1px solid #3a3f47; background: #2a2e35; color: #9198a3; font-size: 10.5px;
+  font-weight: 600; border-radius: 12px; padding: 3px 11px; cursor: pointer; }
+.toggle-btn.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; }
+.value-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.value-chip { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5; border-radius: 7px; padding: 6px 8px; }
+.value-chip .key { font-size: 10px; color: #9198a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.value-chip .val { font-size: 17px; font-weight: 600; margin-top: 2px; color: #e7e9ec; }
+.value-chip .updated { font-size: 9px; color: #7d838d; }
+.mini-btn { background: #2a2e35; border: 1px solid #3a3f47; color: #cfd3da; font-size: 10.5px; border-radius: 6px;
+  padding: 4px 8px; cursor: pointer; white-space: nowrap; }
+.mini-btn:hover { border-color: #5DCAA5; color: #fff; }
+.mini-btn.primary { background: #5DCAA5; color: #10231c; border-color: #5DCAA5; font-weight: 600; }
+.live-toast { position: absolute; left: 0; right: 0; bottom: 0; font-size: 11px; padding: 8px 10px; border-radius: 8px;
+  background: #10231c; color: #cdeee2; border: 1px solid #2f8f7a; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.live-toast.visible { opacity: 1; }
+.live-toast.error { background: #2a1515; color: #f2b8b8; border-color: #7a3434; }
+
+/* 데이터 분석·편집 */
+.an-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; color: #9198a3; }
+.an-head label { display: flex; align-items: center; gap: 4px; }
+.an-head .modal-input { width: auto; padding: 4px 6px; font-size: 11px; max-width: 150px; }
+.an-title { font-size: 12.5px; font-weight: 600; color: #e7e9ec; margin-right: 4px; }
+.an-body { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 14px; }
+.an-controls { font-size: 11px; color: #cfd3da; }
+.an-section-title { font-size: 11px; font-weight: 600; color: #9198a3; margin: 10px 0 5px; }
+.an-section-title:first-child { margin-top: 0; }
+.an-step { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 5px; line-height: 1.6; }
+.an-num { width: 54px; background: #111; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 2px 5px; font-size: 11px; }
+.an-num:disabled, .an-step input:disabled { opacity: .4; }
+.an-lock-note { font-size: 10.5px; color: #EF9F27; background: rgba(239,159,39,.08); border: 1px solid rgba(239,159,39,.3);
+  border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.5; }
+.an-fit-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.an-fit-row .modal-input { width: auto; flex: 1; padding: 5px 7px; font-size: 11px; }
+.an-equation { font-size: 13px; font-weight: 600; color: #85B7EB; margin-top: 7px; word-break: break-all; }
+.an-r2 { font-size: 11px; color: #cfd3da; margin-top: 2px; }
+.an-r2 span { color: #7d838d; font-size: 10px; }
+.an-fit-error { font-size: 10.5px; color: #E24B4A; margin-top: 6px; }
+.an-main { min-width: 0; }
+.an-chart-wrap { height: 220px; }
+.an-tables { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; align-items: flex-start; }
+.an-table { border-collapse: collapse; font-size: 11px; }
+.an-table th, .an-table td { border: 1px solid #2a2e35; padding: 4px 8px; text-align: right; }
+.an-table thead th { background: #262a31; color: #cfd3da; text-align: center; }
+.an-table tbody th { text-align: left; color: #9198a3; font-weight: 500; background: #1b1e24; }
+.an-table td { color: #e7e9ec; }
+.an-table.compare tr[data-model] { cursor: pointer; }
+.an-table.compare tr[data-model]:hover td { background: #262a31; }
+.an-table.compare tr.best td, .an-table.compare tr.best th { color: #5DCAA5; }
+.an-table.compare td:nth-child(2) { text-align: left; max-width: 260px; word-break: break-all; }
+.an-table .muted { color: #6b7178; }
+
+/* 기본 실험 - 설정 바꿔서 받기 */
+.cs-form { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.cs-row { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 7px; padding: 7px 9px; }
+.cs-label { font-size: 12px; color: #e7e9ec; margin-bottom: 4px; }
+.cs-label code { font-size: 10.5px; color: #7d838d; background: none; }
+.cs-input-row { display: flex; align-items: center; gap: 6px; }
+.cs-input-row .modal-input { flex: 1; padding: 5px 7px; }
+.cs-unit { font-size: 11px; color: #9198a3; }
+.cs-hint { font-size: 11px; color: #5DCAA5; white-space: nowrap; }
+.cs-help { font-size: 10.5px; color: #7d838d; margin-top: 4px; line-height: 1.5; }
+.cs-footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 20px; }
+.cs-changed { font-size: 11px; color: #EF9F27; margin-right: auto; }
+.code-preview { max-height: 260px; overflow: auto; }

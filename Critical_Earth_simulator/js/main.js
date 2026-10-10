@@ -6,7 +6,7 @@ let activeTab = 'current';
 const TAB_HEADERS = {
   current: { title: '현재 실태', desc: '1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)' },
   future: { title: '미래 예측', desc: 'CO₂ 농도를 슬라이더로 바꿔가며 기온편차·해양 pH·아라고나이트 포화도가 어떻게 달라지는지 살펴보세요. 왼쪽 아크릴 모형과 1인칭 탐험 모드에도 같은 값이 반영됩니다.' },
-  live: { title: '실시간 실험', desc: '아두이노 등 보드에서 넘어오는 센서 데이터를 실시간 그래프·카드로 표시합니다. "실험 시작"을 누르면 server.py와 연결됩니다.' },
+  live: { title: '직접 실험', desc: '아두이노·ESP32 보드의 센서 값을 실시간으로 받아 기록하고, 실험이 끝나면 정리·분석해 엑셀로 내보냅니다.' },
 };
 
 // ── 탭 전환 ──────────────────────────────────────
@@ -16,13 +16,17 @@ function switchTab(name) {
   document.getElementById('tab-live').classList.toggle('active', name === 'live');
   document.getElementById('tabHeaderTitle').textContent = TAB_HEADERS[name].title;
   document.getElementById('tabHeaderDesc').textContent = TAB_HEADERS[name].desc;
+  // 직접 실험 탭은 화면을 4칸(아크릴 / 보드·센서 / 그래프 / 분석·편집)으로 나눠 쓴다 - style.css의 body.live-mode
+  document.body.classList.toggle('live-mode', name === 'live');
   activeTab = name;
   if (name === 'future') {
     chart1.resize(); chart2.resize();
     sceneFuture.state.co2 = Number(document.getElementById('co2slider').value);
     applyState(sceneFuture);
   } else if (name === 'live') {
+    activateLiveTab();
     liveGraphs.forEach(g => g.chart.resize());
+    resizeAnalysisChart();
     applyState(sceneLive);
   } else {
     chartCo2.resize(); chartTempHist.resize(); chartPhHist.resize(); chartFossil.resize();
