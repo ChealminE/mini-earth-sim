@@ -216,11 +216,12 @@ document.getElementById('anResetBtn').addEventListener('click', () => {
 });
 
 // ── 내보내기 ─────────────────────────────────────
+// 받는 파일 이름 = 실험 이름_날짜_시각 (실험 준비에서 정한 이름. 서버의 logs/ 기록 파일 이름과 같음)
 function exportFileStem() {
   if (liveSession.file) return liveSession.file;
   const d = new Date(liveSession.startedAt || Date.now());
   const p = (n) => String(n).padStart(2, '0');
-  return `실험_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  return `${experimentFilePrefix()}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
 function exportAnalysisXlsx() {

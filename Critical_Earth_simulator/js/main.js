@@ -11,13 +11,16 @@ const TAB_HEADERS = {
 
 // ── 탭 전환 ──────────────────────────────────────
 function switchTab(name) {
+  ensureSceneBuilt(bundles[name]); // 처음 여는 화면이면 이제 아크릴을 만든다 (common.js sceneFor)
   document.getElementById('tab-current').classList.toggle('active', name === 'current');
   document.getElementById('tab-future').classList.toggle('active', name === 'future');
   document.getElementById('tab-live').classList.toggle('active', name === 'live');
   document.getElementById('tabHeaderTitle').textContent = TAB_HEADERS[name].title;
   document.getElementById('tabHeaderDesc').textContent = TAB_HEADERS[name].desc;
   // 직접 실험 탭은 화면을 4칸(아크릴 / 보드·센서 / 그래프 / 분석·편집)으로 나눠 쓴다 - style.css의 body.live-mode
+  // (처음엔 '실험 준비' 화면 body.live-setup → 실험을 시작하면 4칸 - js/live-setup.js가 전환)
   document.body.classList.toggle('live-mode', name === 'live');
+  if (name !== 'live') document.body.classList.remove('live-setup');
   activeTab = name;
   if (name === 'future') {
     chart1.resize(); chart2.resize();
@@ -39,11 +42,13 @@ applyState(sceneCurrent);
 applyState(sceneFuture);
 applyState(sceneLive);
 fitRenderer();
-animate();
 
-// 시작 화면(select.html)의 카드에서 "/?tab=live"처럼 쿼리로 들어오면 그 탭이 바로 열리게 함
+// 시작 화면(select.html)의 카드에서 "/?tab=live"처럼 쿼리로 들어오면 그 탭이 바로 열리게 함.
+// animate()가 첫 프레임부터 지금 탭의 아크릴을 그리므로, 아직 안 만든 기본 탭(현재 실태)을 그리지 않게 탭을 먼저 정한다.
 const initialTab = new URLSearchParams(location.search).get('tab');
 if (initialTab && initialTab in TAB_HEADERS) switchTab(initialTab);
+else ensureSceneBuilt(bundles[activeTab]);
+animate();
 
 window.addEventListener('resize', fitRenderer);
 

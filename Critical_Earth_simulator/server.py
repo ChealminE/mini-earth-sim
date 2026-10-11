@@ -44,8 +44,10 @@ MQTT 토픽 (<dev> = 보드 이름)
 import argparse
 import asyncio
 import csv
+import hashlib
 import json
 import queue
+import re
 import socket
 import sys
 import threading
@@ -56,23 +58,66 @@ from pathlib import Path
 from typing import Awaitable, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
 
+# ── 브라우저 저장(캐시) 정책 ─────────────────────────────
 # StaticFiles(및 FileResponse)는 Cache-Control 없이 Last-Modified/ETag만 보내서,
-# 브라우저가 자체 판단(heuristic caching)으로 js/css를 한동안 캐싱해버린다. 이 프로젝트는
-# 수업 중에도 index.html/js/*.js가 자주 바뀌는데, 새로고침만으로는 브라우저가 옛날 파일을
-# 계속 쓰는 바람에 "분명히 고쳤는데 반영이 안 된 것처럼 보이는" 혼란이 반복됐다.
-# 학생 수가 많지 않은 로컬/교실용 서버라 캐싱으로 얻는 성능 이득보다 이 혼란을 막는 게 더 중요해서
-# 모든 응답에 no-store를 강제한다.
+# 브라우저가 자체 판단(heuristic caching)으로 js/css를 한동안 캐싱해버린다. 예전엔 그 때문에
+# "분명히 고쳤는데 반영이 안 된 것처럼 보이는" 혼란이 반복돼서 모든 응답을 no-store(저장 금지)로 했는데,
+# 그러면 화면을 옮길 때마다 텍스처·라이브러리(약 4MB)와 3D 코드를 매번 다시 받는다.
+# 이제는 html을 내줄 때 서버가 js/css 주소 끝에 '파일 내용으로 만든 버전 표시(?v=...)'를 자동으로 붙인다
+# (versioned_html). 파일이 바뀌면 주소가 바뀌어 새로 받고, 안 바뀌면 브라우저에 저장된 것을 그대로 쓴다.
+#   ?v= 가 붙은 요청      → 1년 저장 (내용이 바뀌면 주소 자체가 바뀌므로 안전)
+#   텍스처·라이브러리      → 저장하되 쓸 때마다 바뀌었는지만 확인 (안 바뀌었으면 본문 없이 '그대로' 응답)
+#   그 밖 (html·json·.ino) → 지금처럼 매번 새로
 @app.middleware("http")
-async def no_cache(request: Request, call_next):
+async def cache_policy(request: Request, call_next):
     response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
+    path = request.url.path
+    if request.query_params.get("v") and path.endswith((".js", ".css")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith(("/texture_image/", "/vendor/")):
+        response.headers["Cache-Control"] = "no-cache"
+    else:
+        response.headers["Cache-Control"] = "no-store"
     return response
+
+
+_version_cache: Dict[Path, tuple] = {}
+
+
+def file_version(path: Path) -> str:
+    """파일 내용의 짧은 지문. 수정 시각이 같으면 다시 읽지 않는다."""
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return "0"
+    cached = _version_cache.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    digest = hashlib.md5(path.read_bytes()).hexdigest()[:10]
+    _version_cache[path] = (mtime, digest)
+    return digest
+
+
+_ASSET_REF = re.compile(r'(\b(?:src|href)=")([^"?#:]+\.(?:js|css))(?:\?[^"]*)?(")')
+
+
+def versioned_html(html_path: Path) -> HTMLResponse:
+    """html 안의 우리 js/css 주소 끝에 내용 지문(?v=...)을 붙여서 돌려준다 (손으로 ?v=4 올릴 필요 없음).
+    파일 자체는 고치지 않는다."""
+    text = html_path.read_text(encoding="utf-8")
+
+    def stamp(m):
+        url = m.group(2)
+        target = (RESOURCE_DIR / url.lstrip("/")) if url.startswith("/") else (html_path.parent / url)
+        return f"{m.group(1)}{url}?v={file_version(target)}{m.group(3)}"
+
+    return HTMLResponse(_ASSET_REF.sub(stamp, text))
 
 # PyInstaller로 exe로 묶으면 index.html/js/texture_image 등 번들된 리소스는 실행할 때마다
 # 임시 폴더(sys._MEIPASS)에 풀리므로 거기서 읽어야 하고, data_log.csv처럼 계속 남아있어야
@@ -206,7 +251,9 @@ def _begin_recording(at: float):
     dur = session["config"].get("durationSec")
     session["endsAt"] = (at + dur) * 1000 if dur else None
     SESSION_DIR.mkdir(exist_ok=True)
-    name = datetime.fromtimestamp(at).strftime("실험_%Y%m%d_%H%M%S")
+    # 파일 이름 = 학생이 실험 준비에서 정한 실험 이름 + 시각 (파일 이름에 못 쓰는 글자는 뺌)
+    title = re.sub(r'[\\/:*?"<>|]', "", str(session["config"].get("name") or "")).strip()[:60] or "실험"
+    name = f"{title}_{datetime.fromtimestamp(at).strftime('%Y%m%d_%H%M%S')}"
     session["file"] = name
     _session_file = open(SESSION_DIR / f"{name}.jsonl", "a", encoding="utf-8")
 
@@ -332,13 +379,20 @@ def submit_incoming(payload: dict, dev_id: str):
 # 원하는 박스를 다시 골라 들어가는 구조라 "/"는 이 화면이 맡는다.
 @app.get("/")
 async def select_page():
-    return FileResponse(RESOURCE_DIR / "select.html")
+    return versioned_html(RESOURCE_DIR / "select.html")
 
 
 # 현재실태/미래예측/직접실험 대시보드 (예전엔 "/"였음) - ?tab=current|future|live로 접속
 @app.get("/dashboard")
 async def dashboard():
-    return FileResponse(RESOURCE_DIR / "index.html")
+    return versioned_html(RESOURCE_DIR / "index.html")
+
+
+# 1인칭 탐험 모드 첫 페이지도 버전 표시를 붙여서 준다 (아래 /firstperson 정적 마운트보다 먼저 등록)
+@app.get("/firstperson/")
+@app.get("/firstperson/index.html")
+async def firstperson_page():
+    return versioned_html(RESOURCE_DIR / "firstperson" / "index.html")
 
 
 # ── WiFi HTTP 경로 (예전 방식): POST /data ──────────────────────
@@ -451,6 +505,10 @@ async def basic_experiments_index():
             "title": info.get("title", entry.name),
             "board": info.get("board", "기타"),
             "sensors": info.get("sensors", []),
+            # 실험 준비 화면은 보드 이름표를 '보드 종류'와 '통신 방식'으로 나눠 고르게 한다.
+            # 따로 적어 두면 그 값을 쓰고, 없으면 화면이 이름표("우노 R3 + HM-10 (BLE)")에서 알아서 나눈다.
+            **({"boardType": info["boardType"]} if info.get("boardType") else {}),
+            **({"link": info["link"]} if info.get("link") else {}),
         })
     return items
 
@@ -458,6 +516,8 @@ async def basic_experiments_index():
 # style.css, js/*.js 등 정적 파일 서빙 (반드시 위의 라우트들 뒤에 등록해야
 # "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
 app.mount("/js", StaticFiles(directory=RESOURCE_DIR / "js"), name="js")
+# three.js·Chart.js를 인터넷(CDN) 대신 여기서 준다 - 인터넷이 없거나 느린 교실에서도 3D·그래프가 뜨게
+app.mount("/vendor", StaticFiles(directory=RESOURCE_DIR / "vendor"), name="vendor")
 app.mount("/texture_image", StaticFiles(directory=RESOURCE_DIR / "texture_image"), name="textures")
 app.mount("/basic_experiments", StaticFiles(directory=RESOURCE_DIR / "basic_experiments"), name="basic_experiments")
 # 1인칭 탐험 모드 (firstperson/index.html) - html=True라 /firstperson/ 으로 접속하면 index.html이 열림

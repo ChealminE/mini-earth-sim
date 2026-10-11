@@ -13,6 +13,8 @@ a = Analysis(
         ('style.css', '.'),
         ('js', 'js'),
         ('texture_image', 'texture_image'),
+        # three.js·Chart.js (server.py가 /vendor 로 준다). 빠지면 StaticFiles가 시작하자마자 죽는다
+        ('vendor', 'vendor'),
         ('basic_experiments', 'basic_experiments'),
         # 1인칭 탐험 모드. StaticFiles(directory=...) 는 폴더가 없으면 import 시점에
         # RuntimeError 를 내므로, 빠뜨리면 exe 가 첫 화면도 못 띄우고 죽는다.

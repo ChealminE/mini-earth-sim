@@ -1,7 +1,7 @@
 // ================= 미래 예측 탭 =================
 // 예측식은 js/earth-model.js 한 곳에만 있다. 1인칭 탐험 모드도 같은 파일을 읽으므로
 // 두 모드가 같은 CO2에 대해 반드시 같은 pH·기온을 내놓는다.
-const sceneFuture = buildAcrylicScene();
+const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 
 // 모형 곡선은 직선이 아니라 휘므로 점을 촘촘히 찍어야 곡선으로 보인다
 const modelX = [];

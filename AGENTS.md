@@ -8,7 +8,7 @@
 - `mqtt_broker.py` — server.py에 내장된 작은 MQTT 브로커 (1883을 Mosquitto가 쓰고 있으면 그쪽에 붙음)
 - `select.html` 시작 화면 → `index.html?tab=current|future|live` 조감 3탭 / `firstperson/` 1인칭 탐험
 - `js/earth-model.js` — 조감·1인칭이 공유하는 과학 모델(탄산 평형·기온 회귀). 예측식은 여기서만 고친다
-- 직접 실험 탭: `js/tab-live.js`(연결·보드 패널·그래프), `js/live-analysis.js`(분석·편집), `js/live-fit.js`(통계·회귀), `js/xlsx-lite.js`(엑셀)
+- 직접 실험 탭: `js/live-setup.js`(실험 준비: 이름·보드 고르기·실험 설계·회로도·코드 받기·센서 배치), `js/tab-live.js`(연결·보드 패널·그래프), `js/live-analysis.js`(분석·편집), `js/live-fit.js`(통계·회귀), `js/xlsx-lite.js`(엑셀)
 - `basic_experiments/<id>/{info.json, code.ino}` — 폴더만 넣으면 서버가 목록을 자동 생성. `std_*`가 원격 제어 표준 코드
 
 ## 실행·확인

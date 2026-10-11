@@ -3,7 +3,7 @@
 //           오른쪽 위 = 그래프 카드 / 오른쪽 아래 = 데이터 분석·편집(live-analysis.js)
 // "기록 중인지 / 언제 자동 종료할지 / 지금까지 쌓인 값"은 서버(server.py)가 들고 있다.
 // 6시간짜리 실험 도중 탭을 새로고침해도 /api/session으로 전부 되찾아 오게 하려는 것.
-const sceneLive = buildAcrylicScene();
+const sceneLive = sceneFor('live'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 
 const liveLatest = {};          // { [표시 키]: { value, timestamp, dev } }
 const liveKnownKeys = new Set(); // 지금까지 값이 들어온 표시 키 전부
@@ -178,6 +178,7 @@ function applySessionState(s) {
     updateAllLiveCharts();
   }
   if (s.state === 'ended' && s.endReason === 'time') showLiveToast('설정한 시간이 지나 실험이 자동으로 끝났어요');
+  if ((s.state === 'armed' || s.state === 'recording') && typeof liveView !== 'undefined' && liveView === 'setup') showLiveExperiment();
   renderLiveStatus();
   if (typeof onLiveRecordsChanged === 'function') onLiveRecordsChanged(true);
 }
@@ -220,8 +221,9 @@ function renderLiveStatus() {
   const running = st === 'armed' || st === 'recording';
   document.getElementById('startExperimentBtn').disabled = running || !liveConnected;
   document.getElementById('endExperimentBtn').disabled = !running;
-  document.getElementById('expSettingsBtn').disabled = running;
-  document.getElementById('expSettingsSummary').textContent = expSettingsSummary();
+  document.getElementById('backToSetupBtn').disabled = running;
+  document.getElementById('liveExpName').textContent = setup.name || '';
+  document.getElementById('expSettingsSummary').textContent = simSummary();
 }
 setInterval(() => { renderLiveStatus(); updateDeviceValues(); }, 1000);
 
@@ -235,20 +237,20 @@ function keysOfDevice(devId) {
 }
 
 function valueChipHtml(k) {
-  const roleOptionsHtml = sensorRoleOptions.map(opt =>
-    `<option value="${opt.id}"${(sensorRoles[k] || '') === opt.id ? ' selected' : ''}>${opt.label}</option>`
-  ).join('');
+  const zone = (setup.placements[k] || {}).zone || '';
+  const zoneOptionsHtml = `<option value="">배치 안 함</option>` + SENSOR_ZONES.map(z =>
+    `<option value="${z.id}"${zone === z.id ? ' selected' : ''}>${z.label}</option>`).join('');
   return `<div class="value-chip" style="border-left-color:${liveColorFor(k)}">
       <div class="key" title="${escHtml(k)}">${escHtml(k)}</div>
       <div class="val" data-val="${escHtml(k)}">–</div>
       <div class="updated" data-time="${escHtml(k)}"></div>
-      <select class="sensor-role-select" data-key="${escHtml(k)}" title="이 값이 실제로 뭘 재는지 지정 (3D 효과 연결용)">${roleOptionsHtml}</select>
+      <select class="sensor-role-select" data-key="${escHtml(k)}" title="이 센서를 아크릴의 어디에 놓았는지 (3D 효과 연결용)">${zoneOptionsHtml}</select>
     </div>`;
 }
 
 function devicePanelSig() {
   return JSON.stringify([liveConnected, liveDevices.map(d => [d.id, d.name, d.online, d.info, d.canCmd]),
-    [...liveKnownKeys].sort(), sensorRoles]);
+    [...liveKnownKeys].sort(), setup.placements]);
 }
 
 function renderDevicePanel(force) {
@@ -331,7 +333,7 @@ function updateDeviceValues() {
     if (!dot || !seen) continue;
     const age = d.lastSeen ? now - d.lastSeen : Infinity;
     // lastSeen은 장치 목록이 갱신될 때만 오므로, 값이 들어올 때마다 화면 쪽에서도 갱신
-    const latest = Math.max(d.lastSeen || 0, ...keysOfDevice(d.id).map(k => new Date(liveLatest[k].timestamp).getTime()));
+    const latest = Math.max(d.lastSeen || 0, ...keysOfDevice(d.id).filter(k => liveLatest[k]).map(k => new Date(liveLatest[k].timestamp).getTime()));
     const realAge = latest ? now - latest : age;
     const stale = !d.online || realAge > LIVE_STALE_MS;
     dot.className = 'dev-dot' + (!d.online ? ' off' : stale ? ' warn' : ' on');
@@ -341,11 +343,7 @@ function updateDeviceValues() {
 
 document.getElementById('liveDeviceList').addEventListener('change', (e) => {
   if (!e.target.classList.contains('sensor-role-select')) return;
-  const key = e.target.dataset.key;
-  if (e.target.value) sensorRoles[key] = e.target.value;
-  else delete sensorRoles[key];
-  devicePanelSignature = devicePanelSig();
-  applyLiveSensorEffects();
+  setSensorPlacement(e.target.dataset.key, e.target.value);
 });
 
 document.getElementById('liveDeviceList').addEventListener('click', async (e) => {
@@ -418,13 +416,17 @@ function liveConfirm(text) {
   });
 }
 
-// ── 다중 그래프 카드 (최대 4개, 드래그로 합치기) ──────────────────────
-// 카드에는 제목 표시 + ⚙ + ✕ + 차트만 있음 (X/Y 변인 선택, 축 최소/최대/단위,
-// 계열별 색상 등 실제 설정은 전부 ⚙로 여는 팝업에서 처리 — 카드 자체는 그걸 누르기 전엔 안 건드림).
+// ── 그래프 (최대 4개, 한 번에 하나만 크게 · 아래 탭으로 넘기기·합치기) ──────────────
+// 그래프 칸은 '실시간으로 보기'만 맡는다 (축·색·계열·합치기/분리·값 마크·이미지 저장).
+// 추세식·통계·편집·엑셀 저장은 아래 '데이터 분석·편집' 칸(live-analysis.js)에서만 한다 - 같은 기능이
+// 두 군데 있으면 학생이 어디서 뭘 해야 하는지 헷갈려서 역할을 나눴다.
+// 여러 그래프를 나란히 놓으면 칸이 좁아져 스크롤바가 생기고 그래프가 작아져서, 한 번에 하나만 칸 가득 보여 주고
+// 아래 ◀ ▶ 와 탭으로 넘긴다. 합치기는 지금 그래프를 다른 탭 위로 끌어다 놓는다(탭끼리 끌어도 됨).
 // 상태는 DOM이 아니라 g 객체 자체에 저장(g.series[i].xKey 등) — 팝업이 닫혀 있어도 값이 유지되게.
-const liveGraphs = []; // [{ id, chart, card, title, xMin, xMax, xUnit, yMin, yMax, yUnit, timeUnit, trendModel, series:[{sid,color,xKey,yKey}] }]
+const liveGraphs = []; // [{ id, chart, card, title, xMin, xMax, xUnit, yMin, yMax, yUnit, timeUnit, marks, series:[{sid,color,xKey,yKey,visible}] }]
 let liveGraphSeq = 0;
 let liveSeriesSeq = 0;
+let activeGraphId = null;
 const MAX_LIVE_GRAPHS = 4;
 // 6시간 동안 1초마다 받으면 2만 개가 넘는다. 원본은 전부 들고 있되, 차트에는 계열당 이만큼만 솎아서 그린다.
 const LIVE_MAX_DRAW_POINTS = 1500;
@@ -459,43 +461,21 @@ function refreshLiveSelectOptions() {
     const g = liveGraphs.find(x => x.id === gsCurrentGraphId);
     if (g) renderSettingsSeriesList(g);
   }
+  renderGraphTabs();
   if (typeof onLiveKeysChanged === 'function') onLiveKeysChanged();
-}
-
-function graphTrendPoints(g, pts) {
-  // 추세선 구간을 지정했으면(빈 값이면 전체 데이터) 그 X 범위 안의 점만 회귀에 사용
-  return trimRange(pts, g.trendXMin, g.trendXMax);
 }
 
 function updateLiveChart(g) {
   const xKeys = [], yKeys = [];
-  const full = [];
   g.chart.data.datasets = g.series.map(s => {
     if (s.xKey && !xKeys.includes(s.xKey)) xKeys.push(s.xKey);
     if (s.yKey && !yKeys.includes(s.yKey)) yKeys.push(s.yKey);
     const pts = seriesPoints(s.xKey, s.yKey, g.timeUnit);
-    full.push(pts);
     const xLabelPart = s.xKey === TIME_AXIS_KEY ? TIME_AXIS_LABEL : s.xKey;
     return { label: s.xKey && s.yKey ? `${xLabelPart} / ${s.yKey}` : '(선택 안 됨)', data: downsampleMinMax(pts, LIVE_MAX_DRAW_POINTS),
       backgroundColor: s.color, borderColor: s.color, pointRadius: pts.length > 300 ? 0 : 2.5, pointHitRadius: 6,
       showLine: true, borderWidth: 1.2, hidden: s.visible === false };
   });
-
-  if (g.trendModel && g.trendModel !== 'none') {
-    g.series.forEach((s, idx) => {
-      if (s.visible === false) return;
-      const pts = graphTrendPoints(g, full[idx]);
-      const fit = fitModel(pts, g.trendModel);
-      if (fit.error) return;
-      const xs = pts.map(p => p.x);
-      g.chart.data.datasets.push({
-        label: `${fit.equation} (R²=${fit.r2.toFixed(3)})`,
-        data: fitCurvePoints(fit, Math.min(...xs), Math.max(...xs)),
-        borderColor: s.color, borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, showLine: true, fill: false,
-        _isTrend: true,
-      });
-    });
-  }
 
   const xLabel = xKeys.map(k => axisLabel(k, g.timeUnit)).join(' / ') || 'X축 변인';
   const yLabel = yKeys.join(' / ') || 'Y축 변인';
@@ -506,7 +486,7 @@ function updateLiveChart(g) {
   g.chart.options.scales.x.max = (!g.xAuto && g.xMax !== '') ? Number(g.xMax) : undefined;
   g.chart.options.scales.y.min = (!g.yAuto && g.yMin !== '') ? Number(g.yMin) : undefined;
   g.chart.options.scales.y.max = (!g.yAuto && g.yMax !== '') ? Number(g.yMax) : undefined;
-  g.chart.options.plugins.legend.display = g.series.length > 1 || (g.trendModel && g.trendModel !== 'none');
+  g.chart.options.plugins.legend.display = g.series.length > 1;
   g.chart.update('none');
 }
 
@@ -525,25 +505,31 @@ function scheduleLiveChartsUpdate() {
   }, 300);
 }
 
+// 탭·카드 제목: 직접 붙인 제목이 없으면 그리는 변인 이름으로
+function graphLabel(g) {
+  if (g.title) return g.title;
+  const ys = g.series.map(s => s.yKey).filter(Boolean);
+  return ys.length ? ys.join(' + ') : '빈 그래프';
+}
+
 function updateCardTitleDisplay(g) {
   const el = document.getElementById(`titleDisplay-${g.id}`);
-  if (el) el.textContent = g.title || '';
+  if (el) el.textContent = graphLabel(g);
+  renderGraphTabs();
 }
 
 // ── 카드 자체는 생성될 때 한 번만 그림 (합치기/계열 변경 때도 안 건드려서 차트 인스턴스가 안 깨짐) ──
 function renderGraphCard(g) {
   g.card.innerHTML = `
     <div class="graph-card-top">
-      <div class="graph-title-display" id="titleDisplay-${g.id}">${escHtml(g.title || '')}</div>
+      <div class="graph-title-display" id="titleDisplay-${g.id}" draggable="true" title="끌어서 아래 다른 탭 위에 놓으면 합쳐져요">${escHtml(graphLabel(g))}</div>
       <div class="graph-card-icons">
-        <button class="icon-btn" onclick="analyzeGraph(${g.id})" title="이 그래프를 아래 '데이터 분석·편집'에서 열기">📊</button>
-        <button class="icon-btn" onclick="openGraphZoom(${g.id})" title="크게 보기">⛶</button>
+        <button class="icon-btn" onclick="analyzeGraph(${g.id})" title="이 그래프를 아래 '데이터 분석·편집'에서 열기 (추세식·통계·편집)">📊</button>
         <button class="icon-btn" onclick="openGraphSettings(${g.id})" title="그래프 설정">⚙</button>
         <button class="icon-btn remove-btn" onclick="removeLiveGraph(${g.id})" title="그래프 삭제">✕</button>
       </div>
     </div>
-    <div class="chart-wrap" style="height:210px"><canvas id="liveChart-${g.id}"></canvas></div>
-    <div class="merge-drop-hint">다른 그래프를 여기로 드래그하면 합칠 수 있어요</div>`;
+    <div class="chart-wrap"><canvas id="liveChart-${g.id}"></canvas></div>`;
 }
 
 function analyzeGraph(id) {
@@ -552,6 +538,38 @@ function analyzeGraph(id) {
   const s = g.series.find(x => x.visible !== false && x.yKey) || g.series[0];
   openAnalysisFor(s.xKey, s.yKey, g.timeUnit);
 }
+
+// ── 한 번에 하나 보기 · 아래 탭 ─────────────────────────
+function setActiveGraph(id) {
+  if (!liveGraphs.length) { activeGraphId = null; renderGraphTabs(); return; }
+  if (!liveGraphs.some(g => g.id === id)) id = liveGraphs[0].id;
+  activeGraphId = id;
+  liveGraphs.forEach(g => g.card.classList.toggle('active', g.id === id));
+  const g = liveGraphs.find(x => x.id === id);
+  g.chart.resize(); // 숨겨져 있던 동안엔 크기가 0으로 잡혀 있으므로 보이게 된 뒤 다시 잰다
+  renderGraphTabs();
+}
+
+function stepActiveGraph(dir) {
+  const i = liveGraphs.findIndex(g => g.id === activeGraphId);
+  if (i === -1 || liveGraphs.length < 2) return;
+  setActiveGraph(liveGraphs[(i + dir + liveGraphs.length) % liveGraphs.length].id);
+}
+
+function renderGraphTabs() {
+  const wrap = document.getElementById('graphTabs');
+  wrap.innerHTML = liveGraphs.map((g, i) => `
+    <button class="graph-tab${g.id === activeGraphId ? ' active' : ''}" draggable="true" data-graph="${g.id}"
+      title="${escHtml(graphLabel(g))} · 눌러서 보기, 다른 그래프를 이 위로 끌어다 놓으면 합치기">
+      <span class="graph-tab-num">${i + 1}</span>${escHtml(graphLabel(g))}</button>`).join('');
+  const single = liveGraphs.length < 2;
+  document.getElementById('graphPrevBtn').disabled = single;
+  document.getElementById('graphNextBtn').disabled = single;
+  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+}
+
+document.getElementById('graphPrevBtn').addEventListener('click', () => stepActiveGraph(-1));
+document.getElementById('graphNextBtn').addEventListener('click', () => stepActiveGraph(1));
 
 // ── 설정 팝업 (⚙ 클릭 시 열림) ──────────────────────────
 function openGraphSettings(id) {
@@ -570,9 +588,6 @@ function openGraphSettings(id) {
   document.getElementById('gsYAuto').checked = g.yAuto !== false;
   document.getElementById('gsXMin').disabled = document.getElementById('gsXMax').disabled = g.xAuto !== false;
   document.getElementById('gsYMin').disabled = document.getElementById('gsYMax').disabled = g.yAuto !== false;
-  document.getElementById('gsTrendModel').value = g.trendModel || 'none';
-  document.getElementById('gsTrendXMin').value = g.trendXMin;
-  document.getElementById('gsTrendXMax').value = g.trendXMax;
   renderSettingsSeriesList(g);
   document.getElementById('graphSettingsModal').classList.add('visible');
 }
@@ -591,59 +606,6 @@ function setGraphTimeUnit(graphId, unit) {
   if (!g) return;
   g.timeUnit = unit;
   g.marks = []; // 단위가 바뀌면 찍어 둔 마크의 x값 의미가 달라지므로 지운다
-  updateLiveChart(g);
-}
-
-// ── 그래프 크게 보기 (⛶ 클릭 시) ──────────────────────────
-// 별도 Chart 인스턴스를 새로 만들지 않고, 카드에 있던 canvas(=차트 인스턴스)를 그대로
-// 모달 안으로 옮겼다가 닫을 때 원래 자리로 되돌린다 - 데이터/설정을 복제·동기화할 필요가 없어서 간단하고 항상 최신 상태.
-let zoomOriginalParent = null;
-let zoomGraphId = null;
-
-function openGraphZoom(id) {
-  const g = liveGraphs.find(x => x.id === id);
-  if (!g) return;
-  const canvas = document.getElementById(`liveChart-${id}`);
-  const zoomWrap = document.getElementById('zoomChartWrap');
-  document.getElementById('zoomTitle').textContent = g.title || `그래프 ${g.id}`;
-  // 모달을 먼저 보이게 한 다음에 canvas를 옮기고 resize해야 한다. 순서가 바뀌면(모달이
-  // display:none인 상태에서 resize) 옮길 컨테이너 크기가 0으로 측정돼서 차트가 새까맣게
-  // 깨져서 보이는 문제가 있었다.
-  document.getElementById('graphZoomModal').classList.add('visible');
-  // 이미 이 canvas가 확대 모달 안에 있으면(예: 확대 상태에서 ⚙설정 → 구간 드래그 선택으로
-  // openGraphZoom이 다시 불리는 경우) 원래 자리를 다시 기록하면 안 된다 - 그러면 원래 자리가
-  // 모달 자신으로 덮어써져서 나중에 closeGraphZoom이 canvas를 카드로 못 돌려보낸다.
-  if (canvas.parentElement !== zoomWrap) {
-    zoomOriginalParent = canvas.parentElement;
-    zoomGraphId = id;
-    zoomWrap.appendChild(canvas);
-    g.chart.resize();
-  }
-}
-
-function closeGraphZoom() {
-  document.getElementById('graphZoomModal').classList.remove('visible');
-  const g = liveGraphs.find(x => x.id === zoomGraphId);
-  if (g && zoomOriginalParent) {
-    zoomOriginalParent.appendChild(document.getElementById(`liveChart-${zoomGraphId}`));
-    g.chart.resize();
-  }
-  zoomOriginalParent = null;
-  zoomGraphId = null;
-}
-
-document.getElementById('zoomCloseBtn').addEventListener('click', () => {
-  if (trendRangeSelectGraphId != null) finishTrendRangeSelect(false);
-  else closeGraphZoom();
-});
-document.getElementById('zoomClearMarksBtn').addEventListener('click', () => {
-  if (zoomGraphId != null) clearGraphMarks(zoomGraphId);
-});
-
-function setTrendModel(graphId, model) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g) return;
-  g.trendModel = model;
   updateLiveChart(g);
 }
 
@@ -666,7 +628,7 @@ function downloadGraphImage(graphId) {
   if (!g) return;
   const a = document.createElement('a');
   a.href = chartToPngUrl(g.chart);
-  a.download = `${g.title || '그래프_' + g.id}.png`;
+  a.download = `${experimentFilePrefix()}_${safeFileName(graphLabel(g))}.png`;
   a.click();
 }
 
@@ -693,7 +655,7 @@ function downloadGraphData(graphId) {
   if (rows.length === 0) { alert('아직 내보낼 데이터가 없습니다. 실험을 시작해서 값을 받아온 뒤 다시 시도하세요.'); return; }
 
   const csv = [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
-  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${g.title || '그래프_' + g.id}.csv`); // BOM: 엑셀에서 한글 안 깨지게
+  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${experimentFilePrefix()}_${safeFileName(graphLabel(g))}.csv`); // BOM: 엑셀에서 한글 안 깨지게
 }
 
 function closeGraphSettings() {
@@ -743,30 +705,74 @@ function setSeriesKey(graphId, sid, field, value) {
   if (!s) return;
   s[field] = value;
   updateLiveChart(g);
+  updateCardTitleDisplay(g);
 }
 
 document.getElementById('graphSettingsCloseBtn').addEventListener('click', closeGraphSettings);
 
-// ── 드래그로 합치기 (앱 다른 곳과 통일된 모달로 확인) ──────────
-function attachGraphDragHandlers(g) {
-  g.card.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', String(g.id));
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  g.card.addEventListener('dragover', (e) => { e.preventDefault(); g.card.classList.add('drag-over'); });
-  g.card.addEventListener('dragleave', () => g.card.classList.remove('drag-over'));
-  g.card.addEventListener('drop', (e) => {
-    e.preventDefault();
-    g.card.classList.remove('drag-over');
-    const sourceId = Number(e.dataTransfer.getData('text/plain'));
-    const source = liveGraphs.find(x => x.id === sourceId);
-    if (!source || sourceId === g.id) return;
-    pendingMerge = { sourceId, targetId: g.id };
-    document.getElementById('mergeConfirmText').textContent =
-      `"${source.title || '그래프 ' + sourceId}"을(를) "${g.title || '그래프 ' + g.id}"에 합치겠습니까? 한 차트에 겹쳐서 표시됩니다.`;
-    document.getElementById('graphMergeConfirmModal').classList.add('visible');
-  });
+// ── 끌어다 놓아 합치기 (보이는 그래프 또는 탭을 → 다른 탭 위로) ──────────
+// 그래프가 하나씩만 보이므로 놓을 자리는 아래 탭이다. 끄는 동안 탭 줄을 강조해서 어디에 놓을지 알려 준다.
+let draggingGraphId = null;
+
+function startGraphDrag(e, id) {
+  draggingGraphId = id;
+  e.dataTransfer.setData('text/plain', String(id));
+  e.dataTransfer.effectAllowed = 'move';
+  document.getElementById('graphNav').classList.add('dragging');
 }
+
+function endGraphDrag() {
+  draggingGraphId = null;
+  document.getElementById('graphNav').classList.remove('dragging');
+  document.querySelectorAll('.graph-tab.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+function askMerge(sourceId, targetId) {
+  const source = liveGraphs.find(x => x.id === sourceId);
+  const target = liveGraphs.find(x => x.id === targetId);
+  if (!source || !target || sourceId === targetId) return;
+  pendingMerge = { sourceId, targetId };
+  document.getElementById('mergeConfirmText').textContent =
+    `"${graphLabel(source)}"을(를) "${graphLabel(target)}"에 합치겠습니까? 한 차트에 겹쳐서 표시됩니다.`;
+  document.getElementById('graphMergeConfirmModal').classList.add('visible');
+}
+
+function attachGraphDragHandlers(g) {
+  g.card.addEventListener('dragstart', (e) => startGraphDrag(e, g.id));
+  g.card.addEventListener('dragend', endGraphDrag);
+}
+
+(function setupGraphTabDrag() {
+  const tabs = document.getElementById('graphTabs');
+  tabs.addEventListener('click', (e) => {
+    const t = e.target.closest('.graph-tab[data-graph]');
+    if (t) setActiveGraph(Number(t.dataset.graph));
+  });
+  tabs.addEventListener('dragstart', (e) => {
+    const t = e.target.closest('.graph-tab[data-graph]');
+    if (t) startGraphDrag(e, Number(t.dataset.graph));
+  });
+  tabs.addEventListener('dragend', endGraphDrag);
+  tabs.addEventListener('dragover', (e) => {
+    const t = e.target.closest('.graph-tab[data-graph]');
+    if (!t || Number(t.dataset.graph) === draggingGraphId) return;
+    e.preventDefault();
+    document.querySelectorAll('.graph-tab.drag-over').forEach(el => { if (el !== t) el.classList.remove('drag-over'); });
+    t.classList.add('drag-over');
+  });
+  tabs.addEventListener('dragleave', (e) => {
+    const t = e.target.closest('.graph-tab[data-graph]');
+    if (t && !t.contains(e.relatedTarget)) t.classList.remove('drag-over');
+  });
+  tabs.addEventListener('drop', (e) => {
+    const t = e.target.closest('.graph-tab[data-graph]');
+    if (!t) return;
+    e.preventDefault();
+    const sourceId = Number(e.dataTransfer.getData('text/plain'));
+    endGraphDrag();
+    askMerge(sourceId, Number(t.dataset.graph));
+  });
+})();
 
 document.getElementById('mergeConfirmYesBtn').addEventListener('click', () => {
   document.getElementById('graphMergeConfirmModal').classList.remove('visible');
@@ -790,8 +796,9 @@ function mergeLiveGraphs(sourceId, targetId) {
   liveGraphs.splice(srcIdx, 1);
 
   updateLiveChart(target);
+  updateCardTitleDisplay(target);
   if (gsCurrentGraphId === target.id) renderSettingsSeriesList(target);
-  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  setActiveGraph(target.id); // 합친 결과를 바로 보여 준다
 }
 
 function removeSeriesFromGraph(graphId, sid) {
@@ -799,10 +806,11 @@ function removeSeriesFromGraph(graphId, sid) {
   if (!g || g.series.length <= 1) return;
   g.series = g.series.filter(s => s.sid !== sid);
   updateLiveChart(g);
+  updateCardTitleDisplay(g);
   if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
 }
 
-// 합쳤던 계열을 다시 독립된 그래프 카드로 되돌린다 (병합의 반대 동작).
+// 합쳤던 계열을 다시 독립된 그래프로 되돌린다 (병합의 반대 동작). 새 그래프는 탭 끝에 생긴다.
 function splitSeriesToNewGraph(graphId, sid) {
   const g = liveGraphs.find(x => x.id === graphId);
   if (!g || g.series.length <= 1) return;
@@ -819,7 +827,9 @@ function splitSeriesToNewGraph(graphId, sid) {
   newG.timeUnit = g.timeUnit;
   updateLiveChart(newG);
   updateLiveChart(g);
+  updateCardTitleDisplay(g);
   if (gsCurrentGraphId === g.id) renderSettingsSeriesList(g);
+  renderGraphTabs();
 }
 
 // ── 계열 표시/숨기기 (범례 클릭 또는 설정 팝업의 눈 아이콘) ──────────────
@@ -836,14 +846,9 @@ function toggleSeriesVisible(graphId, sid) {
 }
 
 function legendClickHandler(evt, item, legend) {
-  const chart = legend.chart;
-  const g = liveGraphs.find(x => x.chart === chart);
+  const g = liveGraphs.find(x => x.chart === legend.chart);
   const s = g?.series[item.datasetIndex];
-  if (g && s) { toggleSeriesVisible(g.id, s.sid); return; }
-  // 추세선 등 series에 안 걸리는 계열은 Chart.js 기본 토글 동작 그대로 사용
-  const meta = chart.getDatasetMeta(item.datasetIndex);
-  meta.hidden = meta.hidden === null ? !chart.data.datasets[item.datasetIndex].hidden : null;
-  chart.update();
+  if (g && s) toggleSeriesVisible(g.id, s.sid);
 }
 
 // ── 클릭한 지점에 (x, y) 값을 표시하는 마크 찍기 ──────────────
@@ -887,7 +892,6 @@ Chart.register(markPointPlugin);
 function chartClickHandler(evt, elements, chart) {
   const g = liveGraphs.find(x => x.chart === chart);
   if (!g) return;
-  if (trendRangeSelectGraphId === g.id) return; // 구간 드래그 선택 중엔 마크 찍기 비활성화
   g.marks = g.marks || [];
 
   // 이미 찍힌 마크를 다시 클릭하면(X자 표시 근처) 새로 찍는 대신 그 마크만 지운다
@@ -905,7 +909,6 @@ function chartClickHandler(evt, elements, chart) {
   const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false }, true);
   if (points.length === 0) return;
   const p = points[0];
-  if (chart.data.datasets[p.datasetIndex]?._isTrend) return;
   const data = chart.data.datasets[p.datasetIndex]?.data[p.index];
   if (!data) return;
   g.marks.push({ x: data.x, y: data.y });
@@ -919,108 +922,7 @@ function clearGraphMarks(graphId) {
   g.chart.update('none');
 }
 
-// ── 추세선 구간을 숫자로 직접 입력하는 대신, 확대 그래프에서 골라 찍는 기능 ──
-// 그래프 설정 팝업을 잠깐 닫고 확대 모달을 띄운 뒤, 첫 클릭으로 구간 시작을, 두 번째
-// 클릭으로 구간 끝을 찍으면(누르고 있는 드래그가 아니라 클릭-클릭 방식) 다시 설정
-// 팝업으로 돌아가서 구간 시작/끝 입력칸에 값이 채워져 있게 한다.
-// (처음엔 마우스를 누른 채로 끄는 드래그로 만들었는데, 두 번째 클릭이 매번 mousedown을
-// 새로 발생시켜서 시작점이 계속 새 위치로 리셋되는 바람에 끝점이 찍히지 않는 버그가 있었다.)
-let trendRangeSelectGraphId = null;
-let rangeSelectDrag = null; // { startPx, currentPx, locked } - 캔버스 기준 픽셀 좌표. locked=true면 끝점까지 확정된 상태
-
-const rangeSelectPlugin = {
-  id: 'rangeSelect',
-  afterDraw(chart) {
-    const g = liveGraphs.find(x => x.chart === chart);
-    if (!g || g.id !== trendRangeSelectGraphId || !rangeSelectDrag) return;
-    const { ctx, chartArea } = chart;
-    const x1 = Math.max(chartArea.left, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    const x2 = Math.min(chartArea.right, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    ctx.save();
-    ctx.fillStyle = 'rgba(93,202,165,0.18)';
-    ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
-    ctx.strokeStyle = '#5DCAA5';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
-    ctx.restore();
-  }
-};
-Chart.register(rangeSelectPlugin);
-
-function rangeSelectPxToX(g, px) {
-  return g.chart.scales.x.getValueForPixel(px);
-}
-
-function trendRangeCanvasClick(e) {
-  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
-  if (!g) return;
-  const rect = g.chart.canvas.getBoundingClientRect();
-  const px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-  if (!rangeSelectDrag || rangeSelectDrag.locked) {
-    // 첫 클릭(또는 이미 구간을 찍은 뒤 다시 클릭해서 새로 고르기 시작)
-    rangeSelectDrag = { startPx: px, currentPx: px, locked: false };
-    document.getElementById('rangeSelectText').textContent = '이제 구간의 끝 지점을 클릭하세요';
-  } else {
-    // 두 번째 클릭 - 끝점 확정
-    rangeSelectDrag.currentPx = px;
-    rangeSelectDrag.locked = true;
-    const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    document.getElementById('rangeSelectText').textContent =
-      `구간: ${fmtNum(xMinVal)} ~ ${fmtNum(xMaxVal)} · 확인을 누르면 적용됩니다 (다시 클릭하면 새로 선택)`;
-  }
-  g.chart.update('none');
-}
-
-function trendRangeMouseMove(e) {
-  if (!rangeSelectDrag || rangeSelectDrag.locked) return; // 시작점만 찍힌 상태에서만 끝점 미리보기가 마우스를 따라다님
-  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
-  if (!g) return;
-  const rect = g.chart.canvas.getBoundingClientRect();
-  rangeSelectDrag.currentPx = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-  g.chart.update('none');
-  const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-  const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-  document.getElementById('rangeSelectText').textContent = `${fmtNum(xMinVal)} ~ ${fmtNum(xMaxVal)} (끝 지점을 클릭하세요)`;
-}
-
-function startTrendRangeSelect(graphId) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g) return;
-  document.getElementById('graphSettingsModal').classList.remove('visible');
-  trendRangeSelectGraphId = graphId;
-  rangeSelectDrag = null;
-  openGraphZoom(graphId);
-  document.getElementById('rangeSelectBar').style.display = 'flex';
-  document.getElementById('rangeSelectText').textContent = '그래프 위를 클릭해서 구간 시작 지점을 찍으세요';
-  g.chart.canvas.addEventListener('click', trendRangeCanvasClick);
-  window.addEventListener('mousemove', trendRangeMouseMove);
-}
-
-function finishTrendRangeSelect(apply) {
-  const g = liveGraphs.find(x => x.id === trendRangeSelectGraphId);
-  if (g && apply && rangeSelectDrag && rangeSelectDrag.locked) {
-    const xMinVal = rangeSelectPxToX(g, Math.min(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    const xMaxVal = rangeSelectPxToX(g, Math.max(rangeSelectDrag.startPx, rangeSelectDrag.currentPx));
-    g.trendXMin = Number(xMinVal.toFixed(3));
-    g.trendXMax = Number(xMaxVal.toFixed(3));
-    if (!g.trendModel || g.trendModel === 'none') g.trendModel = 'linear';
-    updateLiveChart(g);
-  }
-  if (g) g.chart.canvas.removeEventListener('click', trendRangeCanvasClick);
-  window.removeEventListener('mousemove', trendRangeMouseMove);
-  document.getElementById('rangeSelectBar').style.display = 'none';
-  rangeSelectDrag = null;
-  const graphId = trendRangeSelectGraphId;
-  trendRangeSelectGraphId = null;
-  closeGraphZoom();
-  if (graphId != null) openGraphSettings(graphId);
-}
-
-document.getElementById('rangeSelectConfirmBtn').addEventListener('click', () => finishTrendRangeSelect(true));
-document.getElementById('rangeSelectCancelBtn').addEventListener('click', () => finishTrendRangeSelect(false));
-
-// ── 그래프 카드 하나(=Chart.js 인스턴스 하나) 생성 - addLiveGraph와 splitSeriesToNewGraph가 공유 ──
+// ── 그래프 하나(=Chart.js 인스턴스 하나) 생성 - addLiveGraph와 splitSeriesToNewGraph가 공유 ──
 function buildLiveChart(canvasEl) {
   return new Chart(canvasEl, {
     type: 'scatter',
@@ -1029,30 +931,29 @@ function buildLiveChart(canvasEl) {
       interaction: { mode: 'nearest', intersect: false }, // 선에 딱 안 맞아도 가까이만 가면 툴팁이 뜨게
       onClick: chartClickHandler,
       plugins: {
-        legend: { display: false, labels: { color: textColor, boxWidth: 10, font: { size: 9 } }, onClick: legendClickHandler },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset._isTrend ? '추세식' : ctx.dataset.label || ''}: (${fmtNum(ctx.parsed.x)}, ${fmtNum(ctx.parsed.y)})` } },
+        legend: { display: false, labels: { color: textColor, boxWidth: 10, font: { size: 10 } }, onClick: legendClickHandler },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label || ''}: (${fmtNum(ctx.parsed.x)}, ${fmtNum(ctx.parsed.y)})` } },
       },
       scales: {
-        x: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
-        y: { title: { display: true, text: '', color: textColor, font: { size: 9 } }, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
+        x: { title: { display: true, text: '', color: textColor, font: { size: 10 } }, ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } },
+        y: { title: { display: true, text: '', color: textColor, font: { size: 10 } }, ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } }
       } } });
 }
 
 function createGraphObject(seriesArr) {
   const id = ++liveGraphSeq;
   const card = document.createElement('div');
-  card.className = 'graph-card';
-  card.draggable = true;
+  card.className = 'graph-card'; // 끌기는 제목에서만 (그래프 위에서 끌면 점 클릭·툴팁을 방해하므로)
   document.getElementById('liveGraphs').appendChild(card);
 
-  const g = { id, card, title: '', xMin: '', xMax: '', xUnit: '', yMin: '', yMax: '', yUnit: '', trendModel: 'none',
-    timeUnit: 'auto', xAuto: true, yAuto: true, trendXMin: '', trendXMax: '', marks: [],
-    series: seriesArr };
+  const g = { id, card, title: '', xMin: '', xMax: '', xUnit: '', yMin: '', yMax: '', yUnit: '',
+    timeUnit: 'auto', xAuto: true, yAuto: true, marks: [], series: seriesArr };
   renderGraphCard(g);
   g.chart = buildLiveChart(document.getElementById(`liveChart-${id}`));
   liveGraphs.push(g);
   attachGraphDragHandlers(g);
-  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  if (activeGraphId == null) setActiveGraph(id);
+  else renderGraphTabs();
   return g;
 }
 
@@ -1062,6 +963,8 @@ function addLiveGraph() {
   const g = createGraphObject([{ sid, color: liveColorFor(String(sid)), xKey: '', yKey: '', visible: true }]);
   refreshLiveSelectOptions();
   updateLiveChart(g);
+  updateCardTitleDisplay(g);
+  return g;
 }
 
 function removeLiveGraph(id) {
@@ -1071,10 +974,18 @@ function removeLiveGraph(id) {
   liveGraphs[idx].chart.destroy();
   liveGraphs[idx].card.remove();
   liveGraphs.splice(idx, 1);
-  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+  // 지운 그래프 자리의 이웃을 보여 준다
+  if (activeGraphId === id) setActiveGraph(liveGraphs.length ? liveGraphs[Math.min(idx, liveGraphs.length - 1)].id : null);
+  else renderGraphTabs();
 }
 
-// 기본 그래프 카드 2개로 시작
+// '+' 탭: 새 그래프를 만들고 바로 그 그래프로 넘어간다
+document.getElementById('addGraphBtn').onclick = () => {
+  const g = addLiveGraph();
+  if (g) setActiveGraph(g.id);
+};
+
+// 기본 그래프 2개로 시작 (처음엔 1번이 보임)
 addLiveGraph();
 addLiveGraph();
 
@@ -1107,27 +1018,18 @@ const sensorEffectMap = {
   },
 };
 
-// ── 센서 카드에서 실험자가 직접 지정한 "역할" (키 이름과 무관하게 3D 효과 연결) ──
-// 예: 온도 센서가 2개(temp1=기온, temp2=수온)면 이름만으론 구분이 안 되니
-// 실험자가 카드의 드롭다운으로 "이 값은 기온/수온이다"를 직접 지정한다.
+// ── 센서별 "역할" (어떤 3D 효과로 이어지는지) ──────────────────
+// 실험 준비의 '센서 배치'에서 정한다 (live-setup.js의 setSensorPlacement): 놓은 구역 + 센서 종류 → 역할.
+// 예: 물속에 놓은 온도 센서 = 수온, 도시 공기에 놓은 온도 센서 = 기온.
 // 수온은 아직 전용 3D 효과가 없어서 기온과 동일하게 처리(TODO: 수온 전용 효과 추가 시 분리).
 const sensorRoles = {}; // { [센서 키]: roleId }
-const sensorRoleOptions = [
-  { id: '', label: '자동' },
-  { id: 'air_temp', label: '기온' },
-  { id: 'water_temp', label: '수온' },
-  { id: 'co2', label: 'CO2' },
-  { id: 'ph', label: 'pH' },
-  { id: 'hum', label: '습도' },
-  { id: 'methane', label: '메탄' },
-];
 const roleToEffectKey = { air_temp: 'temp', water_temp: 'temp', co2: 'co2', ph: 'ph', hum: 'hum', methane: 'methane' };
 
 function applyLiveSensorEffects() {
   let matched = false;
   const usedEffectKeys = new Set();
 
-  // 1) 실험자가 역할을 직접 지정한 키가 우선 (이름이 뭐든 상관없이 적용)
+  // 1) 아크릴 위에 배치한 센서가 우선 (이름이 뭐든 상관없이 적용)
   for (const [key, role] of Object.entries(sensorRoles)) {
     const effectKey = roleToEffectKey[role];
     const d = liveLatest[key];
@@ -1137,11 +1039,11 @@ function applyLiveSensorEffects() {
     matched = true;
   }
 
-  // 2) 역할이 지정 안 된 키는 기존처럼 키 이름 정확 일치로 자동 인식
+  // 2) 배치 안 한 키는 기존처럼 키 이름 정확 일치로 자동 인식
   for (const [effectKey, applyEffect] of Object.entries(sensorEffectMap)) {
     if (usedEffectKeys.has(effectKey)) continue;
     const matchedKey = [...liveKnownKeys].find(k => !sensorRoles[k] && k.toLowerCase() === effectKey);
-    if (matchedKey && typeof liveLatest[matchedKey].value === 'number') {
+    if (matchedKey && liveLatest[matchedKey] && typeof liveLatest[matchedKey].value === 'number') {
       applyEffect(liveLatest[matchedKey].value);
       matched = true;
     }
@@ -1150,108 +1052,20 @@ function applyLiveSensorEffects() {
   if (matched) applyState(sceneLive);
 }
 
-// ── 실험 설정 (자동 시작 조건 · 자동 종료 시간) ──────────────────
-// 둘 다 체크했을 때만 쓰는 선택 기능이다. 체크하지 않으면 예전처럼 '실험 시작'을 누르는 즉시 기록한다.
-// 설정값은 이 브라우저에만 기억해 둔다 (다음 수업에 다시 열어도 그대로).
-const EXP_SETTINGS_KEY = 'liveExpSettings';
-let expSettings = { triggerOn: false, trigKey: '', trigOp: '>=', trigValue: 8000, stopOn: false, stopH: 6, stopM: 0 };
-try { Object.assign(expSettings, JSON.parse(localStorage.getItem(EXP_SETTINGS_KEY) || '{}')); } catch (e) { /* 저장소를 못 쓰는 환경이면 기본값 */ }
-
-function expSettingsSummary() {
-  const parts = [];
-  if (expSettings.triggerOn && expSettings.trigKey) parts.push(`자동 시작: ${expSettings.trigKey} ${expSettings.trigOp === '<=' ? '≤' : '≥'} ${expSettings.trigValue}`);
-  if (expSettings.stopOn) parts.push(`자동 종료: ${expSettings.stopH}시간 ${expSettings.stopM}분 뒤`);
-  return parts.join(' · ');
-}
-
-function openExpSettings() {
-  const keys = [...liveKnownKeys].sort();
-  if (expSettings.trigKey && !keys.includes(expSettings.trigKey)) keys.unshift(expSettings.trigKey);
-  document.getElementById('esTriggerOn').checked = expSettings.triggerOn;
-  document.getElementById('esTrigKey').innerHTML = keys.length
-    ? buildKeyOptionsHtml(expSettings.trigKey || keys[0], keys)
-    : '<option value="">(아직 들어온 센서 값이 없어요)</option>';
-  document.getElementById('esTrigOp').value = expSettings.trigOp;
-  document.getElementById('esTrigValue').value = expSettings.trigValue;
-  document.getElementById('esStopOn').checked = expSettings.stopOn;
-  document.getElementById('esStopH').value = expSettings.stopH;
-  document.getElementById('esStopM').value = expSettings.stopM;
-  syncExpSettingsInputs();
-  document.getElementById('expSettingsModal').classList.add('visible');
-}
-
-function syncExpSettingsInputs() {
-  const t = document.getElementById('esTriggerOn').checked;
-  const s = document.getElementById('esStopOn').checked;
-  ['esTrigKey', 'esTrigOp', 'esTrigValue'].forEach(id => { document.getElementById(id).disabled = !t; });
-  ['esStopH', 'esStopM'].forEach(id => { document.getElementById(id).disabled = !s; });
-}
-document.getElementById('esTriggerOn').addEventListener('change', syncExpSettingsInputs);
-document.getElementById('esStopOn').addEventListener('change', syncExpSettingsInputs);
-
-document.getElementById('expSettingsSaveBtn').addEventListener('click', () => {
-  const next = {
-    triggerOn: document.getElementById('esTriggerOn').checked,
-    trigKey: document.getElementById('esTrigKey').value,
-    trigOp: document.getElementById('esTrigOp').value,
-    trigValue: Number(document.getElementById('esTrigValue').value),
-    stopOn: document.getElementById('esStopOn').checked,
-    stopH: Math.max(0, Math.floor(Number(document.getElementById('esStopH').value) || 0)),
-    stopM: Math.max(0, Math.min(59, Math.floor(Number(document.getElementById('esStopM').value) || 0))),
-  };
-  if (next.triggerOn && (!next.trigKey || !Number.isFinite(next.trigValue))) {
-    showLiveToast('자동 시작 조건의 센서와 값을 정해 주세요. 센서 목록은 보드 값이 한 번 들어와야 생겨요.', true);
-    return;
-  }
-  if (next.stopOn && next.stopH * 60 + next.stopM <= 0) {
-    showLiveToast('자동 종료 시간은 1분 이상으로 넣어 주세요', true);
-    return;
-  }
-  expSettings = next;
-  try { localStorage.setItem(EXP_SETTINGS_KEY, JSON.stringify(expSettings)); } catch (e) { /* 기억 못 해도 이번엔 동작 */ }
-  document.getElementById('expSettingsModal').classList.remove('visible');
-  renderLiveStatus();
-});
-document.getElementById('expSettingsCancelBtn').addEventListener('click', () => {
-  document.getElementById('expSettingsModal').classList.remove('visible');
-});
-document.getElementById('expSettingsBtn').addEventListener('click', openExpSettings);
-
-// ── 실험 시작/종료 + 안내 모달 ──────────────────────────
-// '다시 보지 않기'는 이번 실험(시작~종료) 동안에만 유효한 메모리 플래그.
-// '실험 종료'를 누르면 초기화되므로, 다음에 '실험 시작'을 누르면 안내 모달이 다시 뜬다.
-let modalDismissedThisRun = false;
-
-function beginExperimentSession() {
-  const config = {};
-  if (expSettings.triggerOn && expSettings.trigKey) {
-    const ki = keyInfo[expSettings.trigKey] || { raw: expSettings.trigKey, dev: null };
-    config.trigger = { key: ki.raw, dev: ki.dev, op: expSettings.trigOp, value: expSettings.trigValue };
-  }
-  if (expSettings.stopOn) config.durationSec = (expSettings.stopH * 60 + expSettings.stopM) * 60;
-  if (!liveSend({ _type: 'session', action: 'start', config })) {
-    showLiveToast('서버에 연결되지 않아 실험을 시작할 수 없어요', true);
-  }
-}
-
+// ── 실험 시작/종료 (실험 화면 위쪽 버튼) ──────────────────
+// 처음 시작은 실험 준비 화면의 '실험 시작'으로 한다. 여기 버튼은 같은 준비 내용으로 다시 시작할 때 쓴다.
+// 자동 시작 조건·자동 종료 시간은 실험 준비의 '실험 설계 → 시뮬레이션 설정'에 있다 (live-setup.js).
 function startExperiment() {
   if (liveSession.state === 'armed' || liveSession.state === 'recording') return;
-  if (modalDismissedThisRun) beginExperimentSession();
-  else document.getElementById('liveFormatModal').classList.add('visible');
+  if (!liveSend({ _type: 'session', action: 'start', config: simConfigFromSetup() })) {
+    showLiveToast('서버에 연결되지 않아 실험을 시작할 수 없어요', true);
+  }
 }
 
 async function endExperiment() {
   if (!await liveConfirm('실험을 끝낼까요? 끝난 뒤에도 기록은 남아 있고, 아래에서 분석·편집·내보내기를 할 수 있어요.')) return;
   liveSend({ _type: 'session', action: 'stop' });
-  modalDismissedThisRun = false;   // 다음 실험 시작 때 안내 모달이 다시 뜨도록 초기화
 }
-
-document.getElementById('modalCloseBtn').addEventListener('click', () => {
-  const dontShow = document.getElementById('dontShowAgain').checked;
-  if (dontShow) modalDismissedThisRun = true;
-  document.getElementById('liveFormatModal').classList.remove('visible');
-  beginExperimentSession();
-});
 
 document.getElementById('startExperimentBtn').addEventListener('click', startExperiment);
 document.getElementById('endExperimentBtn').addEventListener('click', endExperiment);
@@ -1295,291 +1109,5 @@ function activateLiveTab() {
   renderLiveStatus();
   renderDevicePanel(true);
   connectLiveSocket();
+  showLiveSetup();
 }
-
-// ── 기본 실험: 1)보드 선택 → 2)센서 다중선택(체크박스) → 3)회로도·코드 상세 ──────
-// basic_experiments/index.json(서버가 폴더 스캔해서 자동 생성, {id,title,board,sensors:[]}[])
-// → basic_experiments/<id>/info.json + code.ino → 상세 (핀맵/사양은 info.json에 텍스트로 기재)
-// 폴더 하나 = 보드 하나 + 센서 조합 하나(복수 가능, 예: ["TMP36","SCD30"]).
-// 체크한 센서 집합과 폴더의 sensors 배열이 "정확히 일치"하는 폴더만 결과로 보여줌
-// (부분 포함 매칭 X — 학생이 실제로 가진 센서 구성과 다른 코드를 잘못 받는 걸 방지).
-let basicExpIndexCache = null;
-let basicExpSelectedBoard = null;
-let basicExpBoardExps = [];
-
-async function openBasicExpBoards() {
-  document.getElementById('basicExpBoardModal').classList.add('visible');
-  if (basicExpIndexCache) { renderBasicExpBoards(); return; }
-  try {
-    const res = await fetch('/basic_experiments/index.json');
-    basicExpIndexCache = await res.json();
-    renderBasicExpBoards();
-  } catch (e) {
-    document.getElementById('basicExpBoardList').innerHTML =
-      '<div class="empty-hint">목록을 불러오지 못했습니다. server.py가 실행 중인지 확인하세요.</div>';
-  }
-}
-
-function renderBasicExpBoards() {
-  const boards = [...new Set(basicExpIndexCache.map(exp => exp.board))];
-  const wrap = document.getElementById('basicExpBoardList');
-  wrap.innerHTML = boards.map(board => `
-    <button class="basic-exp-card" data-board="${escHtml(board)}">
-      <div class="title">${escHtml(board)}</div>
-    </button>`).join('');
-  wrap.querySelectorAll('.basic-exp-card').forEach(card => {
-    card.addEventListener('click', () => openBasicExpSensors(card.dataset.board));
-  });
-}
-
-function openBasicExpSensors(board) {
-  basicExpSelectedBoard = board;
-  basicExpBoardExps = basicExpIndexCache.filter(exp => exp.board === board);
-  document.getElementById('basicExpSensorBoardLabel').textContent = `선택한 보드: ${board}`;
-
-  const allTags = [...new Set(basicExpBoardExps.flatMap(exp => exp.sensors))].sort();
-  document.getElementById('basicExpSensorChecks').innerHTML = allTags.length > 0
-    ? allTags.map(tag => `
-      <label class="basic-exp-sensor-check">
-        <input type="checkbox" value="${escHtml(tag)}" onchange="renderBasicExpSensorMatches()"> ${escHtml(tag)}
-      </label>`).join('')
-    : '<div class="empty-hint">이 보드에는 아직 특정 센서로 등록된 코드가 없습니다. 아래는 일반 연결 예시입니다.</div>';
-
-  renderBasicExpSensorMatches();
-  document.getElementById('basicExpBoardModal').classList.remove('visible');
-  document.getElementById('basicExpSensorModal').classList.add('visible');
-}
-
-function sameSensorSet(a, b) {
-  return a.length === b.length && a.every(x => b.includes(x));
-}
-
-function renderBasicExpSensorMatches() {
-  const checked = [...document.querySelectorAll('#basicExpSensorChecks input:checked')].map(el => el.value);
-  const matches = basicExpBoardExps.filter(exp => sameSensorSet(exp.sensors, checked));
-  const wrap = document.getElementById('basicExpSensorList');
-
-  if (matches.length === 0) {
-    wrap.innerHTML = `<div class="empty-hint">${checked.length === 0
-      ? '체크한 것 없이도 이 조합의 일반 연결 예시가 없습니다.'
-      : '이 센서 조합의 코드가 아직 준비되지 않았습니다.'}</div>`;
-    return;
-  }
-  wrap.innerHTML = matches.map(exp => `
-    <button class="basic-exp-card" data-id="${escHtml(exp.id)}">
-      <div class="title">${escHtml(exp.title)}</div>
-    </button>`).join('');
-  wrap.querySelectorAll('.basic-exp-card').forEach(card => {
-    card.addEventListener('click', () => openBasicExpDetail(card.dataset.id));
-  });
-}
-
-async function openBasicExpDetail(id) {
-  const [info, code] = await Promise.all([
-    fetch(`/basic_experiments/${id}/info.json`).then(r => r.json()),
-    fetch(`/basic_experiments/${id}/code.ino`).then(r => r.text()),
-  ]);
-
-  document.getElementById('basicExpTitle').textContent = info.title;
-  document.getElementById('basicExpSummary').textContent = info.summary;
-
-  const notesBtn = document.getElementById('basicExpNotesBtn');
-  if (info.notes && info.notes.length > 0) {
-    document.getElementById('basicExpNotesModalList').innerHTML = info.notes.map(n => `<li>${n}</li>`).join('');
-    notesBtn.style.display = '';
-  } else {
-    notesBtn.style.display = 'none';
-  }
-
-  const codeInfoBtn = document.getElementById('basicExpCodeInfoBtn');
-  if (info.codeInfo) {
-    const ci = info.codeInfo;
-    const rows = [
-      ['설명', ci.description],
-      ['필요 라이브러리', ci.libraries],
-      ['데이터 출력 간격', ci.sendInterval],
-      ['데이터 측정 간격', ci.measureInterval],
-      ['통신 끊김/실패 시', ci.onFailure],
-      ['원격 제어', ci.control],
-    ].filter(([, v]) => v);
-    document.getElementById('basicExpCodeInfoContent').innerHTML =
-      `<table class="pinmap-table"><tbody>${rows.map(([l, v]) => `<tr><th>${l}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
-    codeInfoBtn.style.display = '';
-  } else {
-    codeInfoBtn.style.display = 'none';
-  }
-
-  const specBtn = document.getElementById('basicExpSpecBtn');
-  if (info.specs && info.specs.length > 0) {
-    document.getElementById('basicExpSpecModalContent').innerHTML = info.specs.map(group => `
-      <div class="pinmap-device-title">${group.device}</div>
-      <table class="pinmap-table">
-        <tbody>${group.items.map(it => `<tr><th>${it.label}</th><td>${it.value}</td></tr>`).join('')}</tbody>
-      </table>`).join('');
-    specBtn.style.display = '';
-  } else {
-    specBtn.style.display = 'none';
-  }
-
-  const pinmapSection = document.getElementById('basicExpPinmapSection');
-  if (info.pinmap && info.pinmap.length > 0) {
-    document.getElementById('basicExpPinmaps').innerHTML = info.pinmap.map(group => `
-      <div class="pinmap-device-title">${group.device}</div>
-      <table class="pinmap-table">
-        <thead><tr><th>보드</th><th>${group.device}</th></tr></thead>
-        <tbody>${group.pins.map(p => `<tr><td>${p.board}</td><td>${p.device}</td></tr>`).join('')}</tbody>
-      </table>`).join('');
-    pinmapSection.style.display = '';
-  } else {
-    pinmapSection.style.display = 'none';
-  }
-
-  setupCodeSettings(id, code, info);
-
-  document.getElementById('basicExpSensorModal').classList.remove('visible');
-  document.getElementById('basicExpDetailModal').classList.add('visible');
-}
-
-document.getElementById('basicExpCopyBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('basicExpCopyBtn');
-  try {
-    await navigator.clipboard.writeText(codeSettingsState.code);
-    const original = btn.textContent;
-    btn.textContent = '복사됨!';
-    setTimeout(() => { btn.textContent = original; }, 1200);
-  } catch (e) {
-    btn.textContent = '복사 실패 (직접 선택해서 복사해주세요)';
-  }
-});
-
-document.getElementById('basicExperimentsBtn').addEventListener('click', openBasicExpBoards);
-document.getElementById('basicExpBoardCloseBtn').addEventListener('click', () => {
-  document.getElementById('basicExpBoardModal').classList.remove('visible');
-});
-document.getElementById('basicExpSensorBackBtn').addEventListener('click', () => {
-  document.getElementById('basicExpSensorModal').classList.remove('visible');
-  document.getElementById('basicExpBoardModal').classList.add('visible');
-});
-document.getElementById('basicExpDetailBackBtn').addEventListener('click', () => {
-  document.getElementById('basicExpDetailModal').classList.remove('visible');
-  if (basicExpSelectedBoard) openBasicExpSensors(basicExpSelectedBoard);
-  else document.getElementById('basicExpBoardModal').classList.add('visible');
-});
-document.getElementById('basicExpSpecBtn').addEventListener('click', () => {
-  document.getElementById('basicExpSpecModal').classList.add('visible');
-});
-document.getElementById('basicExpSpecCloseBtn').addEventListener('click', () => {
-  document.getElementById('basicExpSpecModal').classList.remove('visible');
-});
-document.getElementById('basicExpCodeInfoBtn').addEventListener('click', () => {
-  document.getElementById('basicExpCodeInfoModal').classList.add('visible');
-});
-document.getElementById('basicExpCodeInfoCloseBtn').addEventListener('click', () => {
-  document.getElementById('basicExpCodeInfoModal').classList.remove('visible');
-});
-document.getElementById('basicExpNotesBtn').addEventListener('click', () => {
-  document.getElementById('basicExpNotesModal').classList.add('visible');
-});
-document.getElementById('basicExpNotesCloseBtn').addEventListener('click', () => {
-  document.getElementById('basicExpNotesModal').classList.remove('visible');
-});
-
-// ── 코드 설정 바꿔서 다운로드 ──────────────────────────────
-// 스케치 맨 위의 설정 줄(측정 간격·핀 번호·WiFi 이름 등)을 입력칸으로 보여 주고,
-// 바꾼 값으로 코드를 다시 만들어 미리보기·복사·다운로드에 그대로 쓴다.
-//   표준 코드: 줄 끝에 "// @설정 이름 | 단위 | 설명" 표시가 붙은 줄만 보여 준다 (골라 둔 것만).
-//   예전 코드: 표시가 없으면 setup() 앞에 있는 숫자·문자열 상수를 전부 보여 준다.
-const codeSettingsState = { id: '', original: '', code: '', items: [] };
-
-function parseSketchSettings(code) {
-  const lines = code.split('\n');
-  const setupIdx = lines.findIndex(l => /^\s*void\s+setup\s*\(/.test(l));
-  const items = [];
-  lines.forEach((line, i) => {
-    if (setupIdx !== -1 && i >= setupIdx) return;
-    let m = line.match(/^(\s*(?:static\s+)?const\s+[\w\s*]*?[\s*])(\w+)(\s*=\s*)("(?:[^"\\]|\\.)*"|[-+]?\d+(?:\.\d+)?[uUlLfF]*|A\d+)(\s*;)(.*)$/);
-    let kind = 'const';
-    if (!m) {
-      m = line.match(/^(\s*#define\s+)(\w+)(\s+)("(?:[^"\\]|\\.)*"|[-+]?\d+(?:\.\d+)?[uUlLfF]*|A\d+)()(\s*(?:\/\/.*)?)$/);
-      kind = 'define';
-    }
-    if (!m) return;
-    const [, pre, name, mid, rawValue, semi, tail] = m;
-    const comment = (tail.match(/\/\/\s*(.*)$/) || [])[1] || '';
-    const marker = comment.match(/^@설정\s*(.*)$/);
-    const isString = rawValue.startsWith('"');
-    const suffix = isString ? '' : (rawValue.match(/[uUlLfF]+$/) || [''])[0];
-    const value = isString ? rawValue.slice(1, -1).replace(/\\(.)/g, '$1') : rawValue.slice(0, rawValue.length - suffix.length);
-    let label = name, unit = '', help = comment;
-    if (marker) [label = name, unit = '', help = ''] = marker[1].split('|').map(s => s.trim());
-    items.push({ line: i, name, pre, mid, semi, tail, suffix, isString, value, original: value, label, unit, help, marked: !!marker, kind });
-  });
-  return items.some(it => it.marked) ? items.filter(it => it.marked) : items;
-}
-
-function msHint(item) {
-  if (!/_MS$/.test(item.name) && item.unit !== 'ms') return '';
-  const v = Number(item.value);
-  if (!Number.isFinite(v)) return '';
-  return v >= 60000 ? `= ${fmtNum(v / 60000)}분` : `= ${fmtNum(v / 1000)}초`;
-}
-
-function rebuildSketchCode() {
-  const lines = codeSettingsState.original.split('\n');
-  for (const it of codeSettingsState.items) {
-    const v = it.isString ? `"${String(it.value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : `${it.value}${it.suffix}`;
-    lines[it.line] = `${it.pre}${it.name}${it.mid}${v}${it.semi}${it.tail}`;
-  }
-  codeSettingsState.code = lines.join('\n');
-  document.getElementById('basicExpCode').textContent = codeSettingsState.code;
-  const changed = codeSettingsState.items.filter(it => String(it.value) !== String(it.original)).length;
-  document.getElementById('codeSettingsChanged').textContent = changed ? `바꾼 설정 ${changed}개가 코드에 반영됐어요` : '';
-  document.getElementById('codeSettingsResetBtn').style.display = changed ? '' : 'none';
-}
-
-function setupCodeSettings(id, code, info) {
-  codeSettingsState.id = id;
-  codeSettingsState.original = code.replace(/\r\n/g, '\n'); // 윈도우 줄바꿈(CRLF)이면 줄 끝 \r 때문에 설정 줄을 못 알아봄
-  codeSettingsState.items = parseSketchSettings(code);
-  const section = document.getElementById('codeSettingsSection');
-  if (codeSettingsState.items.length === 0) {
-    section.style.display = 'none';
-  } else {
-    section.style.display = '';
-    renderCodeSettingsForm();
-  }
-  rebuildSketchCode();
-  document.getElementById('basicExpDownloadBtn').onclick = () => {
-    downloadBlob(new Blob([codeSettingsState.code], { type: 'text/plain;charset=utf-8' }), `${id}.ino`);
-  };
-}
-
-function renderCodeSettingsForm() {
-  document.getElementById('codeSettingsForm').innerHTML = codeSettingsState.items.map((it, idx) => {
-    const numeric = !it.isString && /^[-+]?\d/.test(it.original);
-    return `<div class="cs-row">
-      <div class="cs-label">${escHtml(it.label)}${it.label !== it.name ? ` <code>${escHtml(it.name)}</code>` : ''}</div>
-      <div class="cs-input-row">
-        <input class="modal-input" ${numeric ? 'type="number" step="any"' : 'type="text"'} value="${escHtml(it.value)}" data-cs="${idx}">
-        <span class="cs-unit">${escHtml(it.unit)}</span><span class="cs-hint" data-cshint="${idx}">${msHint(it)}</span>
-      </div>
-      ${it.help ? `<div class="cs-help">${escHtml(it.help)}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-
-document.getElementById('codeSettingsForm').addEventListener('input', (e) => {
-  const idx = e.target.dataset.cs;
-  if (idx == null) return;
-  const it = codeSettingsState.items[Number(idx)];
-  // 숫자 칸을 비우면 코드가 컴파일되지 않으므로 원래 값으로 둔다
-  it.value = !it.isString && e.target.value === '' ? it.original : e.target.value;
-  const hint = document.querySelector(`[data-cshint="${idx}"]`);
-  if (hint) hint.textContent = msHint(it);
-  rebuildSketchCode();
-});
-document.getElementById('codeSettingsResetBtn').addEventListener('click', () => {
-  codeSettingsState.items.forEach(it => { it.value = it.original; });
-  renderCodeSettingsForm();
-  rebuildSketchCode();
-});

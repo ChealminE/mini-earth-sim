@@ -7,13 +7,27 @@
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
+  html { background: #14171c; }
   body {
     font-family: system-ui, -apple-system, sans-serif;
-    background: radial-gradient(ellipse at 50% 20%, #1c2129 0%, #14171c 60%);
     color: #e7e9ec;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     min-height: 100vh; padding: 40px 20px;
+    /* 카드 사이 빈 곳의 마우스는 뒤의 3D 아크릴로 넘긴다 (끌어서 돌리기·휠 확대) */
+    pointer-events: none;
   }
+  .header, .grid, .footer-hint { position: relative; z-index: 2; }
+  .header, .card, .footer-hint, #gl-container { pointer-events: auto; }
+  /* 배경 = 진짜 3D 아크릴 모형 (다른 화면과 같은 js/common.js). 평소엔 천천히 저절로 돌고,
+     끌면 그쪽으로 돌다가 놓으면 다시 천천히 돈다. 3D가 뜨기 전·WebGL이 안 되는 PC에서는 사진이 보인다. */
+  #gl-container { position: fixed; inset: 0; z-index: 0;
+    background: #14171c url('/texture_image/start_bg.jpg') center 60% / cover no-repeat; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  #gl:active { cursor: grabbing; }
+  /* 3D(불투명)가 사진을 덮고, 그 위에 어두운 막을 씌워 옅게 보이게 */
+  .shade { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(20,23,28,0.45) 0%, rgba(20,23,28,0.88) 78%); }
+  .footer-hint { text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
   .header { text-align: center; margin-bottom: 36px; }
   .header h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
   .header p { font-size: 13px; color: #9198a3; margin: 0; line-height: 1.6; }
@@ -26,11 +40,13 @@
 
   .card {
     display: flex; flex-direction: column; gap: 8px;
-    background: #1b1e24; border: 1px solid #2a2e35; border-radius: 14px;
+    background: rgba(27,30,36,0.78); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+    backdrop-filter: blur(6px);
     padding: 22px 20px; text-decoration: none; color: inherit;
     transition: border-color .15s, transform .15s, background .15s;
   }
-  .card:hover { border-color: #5DCAA5; background: #20242b; transform: translateY(-2px); }
+  .card:hover { border-color: #5DCAA5; background: rgba(32,36,43,0.9); transform: translateY(-2px); }
+  .header h1 { text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
   .card .icon { font-size: 28px; }
   .card .title { font-size: 15.5px; font-weight: 600; color: #e7e9ec; }
   .card .desc { font-size: 12px; color: #9198a3; line-height: 1.6; }
@@ -43,6 +59,9 @@
 </style>
 </head>
 <body>
+  <div id="gl-container"><canvas id="gl"></canvas></div>
+  <div class="shade"></div>
+
   <div class="header">
     <h1>미니 지구 모델 시뮬레이션</h1>
     <p>보고 싶은 화면을 골라 들어가세요. 언제든 각 화면 상단의 "처음으로"로 여기로 돌아올 수 있습니다.</p>
@@ -62,7 +81,7 @@
     <a class="card" href="/dashboard?tab=live">
       <div class="icon">🔬</div>
       <div class="title">직접 실험</div>
-      <div class="desc">아두이노 등 보드로 측정한 센서 데이터를 실시간 그래프로 관찰</div>
+      <div class="desc">보드·센서를 골라 코드를 받고, 아크릴 모형에 센서를 배치해 실시간으로 측정·기록·분석</div>
     </a>
     <a class="card" href="/firstperson/">
       <div class="icon">🧭</div>
@@ -72,6 +91,25 @@
     </a>
   </div>
 
-  <div class="footer-hint">server.py가 실행 중이어야 정상적으로 열립니다.</div>
+  <div class="footer-hint">server.py가 실행 중이어야 정상적으로 열립니다 · 빈 곳을 끌면 모형을 돌려 볼 수 있어요</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/earth-model.js?v=4"></script>
+<script src="js/common.js?v=4"></script>
+<script>
+  // 대시보드와 같은 아크릴 씬을 배경으로 하나만 띄운다 (common.js의 animate()는 bundles[activeTab]을 그린다)
+  const homeScene = buildAcrylicScene();
+  const bundles = { home: homeScene };
+  let activeTab = 'home';
+  applyState(homeScene);
+  fitRenderer();
+  window.addEventListener('resize', fitRenderer);
+  animate();
+  // 끌고 있지 않을 때만 천천히 저절로 회전 (끌어서 돌린 각도에서 이어서 돈다)
+  (function autoSpin() {
+    requestAnimationFrame(autoSpin);
+    if (!isDragging) { camAngleY += 0.0018; updateCamera(); }
+  })();
+</script>
 </body>
 </html>

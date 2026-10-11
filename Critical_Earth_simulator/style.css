@@ -75,10 +75,13 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 .experiment-btn.end { background: #2a2e35; color: #e7e9ec; }
 .experiment-btn.end:hover:not(:disabled) { background: #3a3f47; }
 .experiment-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-#liveGraphs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
-.graph-card { background: #1f2329; border: 1px solid #2a2e35; border-radius: 8px; padding: 10px; margin-bottom: 0;
-  cursor: grab; }
-.graph-card.drag-over { outline: 2px solid #5DCAA5; outline-offset: 2px; }
+/* 그래프는 한 번에 하나(.active)만 칸 가득 보이고, 아래 탭(.graph-nav)으로 넘긴다 - 스크롤바가 안 생기게 */
+#liveGraphs { flex: 1 1 auto; min-height: 0; position: relative; }
+.graph-card { display: none; position: absolute; inset: 0; flex-direction: column; background: #1f2329;
+  border: 1px solid #2a2e35; border-radius: 8px; padding: 8px 10px 10px; }
+.graph-card.active { display: flex; }
+.graph-card .chart-wrap { flex: 1 1 auto; min-height: 0; height: auto; }
+.graph-card .graph-title-display { cursor: grab; }
 
 /* 1fr(빈 공간) / auto(제목) / 1fr(아이콘, 오른쪽 정렬) 3열 그리드로 제목을 카드 정중앙에 배치 */
 .graph-card-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; margin-bottom: 8px; }
@@ -90,12 +93,23 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 .icon-btn:hover { color: #e7e9ec; background: #23272f; }
 .icon-btn.remove-btn:hover { color: #E24B4A; }
 
-.merge-drop-hint { font-size: 9.5px; color: #565b62; text-align: center; margin-top: 8px;
-  padding: 4px; border: 1px dashed #2a2e35; border-radius: 6px; }
-.add-graph-btn { width: 100%; background: #23272f; border: 1px dashed #3a3f47; color: #9198a3;
-  font-size: 11px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 16px; }
-.add-graph-btn:hover { color: #e7e9ec; border-color: #5DCAA5; }
-.add-graph-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 그래프 아래 ◀ [1 co2] [2 temp] [+] ▶ - 탭을 누르면 그 그래프로, 그래프를 다른 탭 위에 끌어다 놓으면 합치기 */
+.graph-nav { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; margin-top: 8px; min-width: 0; }
+.graph-tabs { flex: 1 1 auto; min-width: 0; display: flex; gap: 6px; justify-content: center; }
+.graph-tab { min-width: 0; max-width: 180px; display: flex; align-items: center; gap: 5px; background: #23272f;
+  border: 1px solid #2a2e35; color: #9198a3; font-size: 11px; padding: 5px 10px; border-radius: 14px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph-tab:hover { color: #e7e9ec; border-color: #3a3f47; }
+.graph-tab.active { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; }
+.graph-tab.add { flex: 0 0 auto; font-size: 13px; font-weight: 600; padding: 3px 11px; border-style: dashed; }
+.graph-tab.add:disabled { opacity: 0.35; cursor: not-allowed; }
+.graph-tab-num { font-size: 10px; font-weight: 700; opacity: .75; }
+.graph-nav.dragging .graph-tab[data-graph] { border-style: dashed; border-color: #5DCAA5; }
+.graph-tab.drag-over { background: #2f8f7a !important; color: #fff !important; }
+.graph-nav-arrow { flex: 0 0 auto; width: 30px; height: 28px; background: #23272f; border: 1px solid #2a2e35;
+  color: #cfd3da; border-radius: 7px; cursor: pointer; font-size: 11px; }
+.graph-nav-arrow:hover:not(:disabled) { border-color: #5DCAA5; color: #fff; }
+.graph-nav-arrow:disabled { opacity: 0.3; cursor: not-allowed; }
 .sensor-role-select { width: 100%; background: #1a1d22; border: 1px solid #2a2e35; color: #9198a3;
   font-size: 10px; padding: 3px 4px; border-radius: 5px; margin-top: 6px; }
 .empty-hint { grid-column: 1 / -1; font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
@@ -127,8 +141,7 @@ body.live-mode #tab-live.active { display: flex; flex-direction: column; height:
 .live-dot.armed { background: #EF9F27; }
 .live-dot.rec { animation: rec-blink 1.4s infinite; }
 @keyframes rec-blink { 50% { opacity: .35; } }
-.live-graphs-area { flex: 1 1 auto; min-height: 60px; overflow-y: auto; }
-.live-graphs-area .add-graph-btn { margin-bottom: 4px; }
+.live-graphs-area { flex: 1 1 auto; min-height: 120px; overflow: hidden; display: flex; flex-direction: column; }
 .live-splitter { flex: 0 0 9px; cursor: row-resize; position: relative; margin: 2px 0; }
 .live-splitter::after { content: ''; position: absolute; left: 50%; top: 3px; width: 46px; height: 3px;
   margin-left: -23px; border-radius: 2px; background: #3a3f47; }
@@ -220,3 +233,97 @@ body.live-mode #tab-live.active { display: flex; flex-direction: column; height:
 .cs-footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 20px; }
 .cs-changed { font-size: 11px; color: #EF9F27; margin-right: auto; }
 .code-preview { max-height: 260px; overflow: auto; }
+/* ── 직접 실험 - 실험 준비 화면 (body.live-setup) ─────────────────────────
+   아크릴 3D(#gl-container)를 화면 가득 깔고, 그 위에 처음 카드 / 오른쪽 단계 창 / 오른쪽 아래 '실험 시작'을 띄운다.
+   다른 칸은 그대로 두고 덮기만 한다 (확인 창 같은 모달이 #graph-panel 안에 있어서 숨기면 안 됨). */
+#liveSetup { display: none; }
+body.live-setup #gl-container { position: fixed; inset: 0; z-index: 5; border: none; }
+body.live-setup #hint { display: none; }
+body.live-setup #liveSetup { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #e7e9ec; }
+body.live-setup #liveSetup > * { pointer-events: auto; }
+body.live-setup #liveSetup .ls-drop-hint { pointer-events: none; }
+body.live-setup #brightnessControl { z-index: 11; }
+
+.ls-back { font-size: 11.5px; color: #9aa1ab; text-decoration: none; }
+.ls-back:hover { color: #5DCAA5; }
+.ls-home { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(720px, 92vw);
+  background: rgba(20,23,28,0.78); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 16px; padding: 22px 26px; }
+.ls-home h1 { font-size: 21px; margin: 8px 0 4px; }
+.ls-name-line { font-size: 12.5px; color: #cfd3da; display: flex; gap: 8px; align-items: center; margin-bottom: 16px; min-height: 24px; }
+.ls-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .ls-cards { grid-template-columns: 1fr; } }
+.ls-card { text-align: left; font: inherit; color: inherit; background: #1b1e24; border: 1px solid #2a2e35; border-radius: 12px;
+  padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: border-color .15s, transform .15s; }
+.ls-card:hover { border-color: #5DCAA5; transform: translateY(-2px); }
+.ls-card .icon { font-size: 26px; }
+.ls-card .title { font-size: 15px; font-weight: 600; }
+.ls-card .desc { font-size: 12px; color: #9198a3; line-height: 1.6; }
+.ls-home-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+.ls-panel { position: absolute; top: 12px; right: 12px; bottom: 12px; width: min(480px, 46vw); display: flex; flex-direction: column;
+  background: rgba(20,23,28,0.9); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 14px; overflow: hidden; }
+body.ls-placing .ls-panel { width: min(400px, 38vw); bottom: 80px; }
+.ls-panel-head { padding: 12px 16px 10px; border-bottom: 1px solid #2a2e35; }
+.ls-panel-title { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ls-panel-name { font-size: 14px; font-weight: 600; margin-left: 4px; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; }
+.ls-step { color: #6b7178; }
+.ls-step.done { color: #9198a3; }
+.ls-step.active { color: #10231c; background: #5DCAA5; border-radius: 10px; padding: 2px 8px; font-weight: 600; }
+.ls-step-sep { color: #3a3f47; }
+.ls-panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; font-size: 12.5px; }
+.ls-panel-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 16px; border-top: 1px solid #2a2e35; }
+.ls-panel-foot .mini-btn { font-size: 12px; padding: 7px 12px; }
+.ls-panel-foot .mini-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.ls-section { background: #1b1e24; border: 1px solid #262a31; border-radius: 10px; padding: 11px 12px; margin-bottom: 10px; }
+.ls-section-title { font-size: 12.5px; font-weight: 600; color: #e7e9ec; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ls-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.ls-badge.warn { background: #2a2118; color: #EF9F27; border: 1px solid #6b4f2a; }
+.ls-badge.ok { background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a; }
+.ls-pick-label { font-size: 11px; color: #9198a3; margin: 10px 0 5px; }
+.ls-chips, .ls-board-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ls-board-tabs { margin-bottom: 10px; }
+.ls-chip { font: inherit; font-size: 11.5px; background: #23272f; border: 1px solid #2a2e35; color: #cfd3da; border-radius: 14px; padding: 5px 11px; cursor: pointer; }
+.ls-chip:hover { border-color: #3a3f47; color: #fff; }
+.ls-chip.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; }
+.ls-matches { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ls-match { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #23272f; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.ls-board { display: flex; align-items: center; gap: 10px; background: #23272f; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+.ls-board-num { width: 22px; height: 22px; border-radius: 50%; background: #10231c; color: #5DCAA5; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ls-board-main { flex: 1; min-width: 0; }
+.ls-board-title { font-size: 12.5px; font-weight: 600; }
+.ls-board-sub { font-size: 10.5px; color: #9198a3; }
+.ls-info td { text-align: left; }
+.ls-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.ls-row .modal-input { flex: 1; width: auto; min-width: 0; }
+.ls-check { display: flex; gap: 6px; align-items: center; font-size: 12px; margin-top: 8px; cursor: pointer; }
+.ls-details { margin-top: 8px; }
+.ls-details summary { cursor: pointer; font-size: 11.5px; color: #9198a3; }
+.ls-callout { background: rgba(239,159,39,.1); border: 1px solid rgba(239,159,39,.35); color: #f2d29b; border-radius: 8px; padding: 8px 10px; font-size: 11.5px; margin-bottom: 8px; line-height: 1.6; }
+.ls-guide { margin: 8px 0 0; padding-left: 20px; font-size: 11.5px; color: #cfd3da; line-height: 1.7; }
+.cs-row.changed { border-color: #6b4f2a; }
+.ls-conn { font-size: 12px; padding: 6px 8px; border-radius: 7px; margin-bottom: 5px; background: #23272f; display: flex; flex-direction: column; gap: 2px; }
+.ls-conn span { font-size: 10.5px; color: #9198a3; }
+.ls-conn.ok { border-left: 3px solid #5DCAA5; }
+.ls-conn.wait { border-left: 3px solid #EF9F27; }
+.ls-sensor-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ls-sensor { cursor: grab; background: #10231c; border: 1px solid #2f8f7a; color: #cdeee2; border-radius: 16px; padding: 6px 12px; font-size: 12px; user-select: none; }
+.ls-sensor span { color: #7fd4b6; margin-left: 4px; }
+.ls-sensor:active { cursor: grabbing; }
+.ls-placed { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.ls-placed-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; background: #23272f; border-radius: 7px; padding: 5px 8px; flex-wrap: wrap; }
+.ls-placed-row .modal-input { width: auto; padding: 3px 5px; font-size: 11px; }
+.ls-effect { color: #85B7EB; font-size: 11px; }
+.ls-drop-hint { display: none; position: absolute; left: 24px; top: 24px; background: #10231c; border: 1px dashed #5DCAA5; color: #cdeee2;
+  padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+body.ls-dragging .ls-drop-hint { display: block; }
+.ls-start { position: absolute; right: 24px; bottom: 20px; font: inherit; font-size: 15px; font-weight: 700; padding: 13px 26px;
+  border: none; border-radius: 12px; background: #5DCAA5; color: #10231c; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.ls-start:hover { background: #4fb890; }
+.ls-zone-pop { display: none; position: fixed; z-index: 20; background: #1b1e24; border: 1px solid #2f8f7a; border-radius: 10px; padding: 10px; gap: 6px; flex-wrap: wrap; width: 230px; }
+.ls-zone-pop.visible { display: flex; }
+.ls-pop-title { width: 100%; font-size: 12px; margin-bottom: 4px; }
+.live-exp-name { font-size: 12px; font-weight: 600; color: #e7e9ec; }
+.live-exp-name:empty { display: none; }

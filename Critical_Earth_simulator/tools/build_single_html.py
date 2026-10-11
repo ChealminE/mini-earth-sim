@@ -98,7 +98,7 @@ BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
 AERIAL_JS = ["js/earth-model.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
-             "js/live-analysis.js", "js/main.js"]
+             "js/live-analysis.js", "js/live-setup.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
          "firstperson/fp-audio.js", "firstperson/fp-minimap.js", "firstperson/fp-field.js",
          "firstperson/fp-tools.js", "firstperson/fp-player.js", "firstperson/fp-main.js"]
@@ -107,7 +107,9 @@ FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather
 # index.html 쪽에 스크립트가 추가됐는데 이 목록을 안 고치면 조용히 깨진 파일이 나온다.
 # 빌드할 때마다 HTML의 실제 <script src> 순서와 대조해서, 어긋나면 즉시 멈춘다.
 def script_srcs(html):
-    return [s for s in re.findall(r'<script[^>]+src="([^"]+)"', html) if "cdn.jsdelivr.net" not in s]
+    # three.js·Chart.js는 빌더가 vendor/ 에서 직접 넣으므로 목록 대조에서 뺀다 (CDN 주소든 vendor/ 주소든)
+    return [s for s in re.findall(r'<script[^>]+src="([^"]+)"', html)
+            if "cdn.jsdelivr.net" not in s and not s.lstrip("/").startswith("vendor/")]
 
 
 def norm_src(s, prefix):
