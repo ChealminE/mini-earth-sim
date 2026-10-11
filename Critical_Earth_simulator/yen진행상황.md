@@ -94,7 +94,8 @@
 - [x] 우노 R3 + MH-Z19B(USB 시리얼 방식)로 실제 하드웨어 연결 테스트 성공 — 실측 CO2 값이 대시보드/3D 씬까지 정상 연동됨 (SoftwareSerial 반이중 이슈 자가복구 로직 추가 후 안정화)
 - [ ] ESP32/우노+HM-10(BLE 방식)으로 실제 하드웨어 연결 테스트 (하드웨어 준비되면 진행)
 - [x] 원격 제어 표준 코드 6종 `basic_experiments/std_*` (우노 R3 USB·HM-10·HC-06 / ESP32-DevKitC V4 WiFi-MQTT·BLE·USB) — 우노 3종 컴파일 확인 (2026-10-11)
-- [ ] ESP32 표준 코드 3종 Arduino IDE에서 컴파일 확인
+- [x] 표준 코드 7번째 `std_esp32_wifi_bt` — 같은 측정값을 WiFi(MQTT)로 시뮬레이션에, 클래식 블루투스로 안드로이드 휴대폰('Serial Bluetooth Terminal' 앱)에 동시 전송. 휴대폰 쪽 기본 형식은 `elapsed_s,co2,temp,temp2` CSV(설정 `BT_FORMAT`으로 JSON 가능), 휴대폰에서 보낸 명령도 처리 (2026-10-11)
+- [ ] ESP32 표준 코드 4종 Arduino IDE에서 컴파일 확인 (`std_esp32_wifi_bt`는 Partition Scheme "Huge APP" 필요할 수 있음)
 - [ ] 표준 코드로 실제 보드 시험 (우노 USB → ESP32 WiFi·MQTT → BLE·HC-06 순서)
 - [ ] 기존 기본 실험 코드·회로도·설명 일괄 정리 (본인이 나중에 일괄 업로드하며 수정 예정 — 아래 '발견한 기존 문제' 포함)
 - [x] 본인이 직접 작성한 실제 센서 조합 코드 4종을 기본 실험으로 추가: MH-Z19B+DS18B20x2(우노 USB), MH-Z19B+TMP36+MQ-5(우노 USB), MH-Z19B x2(우노+HM-10 BLE), MH-Z19B(우노+HC-06 클래식 블루투스) — 전부 사람이 읽는 텍스트 출력이던 것을 JSON 출력으로 고치고, `uno_usb`에서 검증된 체크섬+반이중 안전지연+연속 3회 실패 시 자동 재시작 로직을 재사용해서 반영
