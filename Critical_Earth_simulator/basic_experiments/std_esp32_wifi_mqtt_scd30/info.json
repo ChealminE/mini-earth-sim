@@ -1,0 +1,89 @@
+{
+  "id": "std_esp32_wifi_mqtt_scd30",
+  "title": "[표준·원격 제어] ESP32 WiFi(MQTT) - SCD30(CO2·온도·습도)",
+  "board": "ESP32-DevKitC V4 (WiFi·MQTT)",
+  "connection": "WiFi - server.py 내장 MQTT 브로커(1883)",
+  "sensors": [
+    "SCD30"
+  ],
+  "summary": "SCD30 하나로 CO2·온도·습도를 재고 그 값을 WiFi(MQTT)(으)로 보내는 표준 코드입니다. 화면에서 센서 켜기·끄기, 측정 간격 바꾸기, 재부팅을 할 수 있습니다.",
+  "notes": [
+    "설정을 바꾸려면 '실험 설계'에서 값을 고친 뒤 코드를 받으세요. 고친 값이 코드에 그대로 들어갑니다.",
+    "받은 .ino 파일을 Arduino IDE로 열면 '같은 이름의 폴더를 만들까요?'라고 묻습니다 - '확인'을 누르세요.",
+    "SCD30은 I2C 센서라 SDA·SCL 두 선만 연결하면 됩니다 (TX·RX가 아님).",
+    "SCD30이 내놓는 온도는 자체 발열로 실제보다 조금 높을 수 있어요. 정확한 기온·수온·토양 온도는 DS18B20을 쓰세요.",
+    "WIFI_SSID·WIFI_PASSWORD·MQTT_SERVER는 꼭 바꿔야 합니다. MQTT_SERVER는 화면 ⓘ 연결 정보의 주소를 넣으세요.",
+    "ESP32는 2.4GHz 와이파이만 됩니다. 학교 와이파이가 기기끼리 통신을 막으면 휴대폰 핫스팟에 노트북과 같이 연결하세요."
+  ],
+  "codeInfo": {
+    "description": "SCD30에서 co2·temp·hum을 읽어 보냅니다. SCD30은 SCD30_INTERVAL_S마다 스스로 새 값을 재고, 보드는 SEND_INTERVAL_MS마다 가장 최근 값을 보냅니다.",
+    "libraries": "Adafruit SCD30 (설치할 때 Adafruit BusIO·Adafruit Unified Sensor도 같이 설치), PubSubClient",
+    "sendInterval": "10초 (SEND_INTERVAL_MS) - 화면에서 실험 중에 바꿀 수 있음",
+    "measureInterval": "SCD30: 2초 (SCD30_INTERVAL_S)",
+    "onFailure": "SCD30 값이 한동안 안 들어오면(빠짐·꺼짐) co2·temp·hum 키를 빼고 보냅니다. 예전 코드처럼 −1을 보내지 않으므로 그래프에 가짜 값이 찍히지 않습니다.",
+    "control": "화면 왼쪽 아래 보드 카드에서 센서별 켜기·끄기, 측정 간격, 측정 멈춤/재개, 재부팅. 전원 핀(..._POWER_PIN)을 지정하지 않으면 '끄기'는 측정만 멈춥니다."
+  },
+  "specs": [
+    {
+      "device": "CO2·온도·습도 센서 SCD30 (Sensirion)",
+      "items": [
+        {
+          "label": "측정 원리",
+          "value": "비분산 적외선(NDIR) - 빛을 두 갈래로 재서 장기 안정성이 좋음"
+        },
+        {
+          "label": "CO2 범위·정확도",
+          "value": "400 ~ 10000 ppm · ±(30 ppm + 측정값의 3%)"
+        },
+        {
+          "label": "온도·습도",
+          "value": "온도 −40~70°C (±(0.4°C + 0.023×(T−25°C))), 습도 0~100% (±3%)"
+        },
+        {
+          "label": "입력 전압",
+          "value": "3.3V ~ 5.5V"
+        },
+        {
+          "label": "소비 전류",
+          "value": "평균 19mA (2초 간격), 순간 최대 75mA"
+        },
+        {
+          "label": "통신",
+          "value": "I2C (주소 0x61) - 우노 A4/A5, ESP32 GPIO21/22"
+        },
+        {
+          "label": "측정 간격",
+          "value": "2 ~ 1800초 (코드의 SCD30_INTERVAL_S)"
+        },
+        {
+          "label": "주의",
+          "value": "센서가 내놓는 온도는 자체 발열로 실제보다 조금 높게 나올 수 있음"
+        }
+      ]
+    }
+  ],
+  "pinmap": [
+    {
+      "device": "CO2·온도·습도 센서 SCD30 (I2C)",
+      "pins": [
+        {
+          "board": "3.3V",
+          "device": "VIN"
+        },
+        {
+          "board": "GND",
+          "device": "GND"
+        },
+        {
+          "board": "GPIO21 (SDA_PIN)",
+          "device": "SDA"
+        },
+        {
+          "board": "GPIO22 (SCL_PIN)",
+          "device": "SCL"
+        }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
+}

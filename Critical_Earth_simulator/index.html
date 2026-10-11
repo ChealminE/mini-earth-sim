@@ -4,8 +4,15 @@
 <meta charset="UTF-8">
 <title>미니 지구 모델 - 통합 시뮬레이션</title>
 <link rel="stylesheet" href="style.css?v=4">
+<script>
+  // 이 페이지는 기본으로 '현재 실태' 화면이 켜진 채로 그려지고, 주소(?tab=...)에 맞는 화면으로 바꾸는 코드(main.js)는
+  // 3D·그래프 라이브러리를 다 불러온 맨 마지막에 돈다. 그 사이 현재 실태가 잠깐 보이지 않게 준비가 끝날 때까지 가려 둔다.
+  document.documentElement.classList.add('booting');
+</script>
 <style>
   /* ── 실시간 실험 안내 모달 (index.html 자체 내장 스타일, style.css와 무관하게 동작) ── */
+  html.booting #app, html.booting #liveSetup { visibility: hidden; }
+  html.booting body { background: #14171c; }
   .modal-overlay {
     display: none;
     position: fixed; inset: 0;
@@ -359,6 +366,16 @@
       <button class="mini-btn primary" id="lsNext">다음 →</button>
     </div>
   </div>
+
+  <div class="ls-code" id="lsCode">
+    <div class="ls-code-head">
+      <span class="ls-code-title" id="lsCodeTitle"></span>
+      <span class="hint" style="margin:0" id="lsCodeHint"></span>
+      <button class="icon-btn" id="lsCodeClose" title="닫기">✕</button>
+    </div>
+    <div class="ls-code-body" id="lsCodeBody"></div>
+  </div>
+  <div class="ls-tip" id="lsTip"></div>
 
   <div class="ls-drop-hint">여기 아크릴 모형 위에 놓으세요</div>
   <button class="ls-start" id="lsStartBtn" style="display:none">▶ 실험 시작</button>

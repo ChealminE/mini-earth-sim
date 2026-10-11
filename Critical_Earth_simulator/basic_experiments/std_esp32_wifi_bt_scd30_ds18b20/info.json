@@ -1,0 +1,139 @@
+{
+  "id": "std_esp32_wifi_bt_scd30_ds18b20",
+  "title": "[표준·원격 제어] ESP32 WiFi(MQTT) + 휴대폰 블루투스 - SCD30(CO2·온도·습도) + DS18B20(토양 온도)",
+  "board": "ESP32-DevKitC V4 (WiFi·MQTT + 블루투스)",
+  "connection": "WiFi(MQTT) → 시뮬레이션 + 클래식 블루투스(SPP) → 안드로이드 휴대폰 동시",
+  "sensors": [
+    "SCD30",
+    "DS18B20"
+  ],
+  "summary": "SCD30 하나로 CO2·온도·습도를 재고, DS18B20으로 토양(또는 물) 온도를 함께 재서 WiFi(MQTT) + 휴대폰 블루투스(으)로 보내는 표준 코드입니다. 화면에서 센서 켜기·끄기, 측정 간격 바꾸기, 재부팅을 할 수 있습니다.",
+  "notes": [
+    "설정을 바꾸려면 '실험 설계'에서 값을 고친 뒤 코드를 받으세요. 고친 값이 코드에 그대로 들어갑니다.",
+    "받은 .ino 파일을 Arduino IDE로 열면 '같은 이름의 폴더를 만들까요?'라고 묻습니다 - '확인'을 누르세요.",
+    "SCD30은 I2C 센서라 SDA·SCL 두 선만 연결하면 됩니다 (TX·RX가 아님).",
+    "SCD30이 내놓는 온도는 자체 발열로 실제보다 조금 높을 수 있어요. 정확한 기온·수온·토양 온도는 DS18B20을 쓰세요.",
+    "DS18B20 값은 soil_temp(2개면 soil_temp2)로 보냅니다. 물속에 넣어 수온으로 써도 돼요 - 센서 배치에서 물속에 놓으면 수온으로 연결돼요.",
+    "업로드 전에 Arduino IDE > 도구 > Partition Scheme > 'Huge APP'를 고르세요.",
+    "휴대폰은 안드로이드만 됩니다. BT_NAME(기본 ESP32_SENSOR)과 페어링한 뒤 앱의 Devices > Bluetooth Classic에서 연결하세요.",
+    "BT_FORMAT: 1 = 표 형식(CSV, 앱 로그 파일을 엑셀로 바로 열 수 있음) / 2 = 측정 번호·경과시간·항목별 줄로 보기 좋게 / 0 = JSON.",
+    "WIFI_SSID·WIFI_PASSWORD·MQTT_SERVER는 꼭 바꿔야 합니다."
+  ],
+  "codeInfo": {
+    "description": "SCD30에서 co2·temp·hum을, DS18B20에서 soil_temp를 읽어 보냅니다. SCD30은 SCD30_INTERVAL_S마다 스스로 새 값을 재고, 보드는 SEND_INTERVAL_MS마다 가장 최근 값을 보냅니다.",
+    "libraries": "Adafruit SCD30 (설치할 때 Adafruit BusIO·Adafruit Unified Sensor도 같이 설치), OneWire, DallasTemperature, PubSubClient",
+    "sendInterval": "10초 (SEND_INTERVAL_MS) - 화면에서 실험 중에 바꿀 수 있음",
+    "measureInterval": "SCD30: 2초 (SCD30_INTERVAL_S) · DS18B20: 보낼 때마다 (약 0.75초 걸림)",
+    "onFailure": "SCD30 값이 한동안 안 들어오면(빠짐·꺼짐) co2·temp·hum 키를 빼고 보냅니다. DS18B20이 빠져 있으면 soil_temp 키가 빠집니다. 예전 코드처럼 −1을 보내지 않으므로 그래프에 가짜 값이 찍히지 않습니다.",
+    "control": "화면 왼쪽 아래 보드 카드에서 센서별 켜기·끄기, 측정 간격, 측정 멈춤/재개, 재부팅. 전원 핀(..._POWER_PIN)을 지정하지 않으면 '끄기'는 측정만 멈춥니다."
+  },
+  "specs": [
+    {
+      "device": "CO2·온도·습도 센서 SCD30 (Sensirion)",
+      "items": [
+        {
+          "label": "측정 원리",
+          "value": "비분산 적외선(NDIR) - 빛을 두 갈래로 재서 장기 안정성이 좋음"
+        },
+        {
+          "label": "CO2 범위·정확도",
+          "value": "400 ~ 10000 ppm · ±(30 ppm + 측정값의 3%)"
+        },
+        {
+          "label": "온도·습도",
+          "value": "온도 −40~70°C (±(0.4°C + 0.023×(T−25°C))), 습도 0~100% (±3%)"
+        },
+        {
+          "label": "입력 전압",
+          "value": "3.3V ~ 5.5V"
+        },
+        {
+          "label": "소비 전류",
+          "value": "평균 19mA (2초 간격), 순간 최대 75mA"
+        },
+        {
+          "label": "통신",
+          "value": "I2C (주소 0x61) - 우노 A4/A5, ESP32 GPIO21/22"
+        },
+        {
+          "label": "측정 간격",
+          "value": "2 ~ 1800초 (코드의 SCD30_INTERVAL_S)"
+        },
+        {
+          "label": "주의",
+          "value": "센서가 내놓는 온도는 자체 발열로 실제보다 조금 높게 나올 수 있음"
+        }
+      ]
+    },
+    {
+      "device": "온도 센서 DS18B20 (토양 온도)",
+      "items": [
+        {
+          "label": "측정 범위",
+          "value": "−55°C ~ +125°C"
+        },
+        {
+          "label": "정확도",
+          "value": "±0.5°C (−10 ~ +85°C 구간)"
+        },
+        {
+          "label": "분해능",
+          "value": "0.0625°C (12비트, 측정에 약 0.75초)"
+        },
+        {
+          "label": "입력 전압",
+          "value": "3.0V ~ 5.5V"
+        },
+        {
+          "label": "통신",
+          "value": "1-Wire - 데이터 선 하나에 여러 개를 병렬로 연결, 4.7kΩ 풀업 저항 필수"
+        },
+        {
+          "label": "특징",
+          "value": "방수 프로브형은 흙·물속에 꽂아 쓸 수 있음"
+        }
+      ]
+    }
+  ],
+  "pinmap": [
+    {
+      "device": "CO2·온도·습도 센서 SCD30 (I2C)",
+      "pins": [
+        {
+          "board": "3.3V",
+          "device": "VIN"
+        },
+        {
+          "board": "GND",
+          "device": "GND"
+        },
+        {
+          "board": "GPIO21 (SDA_PIN)",
+          "device": "SDA"
+        },
+        {
+          "board": "GPIO22 (SCL_PIN)",
+          "device": "SCL"
+        }
+      ]
+    },
+    {
+      "device": "토양 온도 DS18B20 (1~2개, 병렬)",
+      "pins": [
+        {
+          "board": "3.3V (또는 SOIL_POWER_PIN)",
+          "device": "VCC (빨강)"
+        },
+        {
+          "board": "GND",
+          "device": "GND (검정)"
+        },
+        {
+          "board": "GPIO4 (+ VCC와 사이에 4.7kΩ)",
+          "device": "DATA (노랑)"
+        }
+      ]
+    }
+  ],
+  "code_file": "code.ino"
+}

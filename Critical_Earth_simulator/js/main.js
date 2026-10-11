@@ -49,6 +49,7 @@ const initialTab = new URLSearchParams(location.search).get('tab');
 if (initialTab && initialTab in TAB_HEADERS) switchTab(initialTab);
 else ensureSceneBuilt(bundles[activeTab]);
 animate();
+document.documentElement.classList.remove('booting'); // 화면이 정해졌으니 보이기 (index.html 머리의 booting 참고)
 
 window.addEventListener('resize', fitRenderer);
 

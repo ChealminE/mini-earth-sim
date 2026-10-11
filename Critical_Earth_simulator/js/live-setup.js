@@ -52,12 +52,12 @@ function showLiveSetup() {
   renderSetup();
 }
 
-// 준비 화면에서는 오른쪽 단계 창이 아크릴을 가리므로, 3D 화면의 중심을 창 왼쪽 빈 공간의 가운데로 옮긴다
-// (카메라는 그대로 두고 그려지는 영역만 밀어서, 드래그 회전·확대는 그대로 동작)
+// 센서 배치 단계에서는 창이 오른쪽에 붙어 아크릴을 가리므로, 3D 화면의 중심을 창 왼쪽 빈 공간의 가운데로 옮긴다
+// (나머지 단계는 가운데 창이라 그대로. 카메라는 그대로 두고 그려지는 영역만 밀어서 드래그 회전·확대는 그대로 동작)
 function applySetupViewOffset() {
   const panel = document.getElementById('lsPanel');
   const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
-  if (liveView === 'setup' && panel && panel.style.display !== 'none' && w > 0) {
+  if (liveView === 'setup' && document.body.classList.contains('ls-placing') && panel && panel.style.display !== 'none' && w > 0) {
     const shift = Math.round((panel.getBoundingClientRect().width + 12) / 2);
     camera.setViewOffset(w, h, shift, 0, w, h);
   } else {
@@ -182,6 +182,7 @@ function renderSetup() {
     panel.style.display = 'none';
     startBtn.style.display = 'none';
     document.body.classList.remove('ls-placing');
+    closeCodeViewer();
     applySetupViewOffset();
     return;
   }
@@ -193,6 +194,7 @@ function renderSetup() {
     `<span class="ls-step${i === setup.step ? ' active' : i < setup.step ? ' done' : ''}">${i + 1}. ${s.label}</span>`).join('<span class="ls-step-sep">›</span>');
   const id = currentStepId();
   document.body.classList.toggle('ls-placing', id === 'place');
+  if (id !== 'design' && id !== 'download') closeCodeViewer();
   startBtn.style.display = id === 'place' ? '' : 'none';
   const prev = document.getElementById('lsPrev');
   const next = document.getElementById('lsNext');
@@ -217,6 +219,7 @@ function goStep(delta) {
   if (setup.step + delta < 0) { setup.mode = null; setup.step = 0; renderSetup(); return; }
   setup.step = Math.min(steps.length - 1, setup.step + delta);
   document.getElementById('lsBody').scrollTop = 0;
+  closeCodeViewer(); // 단계마다 코드 창의 성격(고치기/읽기)이 달라서 넘어가면 닫고, 필요하면 그 단계에서 다시 연다
   renderSetup();
 }
 document.getElementById('lsPrev').addEventListener('click', () => goStep(-1));
@@ -351,7 +354,7 @@ document.getElementById('lsBody').addEventListener('click', async (e) => {
   const cp = e.target.closest('[data-copy]');
   if (cp) {
     const b = setup.boards.find(x => x.uid === cp.dataset.copy);
-    try { await navigator.clipboard.writeText(buildBoardCode(b)); showLiveToast('코드를 복사했어요'); }
+    try { await navigator.clipboard.writeText(chosenCode(b)); showLiveToast(`${codeChoice[b.uid] === 'original' ? '원본' : '수정한'} 코드를 복사했어요 — IDE에 붙여넣으세요`); }
     catch (err) { showLiveToast('복사하지 못했어요. 다운로드를 이용하세요', true); }
     return;
   }
@@ -422,7 +425,7 @@ function renderDesignStep(body) {
         const v = boardValue(b, it);
         const numeric = !it.isString && /^[-+]?\d/.test(it.original);
         const isChanged = String(v) !== String(it.original);
-        return `<div class="cs-row${isChanged ? ' changed' : ''}">
+        return `<div class="cs-row${isChanged ? ' changed' : ''}" data-row="${idx}">
           <div class="cs-label">${escHtml(it.label)}${it.label !== it.name ? ` <code>${escHtml(it.name)}</code>` : ''}</div>
           <div class="cs-input-row">
             <input class="modal-input" ${numeric ? 'type="number" step="any"' : 'type="text"'} value="${escHtml(v)}" data-setting="${idx}">
@@ -433,31 +436,42 @@ function renderDesignStep(body) {
       }).join('')}</div>
       <div class="cs-footer"><span class="cs-changed">${changed ? `바꾼 설정 ${changed}개` : ''}</span>
         ${changed ? `<button class="mini-btn" data-reset-board="${b.uid}">처음 값으로</button>` : ''}</div>
-      <details class="ls-details"><summary>코드 전체 보기</summary><pre class="code-preview">${escHtml(buildBoardCode(b))}</pre></details>
+      <button class="mini-btn" data-open-code="${b.uid}">📄 코드 전문 보기 (왼쪽 창)</button>
+      <span class="hint" style="margin:0 0 0 6px">설정 칸에 커서를 두면 코드의 그 줄이 표시돼요</span>
     </div>` : ''}
     ${simSettingsHtml()}`;
+  if (document.body.classList.contains('ls-code-open') && b) renderCodeViewer(b);
+}
+
+// 설정 값 바꾸기 - 오른쪽 설정 칸과 왼쪽 코드 창의 칸 어느 쪽에서 고쳐도 같은 값으로 맞춘다
+function setSettingValue(idx, raw, sourceEl) {
+  const b = setup.boards.find(x => x.uid === designBoardUid);
+  if (!b) return;
+  const items = expCache[b.expId].items;
+  const it = items[idx];
+  // 숫자 칸을 비우면 코드가 컴파일되지 않으므로 처음 값으로 둔다
+  const v = !it.isString && raw === '' ? it.original : raw;
+  b.values[it.name] = v;
+  if (it.name === 'DEVICE_NAME') b.devName = v;
+  document.querySelectorAll(`[data-setting="${idx}"], [data-code-setting="${idx}"]`).forEach(el => {
+    if (el !== sourceEl && el.value !== String(v)) el.value = v;
+  });
+  const row = document.querySelector(`#lsBody .cs-row[data-row="${idx}"]`);
+  if (row) {
+    row.classList.toggle('changed', String(v) !== String(it.original));
+    row.querySelector('.cs-hint').textContent = msHint(it, v);
+  }
+  const codeLine = document.querySelector(`#lsCodeBody .lc-line[data-line="${it.line}"]`);
+  if (codeLine) codeLine.classList.toggle('changed', String(v) !== String(it.original));
+  const n = items.filter(x => String(boardValue(b, x)) !== String(x.original)).length;
+  const note = document.querySelector('#lsBody .cs-changed');
+  if (note) note.textContent = n ? `바꾼 설정 ${n}개` : '';
+  saveSetup();
 }
 
 document.getElementById('lsBody').addEventListener('input', (e) => {
   const el = e.target;
-  if (el.dataset.setting != null) {
-    const b = setup.boards.find(x => x.uid === designBoardUid);
-    const it = expCache[b.expId].items[Number(el.dataset.setting)];
-    // 숫자 칸을 비우면 코드가 컴파일되지 않으므로 처음 값으로 둔다
-    const v = !it.isString && el.value === '' ? it.original : el.value;
-    b.values[it.name] = v;
-    if (it.name === 'DEVICE_NAME') b.devName = v;
-    const row = el.closest('.cs-row');
-    row.classList.toggle('changed', String(v) !== String(it.original));
-    row.querySelector('.cs-hint').textContent = msHint(it, v);
-    const n = expCache[b.expId].items.filter(x => String(boardValue(b, x)) !== String(x.original)).length;
-    const note = document.querySelector('#lsBody .cs-changed');
-    if (note) note.textContent = n ? `바꾼 설정 ${n}개` : '';
-    const pre = document.querySelector('#lsBody .ls-details pre');
-    if (pre) pre.textContent = buildBoardCode(b);
-    saveSetup();
-    return;
-  }
+  if (el.dataset.setting != null) { setSettingValue(Number(el.dataset.setting), el.value, el); return; }
   if (el.dataset.sim) {
     const k = el.dataset.sim;
     setup.sim[k] = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? Number(el.value) : el.value);
@@ -473,6 +487,162 @@ document.getElementById('lsBody').addEventListener('change', (e) => {
   if (b && b.devName && setup.boards.some(x => x.uid !== b.uid && x.devName === b.devName)) {
     showLiveToast(`'${b.devName}'은(는) 다른 보드와 이름이 같아요. 서로 다르게 정해 주세요 (WiFi에서 서로 연결을 끊어요)`, true);
   }
+});
+
+// ── 코드 전문 보기 (왼쪽 창) ────────────────────────────
+// 오른쪽 설정 칸에 커서를 두면 그 값이 들어가는 코드 줄이 색으로 표시되고, 코드 창 안의 값 칸에서 바로 고쳐도 된다.
+// 라이브러리·핀 정의·함수 같은 줄에 마우스를 올리면 설명이 뜨고, 누르면 설명 줄이 펼쳐졌다 다시 누르면 접힌다.
+const LIB_HELP = {
+  'Wire.h': 'I2C 통신 라이브러리 — SDA·SCL 두 선으로 센서(SCD30 등)와 데이터를 주고받아요',
+  'Adafruit_SCD30.h': 'SCD30(CO₂·온도·습도 센서)을 읽는 Adafruit 라이브러리',
+  'OneWire.h': '1-Wire 통신 — 데이터 선 하나에 DS18B20 여러 개를 연결할 수 있게 해 줘요',
+  'DallasTemperature.h': 'DS18B20 온도 센서 값을 °C로 읽어 주는 라이브러리 (OneWire 위에서 동작)',
+  'SoftwareSerial.h': '일반 디지털 핀 두 개로 시리얼 통신을 흉내 내요 (MH-Z19B·블루투스 모듈 연결용)',
+  'WiFi.h': 'ESP32를 와이파이에 연결해요',
+  'PubSubClient.h': 'MQTT로 값을 발행(보내기)하고 명령을 구독(받기)해요',
+  'BluetoothSerial.h': 'ESP32의 클래식 블루투스 시리얼 — 휴대폰 블루투스 앱과 글자를 주고받아요',
+  'BLEDevice.h': 'ESP32의 BLE(저전력 블루투스) 기능', 'BLEServer.h': 'BLE 서버(서비스·특성) 만들기',
+  'BLEUtils.h': 'BLE 보조 기능', 'BLE2902.h': 'BLE 알림(notify)을 받을 수 있게 하는 설정',
+  'avr/wdt.h': '감시 타이머(watchdog) — 재부팅 명령을 받으면 이걸로 우노를 리셋해요',
+  'ArduinoJson.h': 'JSON 글자를 만들고 읽는 라이브러리', 'Arduino.h': '아두이노 기본 기능 (보통 자동으로 포함됨)',
+};
+const FN_HELP = {
+  setup: '전원이 켜지거나 리셋될 때 딱 한 번 실행 — 통신 시작, 센서 준비',
+  loop: '계속 반복 실행 — 명령이 왔는지 보고, 정해진 간격마다 측정·전송',
+  sendData: '센서를 읽어 JSON 한 줄로 보내요 (읽기 실패한 값은 빼고)',
+  sendInfo: '보드 정보(센서 목록·켜짐 상태·측정 간격)를 시뮬레이션 화면에 알려요',
+  handleCommand: '화면에서 온 명령(센서 켜기·끄기, 간격, 멈춤, 재부팅)을 처리해요',
+  readCO2: 'MH-Z19B에 "값 줘" 명령을 보내고 9바이트 응답에서 CO₂ 값을 꺼내요 (체크섬으로 깨진 응답 거르기)',
+  pollCommands: '통로로 들어온 글자를 모아 한 줄이 되면 명령으로 처리해요',
+  keepConnected: '와이파이·MQTT 연결이 끊기면 몇 초마다 다시 연결해요',
+  addNum: '이번에 보낼 값을 하나 모아 둬요 (읽기 실패한 값은 빼요)',
+  emitLine: '모은 JSON 한 줄을 통로(USB·블루투스·MQTT)로 내보내요',
+  findKey: '명령 글자에서 "이름": 다음의 값 위치를 찾아요', jsonNum: '명령 글자에서 숫자 값을 꺼내요', jsonIs: '명령 글자의 값이 특정 글자와 같은지 확인해요',
+};
+
+let codeViewerUid = null;
+const codeTips = []; // 줄 번호 → 설명
+
+function explainLine(line, i, lines, settingAt) {
+  const s = settingAt[i];
+  if (s) return `보드 코드 설정 · ${s.label}${s.unit ? ` (${s.unit})` : ''}${s.help ? ` — ${s.help}` : ''} · 처음 값 ${s.original}`;
+  let m = line.match(/^\s*#include\s*[<"]([^>"]+)[>"]/);
+  if (m) return `라이브러리 ${m[1]} — ${LIB_HELP[m[1]] || '이 코드에 필요한 기능을 불러와요'}`;
+  m = line.match(/^\s*(?:static\s+)?[\w:<>]+[\s*&]+(\w+)\s*\([^;]*\)\s*\{?\s*$/);
+  if (m && !/^\s*(if|for|while|switch|return|else)\b/.test(line)) {
+    if (FN_HELP[m[1]]) return `함수 ${m[1]}() — ${FN_HELP[m[1]]}`;
+    const above = [];
+    for (let k = i - 1; k >= 0 && /^\s*\/\//.test(lines[k]); k--) above.unshift(lines[k].replace(/^\s*\/\/\s?/, '').replace(/[─=]{3,}/g, '').trim());
+    if (above.join('').trim()) return `함수 ${m[1]}() — ${above.filter(Boolean).join(' ')}`;
+  }
+  m = line.match(/\/\/\s*(.+)$/);
+  if (m && !/^\s*\/\//.test(line) && !/@설정/.test(line)) return m[1].trim();
+  if (/^\s*#define\s+\w+/.test(line)) return '이름 붙인 값(상수) — 코드 여러 곳에서 이 이름으로 씀';
+  return '';
+}
+
+// 실험 설계 단계: 값을 고칠 수 있는 코드 / 코드 받기 단계: 고른 버전(수정본·원본)을 읽기 전용으로
+function renderCodeViewer(b) {
+  const ex = expCache[b.expId];
+  if (!ex) return;
+  codeViewerUid = b.uid;
+  const readOnly = currentStepId() === 'download';
+  const original = readOnly && codeChoice[b.uid] === 'original';
+  const valueOf = (s) => original ? s.original : boardValue(b, s);
+  const lines = ex.code.split('\n');
+  const settingAt = {};
+  ex.items.forEach((it, idx) => { settingAt[it.line] = { ...it, idx }; });
+  codeTips.length = 0;
+  const highlightComment = (txt) => {
+    const e = escHtml(txt);
+    const at = e.indexOf('//');
+    return at === -1 ? e : `${e.slice(0, at)}<span class="lc-c">${e.slice(at)}</span>`;
+  };
+  document.getElementById('lsCodeTitle').textContent = `${b.devName || b.title} — ${readOnly ? (original ? '원본 코드' : '수정한 코드') : '코드 전문'}`;
+  document.getElementById('lsCodeHint').textContent = readOnly
+    ? (original ? '설정을 바꾸기 전 처음 코드예요 · 줄에 마우스를 올리면 설명' : '색칠된 줄이 실험 설계에서 바꾼 곳이에요 · 고치려면 \'실험 설계\'로 돌아가세요')
+    : '색칠된 값은 여기서 바로 고쳐도 돼요 · 줄에 마우스를 올리면 설명, 누르면 설명 펼치기';
+  document.getElementById('lsCodeBody').innerHTML = lines.map((line, i) => {
+    const tip = explainLine(line, i, lines, settingAt);
+    codeTips[i] = tip;
+    const s = settingAt[i];
+    let html;
+    if (s) {
+      const v = valueOf(s);
+      const w = Math.max(3, String(v).length + 1);
+      const input = readOnly
+        ? `<span class="lc-val">${escHtml(v)}</span>`
+        : `<input class="lc-input" data-code-setting="${s.idx}" value="${escHtml(v)}" style="width:${w}ch" spellcheck="false">`;
+      html = `${escHtml(s.pre + s.name + s.mid)}${s.isString ? `"${input}"` : `${input}${escHtml(s.suffix)}`}${highlightComment(s.semi + s.tail)}`;
+    } else html = highlightComment(line) || '&nbsp;';
+    const changed = s && !original && String(boardValue(b, s)) !== String(s.original);
+    return `<div class="lc-line${s ? ' setting' : ''}${changed ? ' changed' : ''}${tip ? ' has-tip' : ''}" data-line="${i}">` +
+      `<span class="lc-no">${i + 1}</span><span class="lc-src">${html}</span></div>`;
+  }).join('');
+}
+
+function openCodeViewer(uid) {
+  const b = setup.boards.find(x => x.uid === uid);
+  if (!b) return;
+  document.body.classList.add('ls-code-open');
+  renderCodeViewer(b);
+  // 코드 받기 단계에서 수정본을 열면 바꾼 첫 줄로 바로 (원본·설계 단계는 설정 줄 시작 부분으로)
+  const target = document.querySelector('#lsCodeBody .lc-line.changed') || document.querySelector('#lsCodeBody .lc-line.setting');
+  if (target) target.scrollIntoView({ block: 'center' });
+}
+function closeCodeViewer() {
+  document.body.classList.remove('ls-code-open');
+  hideCodeTip();
+}
+document.getElementById('lsCodeClose').addEventListener('click', closeCodeViewer);
+document.getElementById('lsBody').addEventListener('click', (e) => {
+  const open = e.target.closest('[data-open-code]');
+  if (open) openCodeViewer(open.dataset.openCode);
+});
+
+// 설정 칸 ↔ 코드 줄 표시
+function markSetting(idx, scrollCode, scrollRow) {
+  document.querySelectorAll('.lc-line.active, .cs-row.active').forEach(el => el.classList.remove('active'));
+  const b = setup.boards.find(x => x.uid === designBoardUid);
+  if (!b || idx == null) return;
+  const it = expCache[b.expId].items[idx];
+  const line = document.querySelector(`#lsCodeBody .lc-line[data-line="${it.line}"]`);
+  const row = document.querySelector(`#lsBody .cs-row[data-row="${idx}"]`);
+  if (line) { line.classList.add('active'); if (scrollCode) line.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  if (row) { row.classList.add('active'); if (scrollRow) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+}
+document.getElementById('lsBody').addEventListener('focusin', (e) => {
+  if (e.target.dataset.setting != null) markSetting(Number(e.target.dataset.setting), true, false);
+});
+document.getElementById('lsCodeBody').addEventListener('focusin', (e) => {
+  if (e.target.dataset.codeSetting != null) markSetting(Number(e.target.dataset.codeSetting), false, true);
+});
+document.getElementById('lsCodeBody').addEventListener('input', (e) => {
+  const el = e.target;
+  if (el.dataset.codeSetting == null) return;
+  el.style.width = `${Math.max(3, el.value.length + 1)}ch`;
+  setSettingValue(Number(el.dataset.codeSetting), el.value, el);
+});
+
+// 마우스를 올리면 설명 말풍선, 누르면 설명 줄 펼치기/접기
+function hideCodeTip() { document.getElementById('lsTip').classList.remove('visible'); }
+document.getElementById('lsCodeBody').addEventListener('mousemove', (e) => {
+  const line = e.target.closest('.lc-line.has-tip');
+  const tip = document.getElementById('lsTip');
+  if (!line || e.target.closest('.lc-explain')) { hideCodeTip(); return; }
+  tip.textContent = codeTips[Number(line.dataset.line)];
+  tip.style.left = `${Math.min(window.innerWidth - 340, e.clientX + 14)}px`;
+  tip.style.top = `${Math.min(window.innerHeight - 80, e.clientY + 16)}px`;
+  tip.classList.add('visible');
+});
+document.getElementById('lsCodeBody').addEventListener('mouseleave', hideCodeTip);
+document.getElementById('lsCodeBody').addEventListener('click', (e) => {
+  if (e.target.closest('input')) return;
+  const line = e.target.closest('.lc-line.has-tip');
+  if (!line) return;
+  const next = line.nextElementSibling;
+  if (next && next.classList.contains('lc-explain')) { next.remove(); return; }
+  line.insertAdjacentHTML('afterend', `<div class="lc-explain">${escHtml(codeTips[Number(line.dataset.line)])}</div>`);
 });
 
 // ── ③ 회로도 (핀맵) ───────────────────────────────────
@@ -500,16 +670,36 @@ function renderWiringStep(body) {
 }
 
 // ── ④ 코드 받기 ───────────────────────────────────────
+// 보드마다 '수정한 코드'와 '원본 코드' 중 무엇을 받을지 고른다 (기본: 수정한 코드)
+const codeChoice = {}; // { uid: 'modified' | 'original' }
+function chosenCode(b) {
+  return codeChoice[b.uid] === 'original' ? expCache[b.expId].code : buildBoardCode(b);
+}
+
 function boardCodeFileName(b, i) {
-  return `${experimentFilePrefix()}_${safeFileName(b.devName) || `보드${i + 1}`}.ino`;
+  const tail = codeChoice[b.uid] === 'original' ? '_원본' : '';
+  return `${experimentFilePrefix()}_${safeFileName(b.devName) || `보드${i + 1}`}${tail}.ino`;
 }
 
 function downloadBoardCode(uid) {
   const i = setup.boards.findIndex(x => x.uid === uid);
   const b = setup.boards[i];
   if (!b) return;
-  downloadBlob(new Blob([buildBoardCode(b)], { type: 'text/plain;charset=utf-8' }), boardCodeFileName(b, i));
+  downloadBlob(new Blob([chosenCode(b)], { type: 'text/plain;charset=utf-8' }), boardCodeFileName(b, i));
 }
+
+// 수정본·원본 고르기 카드 / 코드 전체 보기 버튼
+document.getElementById('lsBody').addEventListener('click', (e) => {
+  const opt = e.target.closest('[data-pick-code]');
+  if (opt) {
+    codeChoice[opt.dataset.pickCode] = opt.dataset.v;
+    renderSetup();
+    if (document.body.classList.contains('ls-code-open') && codeViewerUid === opt.dataset.pickCode) openCodeViewer(opt.dataset.pickCode);
+    return;
+  }
+  const view = e.target.closest('[data-view-code]');
+  if (view) openCodeViewer(view.dataset.viewCode);
+});
 
 function renderDownloadStep(body) {
   const missing = setup.boards.filter(b => !expCache[b.expId]);
@@ -518,11 +708,30 @@ function renderDownloadStep(body) {
     const ex = expCache[b.expId];
     const isEsp = /esp32/i.test(b.boardType);
     const libs = (ex.info.codeInfo || {}).libraries;
+    const changed = ex.items.filter(it => String(boardValue(b, it)) !== String(it.original));
+    const pick = codeChoice[b.uid] === 'original' ? 'original' : 'modified';
+    const changeList = changed.length
+      ? changed.map(it => `<li>${escHtml(it.label)} <span class="dl-from">${escHtml(it.original)}</span> → <b>${escHtml(boardValue(b, it))}</b></li>`).join('')
+      : '<li class="dl-none">바꾼 설정이 없어요 — 원본과 같아요</li>';
     return `<div class="ls-section">
       <div class="ls-section-title">${i + 1}. ${escHtml(b.devName || b.title)}</div>
-      <div class="ls-row"><button class="mini-btn primary" data-download="${b.uid}">수정한 코드 다운받기</button>
-        <button class="mini-btn" data-copy="${b.uid}">코드 복사</button>
-        <span class="hint" style="margin:0">${escHtml(boardCodeFileName(b, i))}</span></div>
+      <div class="dl-choice">
+        <button class="dl-opt${pick === 'modified' ? ' on' : ''}" data-pick-code="${b.uid}" data-v="modified">
+          <div class="dl-opt-head"><span class="dl-radio"></span>수정한 코드 <span class="dl-badge">${changed.length}곳 바꿈</span></div>
+          <ul class="dl-changes">${changeList}</ul>
+        </button>
+        <button class="dl-opt${pick === 'original' ? ' on' : ''}" data-pick-code="${b.uid}" data-v="original">
+          <div class="dl-opt-head"><span class="dl-radio"></span>원본 코드</div>
+          <div class="dl-opt-desc">설정을 하나도 안 바꾼 처음 코드예요. 내가 바꾼 값과 비교해 보거나, 처음부터 다시 고칠 때 써요.</div>
+        </button>
+      </div>
+      <div class="dl-actions">
+        <button class="dl-main" data-download="${b.uid}">📥 코드 파일 받기 <small>.ino</small></button>
+        <button class="dl-sub" data-copy="${b.uid}">📋 복사</button>
+        <button class="dl-sub" data-view-code="${b.uid}">👁 코드 전체 보기</button>
+      </div>
+      <div class="dl-file">저장될 파일 이름 · <b>${escHtml(boardCodeFileName(b, i))}</b></div>
+      <p class="hint" style="margin:6px 0 0"><b>파일 받기</b>는 .ino 파일로 저장해서 Arduino IDE로 여는 방법, <b>복사</b>는 글자만 복사해서 IDE의 새 스케치에 붙여넣는 방법이에요. 내용은 같아요.</p>
       <ol class="ls-guide">
         <li>받은 파일을 Arduino IDE로 열어요. "같은 이름의 폴더를 만들까요?"가 뜨면 <b>확인</b>.</li>
         ${libs ? `<li>라이브러리 설치: ${libs}</li>` : ''}
@@ -627,18 +836,77 @@ function defaultZonePos(zone, key) {
   return { x: ZONE_CENTER_X[zone] + ((n % 3) - 1) * 0.45, z: -0.6 + (n % 4) * 0.4 };
 }
 
-function renderPlaceStep(body) {
-  const keys = [...liveKnownKeys].sort();
+// 고른 표준 코드에서 이 보드가 보낼 센서 이름(키)을 미리 읽는다 → 보드를 연결하기 전에도 배치할 수 있게
+// (표준 코드의 sendInfo()에 적힌 "keys":["co2","temp"] 부분)
+function codeKeys(code) {
+  const out = [];
+  for (const m of code.matchAll(/keys\\+":\[(.*?)\]/g)) {
+    for (const k of m[1].matchAll(/\\+"(\w+)\\+"/g)) if (!out.includes(k[1])) out.push(k[1]);
+  }
+  return out;
+}
+
+// 배치할 센서 목록 = 고른 보드들의 예정 센서 + 실제로 값이 들어온 센서
+// 보드 여러 대가 같은 이름을 보내면 화면은 먼저 온 보드 값을 '이름', 나머지를 '이름@보드'로 구분한다 (tab-live.js)
+function plannedSensors() {
+  const out = [], seenRaw = new Set();
+  if (setup.mode !== 'basic') return out;
+  setup.boards.forEach(b => {
+    const ex = expCache[b.expId];
+    if (!ex) return;
+    for (const raw of codeKeys(ex.code)) {
+      const key = seenRaw.has(raw) && b.devName ? `${raw}@${b.devName}` : raw;
+      seenRaw.add(raw);
+      out.push({ key, dev: b.devName || b.title });
+    }
+  });
+  return out;
+}
+
+function sensorDeviceName(k) {
+  const ki = keyInfo[k];
+  if (ki) { const d = liveDevices.find(x => x.id === ki.dev); return d ? d.name : ki.dev; }
+  const pl = plannedSensors().find(p => p.key === k);
+  return pl ? pl.dev : '';
+}
+
+function unitFor(k, type) {
+  return { co2: 'ppm', temp: '°C', hum: '%', methane: 'ppm', ph: '' }[type || guessSensorType(k)] || '';
+}
+
+function liveValueText(k) {
+  const d = liveLatest[k];
+  if (!d || typeof d.value !== 'number') return '연결 전';
+  const p = setup.placements[k];
+  return `${fmtNum(d.value)}${unitFor(k, p && p.type) ? ' ' + unitFor(k, p && p.type) : ''}`;
+}
+
+function boardConnStatus() {
   const now = Date.now();
-  const devRows = (setup.mode === 'basic' && setup.boards.length ? setup.boards.map((b, i) => {
-    const d = liveDevices.find(x => x.name === b.devName && b.devName) || null;
-    const recent = d && keysOfDevice(d.id).some(k => liveLatest[k] && now - new Date(liveLatest[k].timestamp).getTime() < 30000);
-    return `<div class="ls-conn ${recent ? 'ok' : 'wait'}">${recent ? '✅' : '⏳'} ${i + 1}. ${escHtml(b.devName || b.title)}
-      <span>${recent ? `값이 들어오는 중 (${keysOfDevice(d.id).join(', ')})` : '값을 기다리는 중 — 업로드했는지, 서버가 켜져 있는지 확인하세요'}</span></div>`;
-  }) : []).join('');
+  return setup.boards.map(b => {
+    const d = b.devName ? liveDevices.find(x => x.name === b.devName) : null;
+    const keys = d ? keysOfDevice(d.id) : [];
+    const recent = keys.some(k => liveLatest[k] && now - new Date(liveLatest[k].timestamp).getTime() < 30000);
+    return { b, recent, keys };
+  });
+}
+
+function placeSensorKeys() {
+  const keys = plannedSensors().map(p => p.key);
+  for (const k of [...liveKnownKeys].sort()) if (!keys.includes(k)) keys.push(k);
+  return keys;
+}
+
+function renderPlaceStep(body) {
+  const missing = setup.boards.filter(b => !expCache[b.expId]);
+  if (missing.length) { Promise.all(missing.map(b => loadExp(b.expId))).then(renderSetup); body.innerHTML = '<div class="empty-hint">불러오는 중…</div>'; return; }
+  const keys = placeSensorKeys();
+  const status = setup.mode === 'basic' ? boardConnStatus() : [];
+  const devRows = status.map(({ b, recent, keys: dk }, i) => `<div class="ls-conn ${recent ? 'ok' : 'wait'}">${recent ? '✅' : '⏳'} ${i + 1}. ${escHtml(b.devName || b.title)}
+      <span>${recent ? `값이 들어오는 중 (${escHtml(dk.join(', '))})` : '값을 기다리는 중 — 업로드했는지, 서버가 켜져 있는지 확인하세요. 연결 전에도 센서를 미리 배치할 수 있어요'}</span></div>`).join('');
   const others = liveDevices.filter(d => !(setup.mode === 'basic' && setup.boards.some(b => b.devName && b.devName === d.name)));
   const otherRows = others.map(d => `<div class="ls-conn ${d.online ? 'ok' : 'wait'}">${d.online ? '✅' : '⏳'} ${escHtml(d.name)}
-    <span>${keysOfDevice(d.id).join(', ') || '값 없음'}</span></div>`).join('');
+    <span>${escHtml(keysOfDevice(d.id).join(', ') || '값 없음')}</span></div>`).join('');
   const unplaced = keys.filter(k => !setup.placements[k]);
   const placed = keys.filter(k => setup.placements[k]).concat(Object.keys(setup.placements).filter(k => !keys.includes(k)));
   body.innerHTML = `
@@ -650,18 +918,28 @@ function renderPlaceStep(body) {
     <div class="ls-section">
       <div class="ls-section-title">센서 배치 <span class="hint" style="margin:0">— 센서를 끌어서 아크릴 모형의 <b>실제로 놓은 자리</b>에 놓으세요</span></div>
       <div class="ls-sensor-chips">${unplaced.length ? unplaced.map(k => `
-        <div class="ls-sensor" draggable="true" data-sensor="${escHtml(k)}">
-          <b>${escHtml(k)}</b> <span>${liveLatest[k] && typeof liveLatest[k].value === 'number' ? fmtNum(liveLatest[k].value) : ''}</span></div>`).join('')
-        : `<div class="empty-hint">${keys.length ? '모든 센서를 배치했어요.' : '센서 값이 들어오면 여기에 센서가 나타나요.'}</div>`}</div>
+        <div class="ls-sensor${liveLatest[k] ? '' : ' planned'}" draggable="true" data-sensor="${escHtml(k)}" title="${escHtml(sensorDeviceName(k))}">
+          <b>${escHtml(k)}</b> <span data-live-val="${escHtml(k)}">${escHtml(liveValueText(k))}</span></div>`).join('')
+        : `<div class="empty-hint">${keys.length ? '모든 센서를 배치했어요.' : '자유 실험은 보드 값이 들어오면 여기에 센서가 나타나요.'}</div>`}</div>
       ${placed.length ? `<div class="ls-placed">${placed.map(k => {
         const p = setup.placements[k];
         return `<div class="ls-placed-row"><b>${escHtml(k)}</b> → ${ZONE_LABEL[p.zone] || p.zone}
+          <span class="ls-placed-val" data-live-val="${escHtml(k)}">${escHtml(liveValueText(k))}</span>
           <select class="modal-input" data-type-for="${escHtml(k)}" title="센서 종류 (어떤 효과로 이어질지)">${SENSOR_TYPES.map(t => `<option value="${t.id}"${t.id === p.type ? ' selected' : ''}>${t.label}</option>`).join('')}</select>
           <span class="ls-effect">${effectLabel(p)}</span>
           <button class="icon-btn remove-btn" data-unplace="${escHtml(k)}" title="배치 취소">✕</button></div>`;
       }).join('')}</div>` : ''}
       <p class="hint" style="margin:8px 0 0">배치하지 않은 센서도 기록·그래프에는 그대로 나와요. 아크릴 효과에만 연결되지 않아요.</p>
     </div>`;
+  placeSig = placeSignature();
+}
+
+// 배치 화면은 '무엇이 있는지'가 바뀔 때만 다시 그린다. 매번 통째로 다시 그리면 센서를 누르는 순간
+// 칩이 새것으로 바뀌어 끌기가 시작되지 않는다 (이전 버전의 문제). 값은 그 자리의 글자만 바꾼다.
+let placeSig = '';
+function placeSignature() {
+  return JSON.stringify([liveConnected, liveDevices.map(d => [d.id, d.name, d.online]), [...liveKnownKeys].sort(),
+    Object.keys(setup.placements).sort(), boardConnStatus().map(s => s.recent)]);
 }
 
 function effectLabel(p) {
@@ -728,43 +1006,49 @@ function askOceanLayer(key, pos, cx, cy) {
   };
 }
 
-// ── 아크릴 위 센서 표시 (이름표 달린 핀) ─────────────────
+// ── 아크릴 위 센서 표시 (이름표: 센서·현재 값 / 구역·보드) ─────────────────
 const sensorMarkers = {}; // { key: THREE.Sprite }
-function makeMarkerSprite(text, color) {
+function markerLines(k) {
+  const p = setup.placements[k];
+  const dev = sensorDeviceName(k);
+  return [`${k}   ${liveValueText(k)}`, `${ZONE_LABEL[p.zone] || p.zone}${dev ? ' · ' + dev : ''}`];
+}
+
+function makeMarkerSprite(lines, color) {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
-  ctx.font = 'bold 34px system-ui, sans-serif';
-  const w = Math.ceil(ctx.measureText(text).width) + 60;
-  c.width = w; c.height = 56;
-  ctx.font = 'bold 34px system-ui, sans-serif';
-  ctx.fillStyle = 'rgba(20,23,28,0.82)';
-  ctx.beginPath();
-  ctx.roundRect(0, 0, w, 56, 16);
-  ctx.fill();
+  const f1 = 'bold 34px system-ui, sans-serif', f2 = '26px system-ui, sans-serif';
+  ctx.font = f1; const w1 = ctx.measureText(lines[0]).width;
+  ctx.font = f2; const w2 = ctx.measureText(lines[1]).width;
+  const w = Math.ceil(Math.max(w1, w2)) + 64, h = 92;
+  c.width = w; c.height = h;
+  ctx.fillStyle = 'rgba(20,23,28,0.85)';
+  ctx.beginPath(); ctx.roundRect(0, 0, w, h, 16); ctx.fill();
   ctx.fillStyle = color;
-  ctx.beginPath(); ctx.arc(28, 28, 12, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#f2f4f6';
-  ctx.fillText(text, 48, 40);
+  ctx.beginPath(); ctx.arc(28, 30, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.font = f1; ctx.fillStyle = '#f2f4f6'; ctx.fillText(lines[0], 50, 42);
+  ctx.font = f2; ctx.fillStyle = '#9fd9c4'; ctx.fillText(lines[1], 50, 78);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
   const s = new THREE.Sprite(mat);
-  s.scale.set(0.11 * w / 56 * 1.6, 0.11 * 1.6, 1);
+  s.scale.set(0.176 * w / 56, 0.176 * h / 56, 1);
   s.renderOrder = 999; // 아크릴 판에 가려지지 않게
+  s.userData.text = lines.join('\n');
   return s;
 }
 
 function updateSensorMarkers() {
   if (sceneLive.dormant) return; // 직접 실험 화면을 아직 안 열었으면 아크릴이 없음 (열 때 다시 부름)
   for (const [k, s] of Object.entries(sensorMarkers)) {
-    if (!setup.placements[k]) { sceneLive.scene.remove(s); s.material.map.dispose(); s.material.dispose(); delete sensorMarkers[k]; }
+    const p = setup.placements[k];
+    const text = p ? markerLines(k).join('\n') : null;
+    if (!p || s.userData.text !== text) { sceneLive.scene.remove(s); s.material.map.dispose(); s.material.dispose(); delete sensorMarkers[k]; }
   }
   for (const [k, p] of Object.entries(setup.placements)) {
     let s = sensorMarkers[k];
-    if (s && s.userData.zone !== p.zone) { sceneLive.scene.remove(s); delete sensorMarkers[k]; s = null; }
     if (!s) {
-      s = makeMarkerSprite(k, liveColorFor(k));
-      s.userData.zone = p.zone;
+      s = makeMarkerSprite(markerLines(k), liveColorFor(k));
       sensorMarkers[k] = s;
       sceneLive.scene.add(s);
     }
@@ -779,13 +1063,18 @@ for (const [k, p] of Object.entries(setup.placements)) {
 }
 updateSensorMarkers();
 
-// 배치 단계에서는 값이 들어올 때마다 연결 상태·센서 목록을 새로 그린다 (끌고 있는 중엔 건드리지 않음)
+// 1초마다: 이름표의 값을 새로 쓰고, 배치 화면은 바뀐 게 있을 때만 다시 그림 (끌고 있거나 입력 중이면 건드리지 않음)
 setInterval(() => {
-  if (liveView === 'setup' && currentStepId() === 'place' && !document.body.classList.contains('ls-dragging')) {
-    const focused = document.activeElement && document.getElementById('lsBody').contains(document.activeElement);
-    if (!focused) renderPlaceStep(document.getElementById('lsBody'));
-  }
-}, 2000);
+  if (Object.keys(setup.placements).length) updateSensorMarkers();
+  if (liveView !== 'setup' || currentStepId() !== 'place') return;
+  document.querySelectorAll('#lsBody [data-live-val]').forEach(el => {
+    const t = liveValueText(el.dataset.liveVal);
+    if (el.textContent !== t) el.textContent = t;
+  });
+  if (document.body.classList.contains('ls-dragging')) return;
+  const focused = document.activeElement && document.getElementById('lsBody').contains(document.activeElement);
+  if (!focused && placeSignature() !== placeSig) renderPlaceStep(document.getElementById('lsBody'));
+}, 1000);
 
 // ── 실험 시작 ─────────────────────────────────────────
 function simConfigFromSetup() {
