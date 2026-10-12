@@ -177,14 +177,6 @@ function openAnalysisFor(xKey, yKey, timeUnit) {
   an.timeUnit = timeUnit || 'auto';
   document.getElementById('anTimeUnit').value = an.timeUnit;
   onLiveKeysChanged();
-  // 분석 칸이 거의 접혀 있으면 펼친다
-  const panel = document.getElementById('tab-live');
-  if (parseFloat(panel.style.getPropertyValue('--an-pct')) < 20) {
-    panel.style.setProperty('--an-pct', '50%');
-    liveGraphs.forEach(g => g.chart.resize());
-    resizeAnalysisChart();
-  }
-  document.getElementById('liveAnalysis').scrollIntoView({ block: 'nearest' });
 }
 
 // ── 입력 연결 ─────────────────────────────────────
@@ -228,11 +220,12 @@ function exportAnalysisXlsx() {
   if (!liveRecords.length) { showLiveToast('아직 기록된 데이터가 없어요', true); return; }
   const keys = [...liveKnownKeys].sort().filter(k => liveRecords.some(r => typeof r[k] === 'number'));
   const t0 = liveSession.startedAt || liveRecords[0]._t;
-  const rawRows = [['측정 시각', '경과 시간(초)', '보드', ...keys]];
+  const hasLight = liveRecords.some(r => r._light != null);
+  const rawRows = [['측정 시각', '경과 시간(초)', '보드', ...(hasLight ? ['조명(1=켬)'] : []), ...keys]];
   for (const r of liveRecords) {
     const dev = liveDevices.find(d => d.id === r._dev);
     rawRows.push([new Date(r._t).toLocaleString('ko-KR', { hour12: false }), Number(((r._t - t0) / 1000).toFixed(3)),
-      dev ? dev.name : r._dev, ...keys.map(k => (typeof r[k] === 'number' ? r[k] : ''))]);
+      dev ? dev.name : (r._dev || ''), ...(hasLight ? [r._light ?? ''] : []), ...keys.map(k => (typeof r[k] === 'number' ? r[k] : ''))]);
   }
 
   const last = an.last || { raw: [], pts: [], log: [], fit: null, edited: false };
@@ -260,7 +253,7 @@ function exportAnalysisXlsx() {
   ];
 
   const blob = buildXlsx([
-    { name: '원본 데이터', rows: rawRows, colWidths: [20, 13, 14, ...keys.map(() => 12)] },
+    { name: '원본 데이터', rows: rawRows, colWidths: [20, 13, 14, ...(hasLight ? [10] : []), ...keys.map(() => 12)] },
     { name: '편집 데이터', rows: editRows, colWidths: [16, 16] },
     { name: '통계·추세식', rows: statRows, colWidths: [22, 46, 14] },
   ]);

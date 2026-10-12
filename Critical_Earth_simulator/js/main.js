@@ -17,10 +17,9 @@ function switchTab(name) {
   document.getElementById('tab-live').classList.toggle('active', name === 'live');
   document.getElementById('tabHeaderTitle').textContent = TAB_HEADERS[name].title;
   document.getElementById('tabHeaderDesc').textContent = TAB_HEADERS[name].desc;
-  // 직접 실험 탭은 화면을 4칸(아크릴 / 보드·센서 / 그래프 / 분석·편집)으로 나눠 쓴다 - style.css의 body.live-mode
-  // (처음엔 '실험 준비' 화면 body.live-setup → 실험을 시작하면 4칸 - js/live-setup.js가 전환)
-  document.body.classList.toggle('live-mode', name === 'live');
-  if (name !== 'live') document.body.classList.remove('live-setup');
+  // 직접 실험 탭은 아크릴을 화면 가득 두고 그 위에 띄운다: 처음엔 '실험 준비'(body.live-setup),
+  // 실험을 시작하면 '실험 화면'(body.live-run) - js/live-setup.js가 전환
+  if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
   activeTab = name;
   if (name === 'future') {
     chart1.resize(); chart2.resize();

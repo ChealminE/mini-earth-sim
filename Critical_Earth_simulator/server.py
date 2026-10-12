@@ -219,8 +219,11 @@ def set_device_online(dev_id: str, online: bool):
 # 브라우저는 다시 열리면 /api/session으로 전부 되찾아 온다.
 #   idle → (시작) → armed(조건 대기) → recording → ended
 #   자동 시작 조건이 없으면 armed를 건너뛰고 바로 recording.
+# light / lightEvents: 아크릴에 조명을 비추는 중인지 (실험 화면의 💡 버튼). 기록마다 _light(1/0)로 남기고,
+# 켜고 끈 시각은 lightEvents에 모아서 그래프에 조명 켠 구간을 표시한다.
 session: dict = {"state": "idle", "config": {}, "armedAt": None, "startedAt": None,
-                 "endsAt": None, "endedAt": None, "endReason": None, "file": None, "records": []}
+                 "endsAt": None, "endedAt": None, "endReason": None, "file": None, "records": [],
+                 "light": 0, "lightEvents": []}
 _session_file = None
 
 
@@ -255,6 +258,7 @@ def _begin_recording(at: float):
     title = re.sub(r'[\\/:*?"<>|]', "", str(session["config"].get("name") or "")).strip()[:60] or "실험"
     name = f"{title}_{datetime.fromtimestamp(at).strftime('%Y%m%d_%H%M%S')}"
     session["file"] = name
+    session["lightEvents"] = [{"t": at * 1000, "on": session["light"]}]
     _session_file = open(SESSION_DIR / f"{name}.jsonl", "a", encoding="utf-8")
 
 
@@ -277,16 +281,18 @@ def _write_session_csv():
     if not recs or not session["file"]:
         return
     fields = ["timestamp", "elapsed_s", "_dev"]
+    if any("_light" in r for r in recs):
+        fields.append("light")  # 조명 1 = 켬, 0 = 끔
     for r in recs:
         for k in r:
-            if k not in fields and not k.startswith("_t"):
+            if k not in fields and not k.startswith("_t") and k != "_light":
                 fields.append(k)
     t0 = session["startedAt"] or 0
     with open(SESSION_DIR / f"{session['file']}.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         for r in recs:
-            w.writerow({**r, "elapsed_s": round((r["_t"] - t0) / 1000, 3)})
+            w.writerow({**r, "elapsed_s": round((r["_t"] - t0) / 1000, 3), "light": r.get("_light", "")})
 
 
 async def session_tick():
@@ -356,16 +362,40 @@ async def handle_incoming(payload: dict, dev_id: str):
             _end_session("time")
             changed = True
         else:
-            rec = {**payload, "_t": now * 1000}
+            rec = {**payload, "_t": now * 1000, "_light": session["light"]}
             session["records"].append(rec)
             if _session_file is not None:
                 _session_file.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 _session_file.flush()
             payload["_rec"] = True  # 화면은 이 표시가 붙은 값만 그래프·분석에 쌓는다
             payload["_t"] = rec["_t"]
+            payload["_light"] = rec["_light"]
     if changed:
         await broadcast(session_public())
     await broadcast(payload)
+
+
+# ── 받은 줄 그대로 화면에 (직접 실험의 '🖥 시리얼 모니터' 창) ─────────────
+# 값(JSON)이 아닌 디버그 출력·오류 메시지도 그대로 보여 줘서 "값이 안 들어와요"를 찾게 한다.
+# 최근 줄은 서버에도 조금 남겨 두어 화면을 새로 열어도 바로 보이게.
+raw_recent: list = []
+
+
+def raw_line(dev_id: str, text: str):
+    """어느 스레드에서 불러도 됨 (시리얼 스레드·외부 MQTT 스레드·이벤트 루프)."""
+    item = {"_type": "raw", "dev": dev_id, "line": str(text)[:400], "t": time.time() * 1000}
+    raw_recent.append(item)
+    del raw_recent[:-300]
+    if main_loop is None:
+        return
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is main_loop:
+        asyncio.create_task(broadcast(item))
+    else:
+        asyncio.run_coroutine_threadsafe(broadcast(item), main_loop)
 
 
 def submit_incoming(payload: dict, dev_id: str):
@@ -408,6 +438,7 @@ async def receive_data(request: Request):
     dev_id = f"http:{host}"
     if dev_id not in devices:
         register_device(Device(dev_id, "http", host))
+    raw_line(dev_id, json.dumps(payload, ensure_ascii=False))
     await handle_incoming(payload, dev_id)
     return {"ok": True, "received": payload}
 
@@ -416,6 +447,11 @@ async def receive_data(request: Request):
 async def api_info():
     """화면의 '연결 정보'에 띄울 값 - ESP32 코드에 넣을 서버(브로커) 주소 등."""
     return server_info
+
+
+@app.get("/api/raw")
+async def api_raw():
+    return raw_recent
 
 
 @app.get("/api/session")
@@ -471,13 +507,20 @@ async def handle_ws_message(ws: WebSocket, msg: dict):
             cfg = msg.get("config") or {}
             session.update({"state": "armed", "config": cfg, "armedAt": time.time() * 1000,
                             "startedAt": None, "endsAt": None, "endedAt": None, "endReason": None,
-                            "file": None, "records": []})
+                            "file": None, "records": [], "lightEvents": []})
             if not cfg.get("trigger"):
                 _begin_recording(time.time())
             await broadcast(session_public())
         elif action == "stop":
             _end_session("manual")
             await broadcast(session_public())
+        elif action == "light":
+            on = 1 if msg.get("on") else 0
+            if session["light"] != on:
+                session["light"] = on
+                if session["state"] == "recording":
+                    session["lightEvents"].append({"t": time.time() * 1000, "on": on})
+                await broadcast(session_public())
     elif kind == "rescan":
         serial_rescan_event.set()
 
@@ -645,9 +688,15 @@ class SerialLink:
                 # 조용히 지워버려서 "temp"가 "tmp"처럼 다른 문자열로 둔갑한 채로도 JSON 파싱에
                 # 성공할 수 있었다 - 대시보드 입장에선 그게 완전히 새로운 센서로 보여 카드가 계속
                 # 늘어나는 것처럼 보인 원인 중 하나. strict로 읽어서 깨진 줄은 통째로 버린다.
-                line = self.ser.readline().decode("utf-8").strip()
+                rawb = self.ser.readline()
+                try:
+                    line = rawb.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    raw_line(self.dev_id, "(깨진 줄 — 통신 속도(baud)나 배선을 확인하세요) " + rawb.decode("utf-8", errors="replace").strip())
+                    raise
                 if not line:
                     continue
+                raw_line(self.dev_id, line)
                 payload = json.loads(line)  # JSON이 아닌 디버그 출력 줄은 여기서 자동으로 걸러짐
                 if isinstance(payload, dict):
                     submit_incoming(payload, self.dev_id)
@@ -783,6 +832,7 @@ async def ble_reader_task(name_filter: str, address: Optional[str]):
                         line = line.strip()
                         if not line:
                             continue
+                        raw_line(dev_id, line)
                         try:
                             payload = json.loads(line)  # 디버그 출력이 섞여 들어와도 여기서 자동으로 걸러짐
                         except json.JSONDecodeError:
@@ -825,6 +875,7 @@ def mqtt_on_message(topic: str, payload: bytes):
                 return True
             return send
         register_device(Device(dev_id, "mqtt", dev, send=send_factory(dev)))
+    raw_line(dev_id, f"[{kind}] " + payload.decode("utf-8", errors="replace").strip())
     if kind == "status":
         text = payload.decode("utf-8", errors="ignore").strip().lower()
         set_device_online(dev_id, text != "offline")

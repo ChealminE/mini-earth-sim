@@ -98,7 +98,7 @@ BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
 AERIAL_JS = ["js/earth-model.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
-             "js/live-analysis.js", "js/live-setup.js", "js/main.js"]
+             "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
          "firstperson/fp-audio.js", "firstperson/fp-minimap.js", "firstperson/fp-field.js",
          "firstperson/fp-tools.js", "firstperson/fp-player.js", "firstperson/fp-main.js"]
@@ -250,7 +250,7 @@ window.__boot__ = function (w, mode, tab) {
     if (tab && typeof w.switchTab === 'function') w.switchTab(tab);
 
     // 센서 탭은 server.py(WebSocket)가 있어야 돈다. 단일 파일에서는 막고 이유를 알린다.
-    var btn = d.getElementById('startExperimentBtn');
+    var btn = d.getElementById('startStopBtn');
     if (btn) {
       btn.disabled = true;
       btn.title = '단일 파일 버전에서는 센서 연결을 쓸 수 없습니다';

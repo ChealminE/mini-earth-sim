@@ -1,6 +1,6 @@
 // ================= 직접 실험 탭 (보드 ↔ server.py ↔ 화면, WebSocket 연동) =================
-// 화면 4칸: 왼쪽 위 = 아크릴 3D / 왼쪽 아래 = 보드·센서 패널(값, 켜기·끄기)
-//           오른쪽 위 = 그래프 카드 / 오른쪽 아래 = 데이터 분석·편집(live-analysis.js)
+// 실험 화면(#liveRun): 아크릴 3D를 화면 가득 두고 위쪽 상태 줄 / 오른쪽 보드·센서 패널(값, 켜기·끄기) /
+// 아크릴 위에 떠 있는 그래프 카드. 카드를 누르면 큰 창(그래프 / 데이터 표 / 편집·분석 = live-analysis.js)
 // "기록 중인지 / 언제 자동 종료할지 / 지금까지 쌓인 값"은 서버(server.py)가 들고 있다.
 // 6시간짜리 실험 도중 탭을 새로고침해도 /api/session으로 전부 되찾아 오게 하려는 것.
 const sceneLive = sceneFor('live'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
@@ -11,6 +11,7 @@ let liveRecords = [];           // 이번 실험에서 '기록'된 값 전부 (�
 let liveSession = { state: 'idle' }; // 서버의 실험 세션 상태 그대로
 let liveDevices = [];           // 서버가 알려준 보드 목록
 let liveServerInfo = null;      // /api/info (MQTT 브로커 주소 등)
+let liveFile = null;            // 지난 데이터 파일을 열어 보는 중이면 { name } (live-file.js)
 
 const liveColorRamp = ['#5DCAA5', '#EF9F27', '#E24B4A', '#85B7EB', '#c07fe0', '#8fd83c'];
 function liveColorFor(key) {
@@ -113,12 +114,14 @@ function connectLiveSocket() {
     if (msg._type === 'devices') { liveDevices = msg.devices || []; renderDevicePanel(); return; }
     if (msg._type === 'session') { applySessionState(msg); return; }
     if (msg._type === 'cmd_result') { if (!msg.ok) showLiveToast(msg.msg || '명령 실패', true); return; }
+    if (msg._type === 'raw') { addMonitorLine(msg); return; }
     if (msg._type) return;
     handleDataPayload(msg);
   };
 }
 
 function handleDataPayload(payload) {
+  if (liveFile) return; // 지난 데이터(파일)를 보는 중에는 실시간 값을 섞지 않음
   const devId = payload._dev || 'unknown';
   const ts = payload.timestamp || new Date().toISOString();
   let newKey = false;
@@ -135,7 +138,7 @@ function handleDataPayload(payload) {
     if (!liveKnownKeys.has(k)) { liveKnownKeys.add(k); newKey = true; }
     if (rec && typeof v === 'number') rec[k] = v;
   }
-  if (rec) liveRecords.push(rec);
+  if (rec) { if (payload._light != null) rec._light = payload._light; liveRecords.push(rec); }
   if (newKey) { renderDevicePanel(true); refreshLiveSelectOptions(); }
   else updateDeviceValues();
   if (rec) scheduleLiveChartsUpdate();
@@ -143,7 +146,9 @@ function handleDataPayload(payload) {
 }
 
 // 새로고침했을 때 서버가 들고 있던 이번 실험 기록을 되찾는다
+let sessionRestoredOnce = false;
 function restoreSessionRecords(s) {
+  if (liveFile) return;
   if (!s || !s.armedAt) return;
   liveSession = s;
   // 서버에서 기록을 받아오는 사이에 실시간으로 먼저 도착한 값은 버리지 않고 뒤에 붙인다
@@ -152,6 +157,7 @@ function restoreSessionRecords(s) {
   liveRecords = [];
   for (const r of s.records || []) {
     const rec = { _t: r._t, _dev: r._dev, timestamp: r.timestamp };
+    if (r._light != null) rec._light = r._light;
     for (const [raw, v] of Object.entries(r)) {
       if (raw === 'timestamp' || raw.startsWith('_') || typeof v !== 'number') continue;
       const k = displayKeyFor(raw, r._dev);
@@ -162,6 +168,9 @@ function restoreSessionRecords(s) {
     liveRecords.push(rec);
   }
   liveRecords.push(...arrivedMeanwhile);
+  // 페이지를 새로 열었을 때 진행 중이거나 막 끝난 실험이 있으면 바로 실험 화면으로 (기록·그래프를 다시 보게)
+  if (!sessionRestoredOnce && (s.state !== 'ended' || liveRecords.length) && typeof liveView !== 'undefined' && liveView === 'setup') showLiveExperiment();
+  sessionRestoredOnce = true;
   refreshLiveSelectOptions();
   updateAllLiveCharts();
   renderLiveStatus();
@@ -169,6 +178,7 @@ function restoreSessionRecords(s) {
 }
 
 function applySessionState(s) {
+  if (liveFile) return;
   const isNew = s.armedAt && s.armedAt !== liveSession.armedAt;
   liveSession = s;
   if (isNew) {
@@ -201,6 +211,15 @@ function renderLiveStatus() {
   const st = liveSession.state;
   dot.className = 'live-dot' + (st === 'recording' ? ' on rec' : st === 'armed' ? ' armed' : liveConnected ? ' on' : '');
   let msg;
+  if (liveFile) {
+    text.textContent = `📂 지난 데이터 보기 — ${liveFile.name} · ${liveRecords.length}개 기록 (보드와 연결 안 함 · 편집·분석·내보내기만)`;
+    dot.className = 'live-dot';
+    const ssb = document.getElementById('startStopBtn');
+    ssb.textContent = '✕ 파일 닫기'; ssb.classList.add('stop'); ssb.disabled = false;
+    document.getElementById('liveExpName').textContent = liveFile.title;
+    document.getElementById('expSettingsSummary').textContent = '';
+    return;
+  }
   if (!liveConnected) msg = '서버 연결 안 됨 — server.py(run_server.bat)가 켜져 있는지 확인하세요';
   else if (st === 'armed') {
     const t = (liveSession.config || {}).trigger || {};
@@ -214,20 +233,26 @@ function renderLiveStatus() {
     msg += ` · ${liveRecords.length}개`;
   } else if (st === 'ended') {
     const why = liveSession.endReason === 'time' ? '설정 시간 도달' : '직접 종료';
-    msg = `실험 종료 (${why}) · ${liveRecords.length}개 기록 — 아래 '데이터 분석·편집'에서 정리할 수 있어요`;
+    msg = `실험 종료 (${why}) · ${liveRecords.length}개 기록 — 그래프를 눌러 '편집·분석'에서 정리할 수 있어요`;
   } else msg = '실험 대기 중 — 보드를 연결하고 "실험 시작"을 누르세요';
   text.textContent = msg;
 
   const running = st === 'armed' || st === 'recording';
-  document.getElementById('startExperimentBtn').disabled = running || !liveConnected;
-  document.getElementById('endExperimentBtn').disabled = !running;
+  const ssb = document.getElementById('startStopBtn');
+  ssb.textContent = st === 'armed' ? '■ 대기 취소' : running ? '■ 실험 끝내기' : st === 'ended' ? '▶ 다시 시작' : '▶ 실험 시작';
+  ssb.classList.toggle('stop', running);
+  ssb.disabled = !running && !liveConnected;
   document.getElementById('backToSetupBtn').disabled = running;
+  const lb = document.getElementById('lightBtn');
+  lb.textContent = liveSession.light ? '💡 조명 켬' : '💡 조명 끔';
+  lb.classList.toggle('on', !!liveSession.light);
+  applyLampLight();
   document.getElementById('liveExpName').textContent = setup.name || '';
   document.getElementById('expSettingsSummary').textContent = simSummary();
 }
 setInterval(() => { renderLiveStatus(); updateDeviceValues(); }, 1000);
 
-// ── 보드·센서 패널 (왼쪽 아래) ────────────────────────────
+// ── 보드·센서 패널 (실험 화면 오른쪽) ────────────────────────────
 const LINK_LABEL = { usb: 'USB', ble: 'BLE', mqtt: 'WiFi·MQTT', http: 'WiFi·HTTP' };
 const LIVE_STALE_MS = 15000; // 이 시간 넘게 새 값이 없으면 "전송 끊김"으로 표시
 let devicePanelSignature = '';
@@ -237,19 +262,15 @@ function keysOfDevice(devId) {
 }
 
 function valueChipHtml(k) {
-  const zone = (setup.placements[k] || {}).zone || '';
-  const zoneOptionsHtml = `<option value="">배치 안 함</option>` + SENSOR_ZONES.map(z =>
-    `<option value="${z.id}"${zone === z.id ? ' selected' : ''}>${z.label}</option>`).join('');
-  return `<div class="value-chip" style="border-left-color:${liveColorFor(k)}">
+  return `<div class="value-chip" data-key="${escHtml(k)}" title="누르면 그래프" style="border-left-color:${liveColorFor(k)}">
       <div class="key" title="${escHtml(k)}">${escHtml(k)}</div>
       <div class="val" data-val="${escHtml(k)}">–</div>
       <div class="updated" data-time="${escHtml(k)}"></div>
-      <select class="sensor-role-select" data-key="${escHtml(k)}" title="이 센서를 아크릴의 어디에 놓았는지 (3D 효과 연결용)">${zoneOptionsHtml}</select>
     </div>`;
 }
 
 function devicePanelSig() {
-  return JSON.stringify([liveConnected, liveDevices.map(d => [d.id, d.name, d.online, d.info, d.canCmd]),
+  return JSON.stringify([!!liveFile, liveConnected, liveDevices.map(d => [d.id, d.name, d.online, d.info, d.canCmd]),
     [...liveKnownKeys].sort(), setup.placements]);
 }
 
@@ -258,6 +279,14 @@ function renderDevicePanel(force) {
   if (!force && sig === devicePanelSignature) { updateDeviceValues(); return; }
   devicePanelSignature = sig;
   const wrap = document.getElementById('liveDeviceList');
+  if (liveFile) {
+    const keys = [...liveKnownKeys];
+    wrap.innerHTML = `<div class="dev-card"><div class="dev-head"><span class="dev-name">📂 ${escHtml(liveFile.name)}</span></div>
+      <div class="hint" style="margin:6px 0 8px">값 카드를 누르면 그래프가 생겨요 (카드의 값 = 마지막 기록)</div>
+      <div class="value-chips">${keys.map(valueChipHtml).join('') || '<span class="hint" style="margin:0">숫자 값이 없어요</span>'}</div></div>`;
+    updateDeviceValues();
+    return;
+  }
   if (!liveConnected) {
     wrap.innerHTML = '<div class="conn-status-hint error">🔴 서버에 연결되지 않았어요 — server.py(run_server.bat)가 켜져 있는지 확인하세요. 켜지면 자동으로 다시 연결합니다.</div>';
     return;
@@ -301,7 +330,7 @@ function renderDevicePanel(force) {
       if (rest.length) body += `<div class="dev-sensor"><div class="dev-sensor-head"><span class="dev-sensor-name">기타 값</span></div><div class="value-chips">${rest.map(valueChipHtml).join('')}</div></div>`;
     } else {
       body += `<div class="value-chips">${keys.map(valueChipHtml).join('') || '<span class="hint" style="margin:0">아직 값이 안 왔어요</span>'}</div>`;
-      if (d.canCmd) body += '<div class="hint" style="margin:6px 0 0">이 보드 코드는 원격 제어를 지원하지 않아요. 기본 실험의 <b>표준 코드</b>로 올리면 켜기·끄기·재부팅 버튼이 생겨요.</div>';
+      if (d.canCmd) body += '<div class="hint" style="margin:6px 0 0">이 보드 코드는 원격 제어를 지원하지 않아요. 처음 화면 <b>기본 코드·회로도 받기</b>의 코드로 올리면 켜기·끄기·재부팅 버튼이 생겨요.</div>';
     }
     return `<div class="dev-card${d.online ? '' : ' offline'}" data-devcard="${escHtml(d.id)}">
       <div class="dev-head">
@@ -315,6 +344,7 @@ function renderDevicePanel(force) {
     </div>`;
   }).join('');
   updateDeviceValues();
+  if (typeof refreshSensorPop === 'function') refreshSensorPop(); // 아크릴 위 센서 창이 열려 있으면 켜짐/꺼짐 등을 새로
 }
 
 // 구조는 그대로 두고 숫자·시각만 바꾼다 (매초 통째로 다시 그리면 열려 있던 드롭다운이 닫히고 입력 중이던 칸이 지워짐)
@@ -341,14 +371,17 @@ function updateDeviceValues() {
   }
 }
 
-document.getElementById('liveDeviceList').addEventListener('change', (e) => {
-  if (!e.target.classList.contains('sensor-role-select')) return;
-  setSensorPlacement(e.target.dataset.key, e.target.value);
+
+document.getElementById('liveDeviceList').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-act]');
+  if (btn) { runDevAct(btn); return; }
+  // 값 카드를 누르면 그 센서 그래프
+  const chip = e.target.closest('.value-chip');
+  if (chip) addGraphForKey(chip.dataset.key);
 });
 
-document.getElementById('liveDeviceList').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-act]');
-  if (!btn) return;
+// 보드·센서 명령 버튼 (data-act = sensor | run | interval | reboot | hwreset)
+async function runDevAct(btn) {
   const dev = btn.dataset.dev;
   const devName = (liveDevices.find(d => d.id === dev) || {}).name || dev;
   const act = btn.dataset.act;
@@ -369,7 +402,7 @@ document.getElementById('liveDeviceList').addEventListener('click', async (e) =>
   }
   if (cmd && !liveSend({ _type: 'cmd', dev, cmd })) showLiveToast('서버에 연결되지 않아 보낼 수 없어요', true);
   else if (cmd) showLiveToast('명령을 보냈어요 — 보드가 반영하면 화면이 바뀝니다');
-});
+}
 
 document.getElementById('rescanPortsBtn').addEventListener('click', () => {
   if (liveSend({ _type: 'rescan' })) showLiveToast('USB 포트를 다시 찾는 중이에요 (최대 30초)');
@@ -403,7 +436,8 @@ function showLiveToast(text, isError) {
 }
 
 // 앱과 같은 디자인의 확인 창 (브라우저 기본 confirm 대신)
-function liveConfirm(text) {
+// labels = { yes: '이어서 하기', no: '새로 준비' } 처럼 버튼 글자를 바꿀 수 있다 (기본 확인/취소)
+function liveConfirm(text, labels = {}) {
   return new Promise(resolve => {
     const modal = document.getElementById('liveConfirmModal');
     document.getElementById('liveConfirmText').textContent = text;
@@ -411,23 +445,25 @@ function liveConfirm(text) {
     const done = (v) => { modal.classList.remove('visible'); yes.onclick = no.onclick = null; resolve(v); };
     const yes = document.getElementById('liveConfirmYesBtn');
     const no = document.getElementById('liveConfirmNoBtn');
+    yes.textContent = labels.yes || '확인';
+    no.textContent = labels.no || '취소';
     yes.onclick = () => done(true);
     no.onclick = () => done(false);
   });
 }
 
-// ── 그래프 (최대 4개, 한 번에 하나만 크게 · 아래 탭으로 넘기기·합치기) ──────────────
-// 그래프 칸은 '실시간으로 보기'만 맡는다 (축·색·계열·합치기/분리·값 마크·이미지 저장).
-// 추세식·통계·편집·엑셀 저장은 아래 '데이터 분석·편집' 칸(live-analysis.js)에서만 한다 - 같은 기능이
-// 두 군데 있으면 학생이 어디서 뭘 해야 하는지 헷갈려서 역할을 나눴다.
-// 여러 그래프를 나란히 놓으면 칸이 좁아져 스크롤바가 생기고 그래프가 작아져서, 한 번에 하나만 칸 가득 보여 주고
-// 아래 ◀ ▶ 와 탭으로 넘긴다. 합치기는 지금 그래프를 다른 탭 위로 끌어다 놓는다(탭끼리 끌어도 됨).
+// ── 그래프 (아크릴 위에 떠 있는 카드 · 누르면 큰 창) ──────────────
+// 실험 화면은 아크릴을 화면 가득 두고, 그래프는 학생이 필요할 때 꺼내 쓰는 작은 카드로 띄운다.
+//   카드: 제목 줄을 끌어 아무 데나 옮기기 · 다른 카드 위에 놓으면 합치기 · 모서리로 크기 조절 · 접기
+//   카드를 누르면 큰 창: [그래프](값 마크) / [데이터 표] / [편집·분석](live-analysis.js)
+// 카드 구성·위치는 이 브라우저에 저장해 두어 새로고침해도 그대로 (LIVE_GRAPHS_KEY).
 // 상태는 DOM이 아니라 g 객체 자체에 저장(g.series[i].xKey 등) — 팝업이 닫혀 있어도 값이 유지되게.
-const liveGraphs = []; // [{ id, chart, card, title, xMin, xMax, xUnit, yMin, yMax, yUnit, timeUnit, marks, series:[{sid,color,xKey,yKey,visible}] }]
+const liveGraphs = []; // [{ id, chart, card, title, xMin, xMax, xUnit, yMin, yMax, yUnit, timeUnit, marks, x, y, w, h, collapsed, series:[{sid,color,xKey,yKey,visible}] }]
 let liveGraphSeq = 0;
 let liveSeriesSeq = 0;
-let activeGraphId = null;
-const MAX_LIVE_GRAPHS = 4;
+const MAX_LIVE_GRAPHS = 8;
+const LIVE_GRAPHS_KEY = 'liveGraphsV1';
+const CARD_W = 340, CARD_H = 210;
 // 6시간 동안 1초마다 받으면 2만 개가 넘는다. 원본은 전부 들고 있되, 차트에는 계열당 이만큼만 솎아서 그린다.
 const LIVE_MAX_DRAW_POINTS = 1500;
 let gsCurrentGraphId = null; // 지금 설정 팝업이 편집 중인 그래프
@@ -442,9 +478,7 @@ function buildXKeyOptionsHtml(selectedKey, keys) {
   return timeOption + buildKeyOptionsHtml(selectedKey, keys);
 }
 
-// 새 센서 키가 들어오면 빈 그래프에 기본값을 자동 배정한다 (병합으로 늘어난 계열은 사용자가 직접 골라야 함).
-// 학생 실험에서 제일 먼저 필요한 건 "시간에 따라 값이 어떻게 변하나"라서 X축 기본값은 경과 시간이고,
-// 그래프마다 아직 다른 그래프가 안 쓰는 센서를 하나씩 나눠 준다.
+// 새 센서 키가 들어오면 '빈 그래프'(+ 그래프로 만든 것)에만 아직 안 쓰인 센서를 하나씩 채워 준다.
 function refreshLiveSelectOptions() {
   const keys = [...liveKnownKeys].sort();
   const used = new Set(liveGraphs.map(g => g.series[0].yKey).filter(Boolean));
@@ -453,7 +487,7 @@ function refreshLiveSelectOptions() {
     if (!primary.xKey) primary.xKey = TIME_AXIS_KEY;
     if (!primary.yKey) {
       const next = keys.find(k => !used.has(k) && typeof (liveLatest[k] || {}).value === 'number');
-      if (next) { primary.yKey = next; used.add(next); }
+      if (next) { primary.yKey = next; used.add(next); updateCardTitleDisplay(g); }
     }
     updateLiveChart(g);
   });
@@ -461,7 +495,6 @@ function refreshLiveSelectOptions() {
     const g = liveGraphs.find(x => x.id === gsCurrentGraphId);
     if (g) renderSettingsSeriesList(g);
   }
-  renderGraphTabs();
   if (typeof onLiveKeysChanged === 'function') onLiveKeysChanged();
 }
 
@@ -472,7 +505,7 @@ function updateLiveChart(g) {
     if (s.yKey && !yKeys.includes(s.yKey)) yKeys.push(s.yKey);
     const pts = seriesPoints(s.xKey, s.yKey, g.timeUnit);
     const xLabelPart = s.xKey === TIME_AXIS_KEY ? TIME_AXIS_LABEL : s.xKey;
-    return { label: s.xKey && s.yKey ? `${xLabelPart} / ${s.yKey}` : '(선택 안 됨)', data: downsampleMinMax(pts, LIVE_MAX_DRAW_POINTS),
+    return { label: !(s.xKey && s.yKey) ? '(선택 안 됨)' : s.xKey === TIME_AXIS_KEY ? s.yKey : `${xLabelPart} / ${s.yKey}`, data: downsampleMinMax(pts, LIVE_MAX_DRAW_POINTS),
       backgroundColor: s.color, borderColor: s.color, pointRadius: pts.length > 300 ? 0 : 2.5, pointHitRadius: 6,
       showLine: true, borderWidth: 1.2, hidden: s.visible === false };
   });
@@ -488,10 +521,13 @@ function updateLiveChart(g) {
   g.chart.options.scales.y.max = (!g.yAuto && g.yMax !== '') ? Number(g.yMax) : undefined;
   g.chart.options.plugins.legend.display = g.series.length > 1;
   g.chart.update('none');
+  const empty = g.card.querySelector('.fg-nodata');
+  if (empty) empty.style.display = g.chart.data.datasets.some(d => d.data.length) ? 'none' : '';
 }
 
 function updateAllLiveCharts() {
   liveGraphs.forEach(updateLiveChart);
+  if ((graphWinId != null || graphWinAll) && graphWinTab === 'table') renderGraphTable();
 }
 
 // 값이 1초에 여러 번 들어와도 그래프는 0.3초에 한 번만 다시 그린다 (긴 실험에서 화면이 버벅이지 않게)
@@ -505,7 +541,7 @@ function scheduleLiveChartsUpdate() {
   }, 300);
 }
 
-// 탭·카드 제목: 직접 붙인 제목이 없으면 그리는 변인 이름으로
+// 카드 제목: 직접 붙인 제목이 없으면 그리는 변인 이름으로
 function graphLabel(g) {
   if (g.title) return g.title;
   const ys = g.series.map(s => s.yKey).filter(Boolean);
@@ -513,65 +549,172 @@ function graphLabel(g) {
 }
 
 function updateCardTitleDisplay(g) {
-  const el = document.getElementById(`titleDisplay-${g.id}`);
+  const el = g.card.querySelector('.fg-title');
   if (el) el.textContent = graphLabel(g);
-  renderGraphTabs();
+  if (graphWinId === g.id) document.getElementById('gwTitle').textContent = graphLabel(g);
+  saveGraphLayout();
 }
 
-// ── 카드 자체는 생성될 때 한 번만 그림 (합치기/계열 변경 때도 안 건드려서 차트 인스턴스가 안 깨짐) ──
+// ── 카드 그리기 (생성될 때 한 번만 — 합치기/계열 변경 때도 안 건드려서 차트 인스턴스가 안 깨짐) ──
 function renderGraphCard(g) {
   g.card.innerHTML = `
-    <div class="graph-card-top">
-      <div class="graph-title-display" id="titleDisplay-${g.id}" draggable="true" title="끌어서 아래 다른 탭 위에 놓으면 합쳐져요">${escHtml(graphLabel(g))}</div>
-      <div class="graph-card-icons">
-        <button class="icon-btn" onclick="analyzeGraph(${g.id})" title="이 그래프를 아래 '데이터 분석·편집'에서 열기 (추세식·통계·편집)">📊</button>
-        <button class="icon-btn" onclick="openGraphSettings(${g.id})" title="그래프 설정">⚙</button>
-        <button class="icon-btn remove-btn" onclick="removeLiveGraph(${g.id})" title="그래프 삭제">✕</button>
-      </div>
+    <div class="fg-head" title="끌어서 옮기기 · 다른 그래프 위에 놓으면 합치기">
+      <span class="fg-title">${escHtml(graphLabel(g))}</span>
+      <button class="icon-btn" data-fg="collapse" title="접기/펴기">▾</button>
+      <button class="icon-btn" data-fg="open" title="크게 보기 · 데이터 표 · 편집">⛶</button>
+      <button class="icon-btn remove-btn" data-fg="remove" title="그래프 삭제">✕</button>
     </div>
-    <div class="chart-wrap"><canvas id="liveChart-${g.id}"></canvas></div>`;
+    <div class="fg-chart chart-wrap"><canvas id="liveChart-${g.id}"></canvas><div class="fg-nodata">값이 들어오면 그려져요</div></div>`;
 }
 
-function analyzeGraph(id) {
-  const g = liveGraphs.find(x => x.id === id);
-  if (!g || typeof openAnalysisFor !== 'function') return;
-  const s = g.series.find(x => x.visible !== false && x.yKey) || g.series[0];
-  openAnalysisFor(s.xKey, s.yKey, g.timeUnit);
+function applyCardGeometry(g) {
+  g.card.style.left = `${g.x}px`;
+  g.card.style.top = `${g.y}px`;
+  g.card.style.width = `${g.w}px`;
+  g.card.style.height = g.collapsed ? '' : `${g.h}px`;
+  g.card.classList.toggle('collapsed', !!g.collapsed);
 }
 
-// ── 한 번에 하나 보기 · 아래 탭 ─────────────────────────
-function setActiveGraph(id) {
-  if (!liveGraphs.length) { activeGraphId = null; renderGraphTabs(); return; }
-  if (!liveGraphs.some(g => g.id === id)) id = liveGraphs[0].id;
-  activeGraphId = id;
-  liveGraphs.forEach(g => g.card.classList.toggle('active', g.id === id));
-  const g = liveGraphs.find(x => x.id === id);
-  g.chart.resize(); // 숨겨져 있던 동안엔 크기가 0으로 잡혀 있으므로 보이게 된 뒤 다시 잰다
-  renderGraphTabs();
+function nextCardPosition() {
+  const layer = document.getElementById('liveGraphs');
+  const W = layer.clientWidth || 900, H = layer.clientHeight || 600;
+  const n = liveGraphs.length;
+  const cols = Math.max(1, Math.floor((W - 8) / (CARD_W + 10)));
+  const col = n % cols, row = Math.floor(n / cols);
+  return { x: 8 + col * (CARD_W + 10), y: Math.min(H - 60, 8 + row * (CARD_H + 10)) };
 }
 
-function stepActiveGraph(dir) {
-  const i = liveGraphs.findIndex(g => g.id === activeGraphId);
-  if (i === -1 || liveGraphs.length < 2) return;
-  setActiveGraph(liveGraphs[(i + dir + liveGraphs.length) % liveGraphs.length].id);
+// '정리' — 왼쪽 위부터 가지런히 다시 놓는다
+function arrangeGraphs() {
+  const layer = document.getElementById('liveGraphs');
+  const cols = Math.max(1, Math.floor((layer.clientWidth - 8) / (CARD_W + 10)));
+  liveGraphs.forEach((g, n) => {
+    g.w = CARD_W; g.h = CARD_H; g.collapsed = false;
+    g.x = 8 + (n % cols) * (CARD_W + 10);
+    g.y = 8 + Math.floor(n / cols) * (CARD_H + 10);
+    applyCardGeometry(g);
+    g.chart.resize();
+  });
+  saveGraphLayout();
 }
 
-function renderGraphTabs() {
-  const wrap = document.getElementById('graphTabs');
-  wrap.innerHTML = liveGraphs.map((g, i) => `
-    <button class="graph-tab${g.id === activeGraphId ? ' active' : ''}" draggable="true" data-graph="${g.id}"
-      title="${escHtml(graphLabel(g))} · 눌러서 보기, 다른 그래프를 이 위로 끌어다 놓으면 합치기">
-      <span class="graph-tab-num">${i + 1}</span>${escHtml(graphLabel(g))}</button>`).join('');
-  const single = liveGraphs.length < 2;
-  document.getElementById('graphPrevBtn').disabled = single;
-  document.getElementById('graphNextBtn').disabled = single;
-  document.getElementById('addGraphBtn').disabled = liveGraphs.length >= MAX_LIVE_GRAPHS;
+// ── 카드 끌기 (제목 줄) · 다른 카드 위에 놓으면 합치기 ─────────────
+let cardDrag = null; // { g, dx, dy, target }
+function attachGraphDragHandlers(g) {
+  const head = g.card.querySelector('.fg-head');
+  head.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const r = g.card.getBoundingClientRect();
+    cardDrag = { g, dx: e.clientX - r.left, dy: e.clientY - r.top, target: null };
+    g.card.classList.add('dragging');
+    head.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (!cardDrag || cardDrag.g !== g) return;
+    const layer = document.getElementById('liveGraphs').getBoundingClientRect();
+    g.x = Math.max(0, Math.min(layer.width - 60, e.clientX - layer.left - cardDrag.dx));
+    g.y = Math.max(0, Math.min(layer.height - 30, e.clientY - layer.top - cardDrag.dy));
+    applyCardGeometry(g);
+    // 끌고 있는 카드 밑에 다른 카드가 있으면 합치기 대상으로 표시
+    g.card.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    g.card.style.pointerEvents = '';
+    const tc = under && under.closest('.fg-card');
+    const target = tc && tc !== g.card ? liveGraphs.find(x => x.card === tc) : null;
+    if (cardDrag.target && cardDrag.target !== target) cardDrag.target.card.classList.remove('drag-over');
+    if (target) target.card.classList.add('drag-over');
+    cardDrag.target = target;
+  });
+  const end = () => {
+    if (!cardDrag || cardDrag.g !== g) return;
+    g.card.classList.remove('dragging');
+    const target = cardDrag.target;
+    cardDrag = null;
+    if (target) { target.card.classList.remove('drag-over'); askMerge(g.id, target.id); }
+    saveGraphLayout();
+  };
+  head.addEventListener('pointerup', end);
+  head.addEventListener('pointercancel', end);
+  g.card.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-fg]');
+    if (!btn) return;
+    if (btn.dataset.fg === 'remove') removeLiveGraph(g.id);
+    else if (btn.dataset.fg === 'open') openGraphWin(g.id, 'graph');
+    else if (btn.dataset.fg === 'collapse') { g.collapsed = !g.collapsed; applyCardGeometry(g); if (!g.collapsed) g.chart.resize(); saveGraphLayout(); }
+  });
+  // 모서리로 크기를 바꾸면 차트도 맞추고 크기를 기억
+  new ResizeObserver(() => {
+    if (g.collapsed || g.card.classList.contains('dragging')) return;
+    const w = g.card.offsetWidth, h = g.card.offsetHeight;
+    if (w && h && (w !== g.w || h !== g.h)) { g.w = w; g.h = h; saveGraphLayout(); }
+  }).observe(g.card);
 }
 
-document.getElementById('graphPrevBtn').addEventListener('click', () => stepActiveGraph(-1));
-document.getElementById('graphNextBtn').addEventListener('click', () => stepActiveGraph(1));
+function askMerge(sourceId, targetId) {
+  const source = liveGraphs.find(x => x.id === sourceId);
+  const target = liveGraphs.find(x => x.id === targetId);
+  if (!source || !target || sourceId === targetId) return;
+  pendingMerge = { sourceId, targetId };
+  document.getElementById('mergeConfirmText').textContent =
+    `"${graphLabel(source)}"을(를) "${graphLabel(target)}"에 합치겠습니까? 한 그래프에 겹쳐서 표시됩니다. (⚙ 설정에서 다시 나눌 수 있어요)`;
+  document.getElementById('graphMergeConfirmModal').classList.add('visible');
+}
 
-// ── 설정 팝업 (⚙ 클릭 시 열림) ──────────────────────────
+document.getElementById('mergeConfirmYesBtn').addEventListener('click', () => {
+  document.getElementById('graphMergeConfirmModal').classList.remove('visible');
+  if (pendingMerge) mergeLiveGraphs(pendingMerge.sourceId, pendingMerge.targetId);
+  pendingMerge = null;
+});
+document.getElementById('mergeConfirmNoBtn').addEventListener('click', () => {
+  document.getElementById('graphMergeConfirmModal').classList.remove('visible');
+  pendingMerge = null;
+});
+
+function mergeLiveGraphs(sourceId, targetId) {
+  const srcIdx = liveGraphs.findIndex(x => x.id === sourceId);
+  const target = liveGraphs.find(x => x.id === targetId);
+  if (srcIdx === -1 || !target) return;
+  const source = liveGraphs[srcIdx];
+  target.series.push(...source.series);
+  source.chart.destroy();
+  source.card.remove();
+  liveGraphs.splice(srcIdx, 1);
+  updateLiveChart(target);
+  updateCardTitleDisplay(target);
+  if (gsCurrentGraphId === target.id) renderSettingsSeriesList(target);
+  updateEmptyHint();
+}
+
+function removeSeriesFromGraph(graphId, sid) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g || g.series.length <= 1) return;
+  g.series = g.series.filter(s => s.sid !== sid);
+  updateLiveChart(g);
+  updateCardTitleDisplay(g);
+  if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
+}
+
+// 합쳤던 계열을 다시 독립된 그래프로 되돌린다 (병합의 반대 동작). 새 카드는 원래 카드 옆에 생긴다.
+function splitSeriesToNewGraph(graphId, sid) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g || g.series.length <= 1) return;
+  if (liveGraphs.length >= MAX_LIVE_GRAPHS) {
+    alert(`그래프는 최대 ${MAX_LIVE_GRAPHS}개까지만 만들 수 있어요. 다른 그래프를 먼저 지우거나 합쳐주세요.`);
+    return;
+  }
+  const idx = g.series.findIndex(s => s.sid === sid);
+  if (idx === -1) return;
+  const [moved] = g.series.splice(idx, 1);
+  moved.visible = true;
+  const newG = createGraphObject([moved], { x: g.x + 24, y: g.y + 24, timeUnit: g.timeUnit });
+  updateLiveChart(newG);
+  updateLiveChart(g);
+  updateCardTitleDisplay(g);
+  if (gsCurrentGraphId === g.id) renderSettingsSeriesList(g);
+}
+
+// ── 설정 팝업 (⚙) ──────────────────────────────────────
 function openGraphSettings(id) {
   const g = liveGraphs.find(x => x.id === id);
   if (!g) return;
@@ -599,6 +742,7 @@ function setAxisAuto(graphId, axis, checked) {
   document.getElementById(axis === 'x' ? 'gsXMin' : 'gsYMin').disabled = checked;
   document.getElementById(axis === 'x' ? 'gsXMax' : 'gsYMax').disabled = checked;
   updateLiveChart(g);
+  saveGraphLayout();
 }
 
 function setGraphTimeUnit(graphId, unit) {
@@ -607,55 +751,8 @@ function setGraphTimeUnit(graphId, unit) {
   g.timeUnit = unit;
   g.marks = []; // 단위가 바뀌면 찍어 둔 마크의 x값 의미가 달라지므로 지운다
   updateLiveChart(g);
-}
-
-// ── 이미지/데이터 다운로드 ──────────────────────────────
-// 차트 캔버스는 배경이 투명해서 그대로 저장하면 문서·한글 파일에 붙였을 때 글자(밝은 색)가 안 보인다.
-// 화면과 같은 어두운 배경을 깔아서 저장한다.
-function chartToPngUrl(chart) {
-  const src = chart.canvas;
-  const c = document.createElement('canvas');
-  c.width = src.width; c.height = src.height;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#1b1e24';
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.drawImage(src, 0, 0);
-  return c.toDataURL('image/png');
-}
-
-function downloadGraphImage(graphId) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g) return;
-  const a = document.createElement('a');
-  a.href = chartToPngUrl(g.chart);
-  a.download = `${experimentFilePrefix()}_${safeFileName(graphLabel(g))}.png`;
-  a.click();
-}
-
-function csvEscape(v) {
-  const s = String(v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
-function downloadGraphData(graphId) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g) return;
-  const keys = [];
-  g.series.forEach(s => {
-    if (s.xKey && s.xKey !== TIME_AXIS_KEY && !keys.includes(s.xKey)) keys.push(s.xKey);
-    if (s.yKey && !keys.includes(s.yKey)) keys.push(s.yKey);
-  });
-  if (keys.length === 0) { alert('내보낼 변인이 선택되지 않았습니다. 계열에서 X/Y축을 먼저 골라주세요.'); return; }
-
-  const t0 = liveSession.startedAt || 0;
-  const header = ['timestamp', '경과 시간(초)', ...keys];
-  const rows = liveRecords
-    .filter(p => keys.some(k => k in p))
-    .map(p => [p.timestamp || '', ((p._t - t0) / 1000).toFixed(3), ...keys.map(k => (k in p ? p[k] : ''))]);
-  if (rows.length === 0) { alert('아직 내보낼 데이터가 없습니다. 실험을 시작해서 값을 받아온 뒤 다시 시도하세요.'); return; }
-
-  const csv = [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
-  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${experimentFilePrefix()}_${safeFileName(graphLabel(g))}.csv`); // BOM: 엑셀에서 한글 안 깨지게
+  if (graphWinId === g.id && graphWinTab === 'table') renderGraphTable();
+  saveGraphLayout();
 }
 
 function closeGraphSettings() {
@@ -689,6 +786,7 @@ function setAxisConfig(graphId, field, value) {
   if (!g) return;
   g[field] = value;
   updateLiveChart(g);
+  saveGraphLayout();
 }
 
 function setSeriesColor(graphId, sid, color) {
@@ -697,6 +795,7 @@ function setSeriesColor(graphId, sid, color) {
   if (!s) return;
   s.color = color;
   updateLiveChart(g);
+  saveGraphLayout();
 }
 
 function setSeriesKey(graphId, sid, field, value) {
@@ -706,131 +805,10 @@ function setSeriesKey(graphId, sid, field, value) {
   s[field] = value;
   updateLiveChart(g);
   updateCardTitleDisplay(g);
+  if (graphWinId === g.id) refreshGraphWin();
 }
 
 document.getElementById('graphSettingsCloseBtn').addEventListener('click', closeGraphSettings);
-
-// ── 끌어다 놓아 합치기 (보이는 그래프 또는 탭을 → 다른 탭 위로) ──────────
-// 그래프가 하나씩만 보이므로 놓을 자리는 아래 탭이다. 끄는 동안 탭 줄을 강조해서 어디에 놓을지 알려 준다.
-let draggingGraphId = null;
-
-function startGraphDrag(e, id) {
-  draggingGraphId = id;
-  e.dataTransfer.setData('text/plain', String(id));
-  e.dataTransfer.effectAllowed = 'move';
-  document.getElementById('graphNav').classList.add('dragging');
-}
-
-function endGraphDrag() {
-  draggingGraphId = null;
-  document.getElementById('graphNav').classList.remove('dragging');
-  document.querySelectorAll('.graph-tab.drag-over').forEach(el => el.classList.remove('drag-over'));
-}
-
-function askMerge(sourceId, targetId) {
-  const source = liveGraphs.find(x => x.id === sourceId);
-  const target = liveGraphs.find(x => x.id === targetId);
-  if (!source || !target || sourceId === targetId) return;
-  pendingMerge = { sourceId, targetId };
-  document.getElementById('mergeConfirmText').textContent =
-    `"${graphLabel(source)}"을(를) "${graphLabel(target)}"에 합치겠습니까? 한 차트에 겹쳐서 표시됩니다.`;
-  document.getElementById('graphMergeConfirmModal').classList.add('visible');
-}
-
-function attachGraphDragHandlers(g) {
-  g.card.addEventListener('dragstart', (e) => startGraphDrag(e, g.id));
-  g.card.addEventListener('dragend', endGraphDrag);
-}
-
-(function setupGraphTabDrag() {
-  const tabs = document.getElementById('graphTabs');
-  tabs.addEventListener('click', (e) => {
-    const t = e.target.closest('.graph-tab[data-graph]');
-    if (t) setActiveGraph(Number(t.dataset.graph));
-  });
-  tabs.addEventListener('dragstart', (e) => {
-    const t = e.target.closest('.graph-tab[data-graph]');
-    if (t) startGraphDrag(e, Number(t.dataset.graph));
-  });
-  tabs.addEventListener('dragend', endGraphDrag);
-  tabs.addEventListener('dragover', (e) => {
-    const t = e.target.closest('.graph-tab[data-graph]');
-    if (!t || Number(t.dataset.graph) === draggingGraphId) return;
-    e.preventDefault();
-    document.querySelectorAll('.graph-tab.drag-over').forEach(el => { if (el !== t) el.classList.remove('drag-over'); });
-    t.classList.add('drag-over');
-  });
-  tabs.addEventListener('dragleave', (e) => {
-    const t = e.target.closest('.graph-tab[data-graph]');
-    if (t && !t.contains(e.relatedTarget)) t.classList.remove('drag-over');
-  });
-  tabs.addEventListener('drop', (e) => {
-    const t = e.target.closest('.graph-tab[data-graph]');
-    if (!t) return;
-    e.preventDefault();
-    const sourceId = Number(e.dataTransfer.getData('text/plain'));
-    endGraphDrag();
-    askMerge(sourceId, Number(t.dataset.graph));
-  });
-})();
-
-document.getElementById('mergeConfirmYesBtn').addEventListener('click', () => {
-  document.getElementById('graphMergeConfirmModal').classList.remove('visible');
-  if (pendingMerge) mergeLiveGraphs(pendingMerge.sourceId, pendingMerge.targetId);
-  pendingMerge = null;
-});
-document.getElementById('mergeConfirmNoBtn').addEventListener('click', () => {
-  document.getElementById('graphMergeConfirmModal').classList.remove('visible');
-  pendingMerge = null;
-});
-
-function mergeLiveGraphs(sourceId, targetId) {
-  const srcIdx = liveGraphs.findIndex(x => x.id === sourceId);
-  const target = liveGraphs.find(x => x.id === targetId);
-  if (srcIdx === -1 || !target) return;
-  const source = liveGraphs[srcIdx];
-
-  target.series.push(...source.series);
-  source.chart.destroy();
-  source.card.remove();
-  liveGraphs.splice(srcIdx, 1);
-
-  updateLiveChart(target);
-  updateCardTitleDisplay(target);
-  if (gsCurrentGraphId === target.id) renderSettingsSeriesList(target);
-  setActiveGraph(target.id); // 합친 결과를 바로 보여 준다
-}
-
-function removeSeriesFromGraph(graphId, sid) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g || g.series.length <= 1) return;
-  g.series = g.series.filter(s => s.sid !== sid);
-  updateLiveChart(g);
-  updateCardTitleDisplay(g);
-  if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
-}
-
-// 합쳤던 계열을 다시 독립된 그래프로 되돌린다 (병합의 반대 동작). 새 그래프는 탭 끝에 생긴다.
-function splitSeriesToNewGraph(graphId, sid) {
-  const g = liveGraphs.find(x => x.id === graphId);
-  if (!g || g.series.length <= 1) return;
-  if (liveGraphs.length >= MAX_LIVE_GRAPHS) {
-    alert(`그래프는 최대 ${MAX_LIVE_GRAPHS}개까지만 만들 수 있어요. 다른 그래프를 먼저 지우거나 합쳐주세요.`);
-    return;
-  }
-  const idx = g.series.findIndex(s => s.sid === sid);
-  if (idx === -1) return;
-  const [moved] = g.series.splice(idx, 1);
-  moved.visible = true;
-
-  const newG = createGraphObject([moved]);
-  newG.timeUnit = g.timeUnit;
-  updateLiveChart(newG);
-  updateLiveChart(g);
-  updateCardTitleDisplay(g);
-  if (gsCurrentGraphId === g.id) renderSettingsSeriesList(g);
-  renderGraphTabs();
-}
 
 // ── 계열 표시/숨기기 (범례 클릭 또는 설정 팝업의 눈 아이콘) ──────────────
 // Chart.js 기본 범례 클릭도 비슷하게 동작하긴 하지만, 매 데이터 수신마다 datasets
@@ -843,6 +821,7 @@ function toggleSeriesVisible(graphId, sid) {
   s.visible = s.visible === false ? true : false;
   updateLiveChart(g);
   if (gsCurrentGraphId === graphId) renderSettingsSeriesList(g);
+  saveGraphLayout();
 }
 
 function legendClickHandler(evt, item, legend) {
@@ -851,7 +830,64 @@ function legendClickHandler(evt, item, legend) {
   if (g && s) toggleSeriesVisible(g.id, s.sid);
 }
 
-// ── 클릭한 지점에 (x, y) 값을 표시하는 마크 찍기 ──────────────
+// ── 이미지/데이터 다운로드 ──────────────────────────────
+// 차트 캔버스는 배경이 투명해서 그대로 저장하면 문서·한글 파일에 붙였을 때 글자(밝은 색)가 안 보인다.
+// 화면과 같은 어두운 배경을 깔아서 저장한다.
+function chartToPngUrl(chart) {
+  const src = chart.canvas;
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1b1e24';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(src, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+function downloadGraphImage(graphId) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g) return;
+  const a = document.createElement('a');
+  a.href = chartToPngUrl(g.chart);
+  a.download = `${experimentFilePrefix()}_${safeFileName(graphLabel(g))}.png`;
+  a.click();
+}
+
+function csvEscape(v) {
+  const s = String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function graphKeys(g) {
+  const keys = [];
+  g.series.forEach(s => {
+    if (s.xKey && s.xKey !== TIME_AXIS_KEY && !keys.includes(s.xKey)) keys.push(s.xKey);
+    if (s.yKey && !keys.includes(s.yKey)) keys.push(s.yKey);
+  });
+  return keys;
+}
+
+function downloadGraphData(graphId) {
+  const g = liveGraphs.find(x => x.id === graphId);
+  if (!g) return;
+  const keys = graphKeys(g);
+  if (keys.length === 0) { alert('내보낼 변인이 선택되지 않았습니다. ⚙에서 X/Y축을 먼저 골라주세요.'); return; }
+  downloadKeysCsv(keys, graphLabel(g));
+}
+function downloadKeysCsv(keys, label) {
+  if (!keys.length) { showLiveToast('아직 내보낼 데이터가 없어요', true); return; }
+  const t0 = liveSession.startedAt || 0;
+  const hasLight = liveRecords.some(p => p._light != null);
+  const header = ['timestamp', '경과 시간(초)', ...(hasLight ? ['조명(1=켬)'] : []), ...keys];
+  const rows = liveRecords
+    .filter(p => keys.some(k => k in p))
+    .map(p => [p.timestamp || '', ((p._t - t0) / 1000).toFixed(3), ...(hasLight ? [p._light ?? ''] : []), ...keys.map(k => (k in p ? p[k] : ''))]);
+  if (rows.length === 0) { alert('아직 내보낼 데이터가 없습니다. 실험을 시작해서 값을 받아온 뒤 다시 시도하세요.'); return; }
+  const csv = [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
+  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${liveFile ? safeFileName(liveFile.title) : experimentFilePrefix()}_${safeFileName(label)}.csv`); // BOM: 엑셀에서 한글 안 깨지게
+}
+
+// ── 클릭한 지점에 (x, y) 값을 표시하는 마크 찍기 (큰 창에서) ──────────────
 // 별도 데이터셋이 아니라 캔버스에 직접 그리는 커스텀 플러그인으로 구현 - 그래야
 // 실시간으로 datasets가 계속 새로 그려져도(updateLiveChart) 마크가 안 사라진다.
 function fmtNum(n) {
@@ -889,23 +925,51 @@ const markPointPlugin = {
 };
 Chart.register(markPointPlugin);
 
+// 조명 켠 구간 = lightEvents에서 on이 1인 때부터 다음 바뀐 때(없으면 지금/종료 시각)까지
+function lightOnSpans() {
+  const ev = liveSession.lightEvents || [];
+  const end = liveSession.endedAt || Date.now();
+  const spans = [];
+  ev.forEach((e, i) => { if (e.on) spans.push([e.t, i + 1 < ev.length ? ev[i + 1].t : end]); });
+  return spans;
+}
+const lightBandPlugin = {
+  id: 'lightBands',
+  beforeDatasetsDraw(chart) {
+    const g = liveGraphs.find(x => x.chart === chart);
+    if (!g || !g.series.some(s => s.xKey === TIME_AXIS_KEY) || !liveSession.startedAt) return;
+    const spans = lightOnSpans();
+    if (!spans.length) return;
+    const { ctx, chartArea: a, scales } = chart;
+    const div = TIME_UNITS[resolveTimeUnit(g.timeUnit)].div;
+    const toX = (t) => scales.x.getPixelForValue((t - liveSession.startedAt) / 1000 / div);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top); ctx.clip();
+    spans.forEach(([t0, t1]) => {
+      const x0 = Math.max(a.left, toX(t0)), x1 = Math.min(a.right, toX(t1));
+      if (x1 <= x0) return;
+      ctx.fillStyle = 'rgba(255, 214, 90, 0.12)';
+      ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+      if (x1 - x0 > 26) { ctx.fillStyle = 'rgba(255, 214, 90, 0.75)'; ctx.font = '10px system-ui, sans-serif'; ctx.fillText('💡', x0 + 3, a.top + 12); }
+    });
+    ctx.restore();
+  }
+};
+Chart.register(lightBandPlugin);
+
+// 작은 카드의 그래프를 누르면 큰 창을 열고, 큰 창 안에서 누르면 그 점에 값 마크를 찍는다
 function chartClickHandler(evt, elements, chart) {
   const g = liveGraphs.find(x => x.chart === chart);
   if (!g) return;
+  if (graphWinId !== g.id) { openGraphWin(g.id, 'graph'); return; }
   g.marks = g.marks || [];
-
   // 이미 찍힌 마크를 다시 클릭하면(X자 표시 근처) 새로 찍는 대신 그 마크만 지운다
   const hitIdx = g.marks.findIndex(m => {
     const px = chart.scales.x.getPixelForValue(m.x);
     const py = chart.scales.y.getPixelForValue(m.y);
     return Math.hypot(evt.x - px, evt.y - py) <= 10;
   });
-  if (hitIdx !== -1) {
-    g.marks.splice(hitIdx, 1);
-    chart.update('none');
-    return;
-  }
-
+  if (hitIdx !== -1) { g.marks.splice(hitIdx, 1); chart.update('none'); return; }
   const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false }, true);
   if (points.length === 0) return;
   const p = points[0];
@@ -922,7 +986,138 @@ function clearGraphMarks(graphId) {
   g.chart.update('none');
 }
 
-// ── 그래프 하나(=Chart.js 인스턴스 하나) 생성 - addLiveGraph와 splitSeriesToNewGraph가 공유 ──
+// ── 그래프 큰 창: 그래프 / 데이터 표 / 편집·분석 ─────────────────
+// 별도 차트를 새로 만들지 않고 카드의 canvas(=차트)를 창 안으로 옮겼다가 닫을 때 돌려놓는다
+// (데이터·설정을 복제할 필요가 없고 항상 최신). 모달을 먼저 보이게 한 뒤 옮겨야 크기가 0으로 잡히지 않는다.
+let graphWinId = null, graphWinTab = 'graph', graphTablePage = null;
+let graphWinAll = false; // 위쪽 '📋 데이터'로 연 창 = 특정 그래프가 아니라 기록된 모든 변인
+
+function allDataKeys() {
+  return [...liveKnownKeys].sort().filter(k => liveRecords.some(r => typeof r[k] === 'number'));
+}
+function tableKeys() {
+  if (graphWinAll) return allDataKeys();
+  const g = liveGraphs.find(x => x.id === graphWinId);
+  return g ? graphKeys(g) : [];
+}
+function openDataWin(tab) {
+  if (graphWinId != null) closeGraphWin();
+  graphWinAll = true;
+  document.getElementById('gwTitle').textContent = '전체 데이터';
+  const win = document.getElementById('graphWin');
+  win.classList.add('visible', 'all-mode');
+  graphTablePage = null;
+  showGraphWinTab(tab || 'table');
+}
+document.getElementById('dataWinBtn').addEventListener('click', () => openDataWin('table'));
+
+function openGraphWin(id, tab) {
+  const g = liveGraphs.find(x => x.id === id);
+  if (!g) return;
+  if (graphWinId != null && graphWinId !== id) closeGraphWin();
+  graphWinId = id;
+  document.getElementById('gwTitle').textContent = graphLabel(g);
+  document.getElementById('graphWin').classList.add('visible');
+  const canvas = g.chart.canvas;
+  const wrap = document.getElementById('gwChartWrap');
+  if (canvas.parentElement !== wrap) wrap.appendChild(canvas);
+  graphTablePage = null;
+  showGraphWinTab(tab || 'graph');
+}
+
+function closeGraphWin() {
+  const g = liveGraphs.find(x => x.id === graphWinId);
+  document.getElementById('graphWin').classList.remove('visible', 'all-mode');
+  graphWinAll = false;
+  if (g) {
+    g.card.querySelector('.fg-chart').prepend(g.chart.canvas);
+    g.chart.resize();
+  }
+  graphWinId = null;
+}
+
+function showGraphWinTab(tab) {
+  graphWinTab = tab;
+  document.querySelectorAll('#graphWin .gw-tab').forEach(b => b.classList.toggle('on', b.dataset.gwTab === tab));
+  document.querySelectorAll('#graphWin .gw-pane').forEach(p => p.classList.toggle('on', p.dataset.pane === tab));
+  if (graphWinAll) {
+    if (tab === 'table') renderGraphTable();
+    if (tab === 'analysis') {
+      const k = (typeof an !== 'undefined' && an.yKey && allDataKeys().includes(an.yKey)) ? an.yKey : allDataKeys()[0];
+      if (k && typeof openAnalysisFor === 'function') openAnalysisFor(an.xKey || TIME_AXIS_KEY, k, an.timeUnit);
+      if (typeof resizeAnalysisChart === 'function') resizeAnalysisChart();
+    }
+    return;
+  }
+  const g = liveGraphs.find(x => x.id === graphWinId);
+  if (!g) return;
+  if (tab === 'graph') g.chart.resize();
+  if (tab === 'table') renderGraphTable();
+  if (tab === 'analysis') {
+    const s = g.series.find(x => x.visible !== false && x.yKey) || g.series[0];
+    if (typeof openAnalysisFor === 'function' && s.yKey) openAnalysisFor(s.xKey, s.yKey, g.timeUnit);
+    if (typeof resizeAnalysisChart === 'function') resizeAnalysisChart();
+  }
+}
+
+function refreshGraphWin() {
+  if (graphWinId == null) return;
+  const g = liveGraphs.find(x => x.id === graphWinId);
+  if (!g) { closeGraphWin(); return; }
+  showGraphWinTab(graphWinTab);
+}
+
+// 데이터 표: 이 그래프에 쓰인 변인만, 100줄씩 (기본은 가장 최근 쪽)
+const TABLE_PAGE = 100;
+function renderGraphTable() {
+  const g = liveGraphs.find(x => x.id === graphWinId);
+  const box = document.getElementById('gwTable');
+  const foot = document.getElementById('gwTableFoot');
+  if (!g && !graphWinAll) return;
+  const keys = tableKeys();
+  const rows = keys.length ? liveRecords.filter(r => keys.some(k => typeof r[k] === 'number')) : [];
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty-hint" style="padding:30px">${keys.length ? '아직 기록된 값이 없어요. 실험을 시작하면 여기에 쌓여요.' : '⚙ 설정에서 변인을 먼저 골라 주세요.'}</div>`;
+    foot.innerHTML = '';
+    return;
+  }
+  const pages = Math.ceil(rows.length / TABLE_PAGE);
+  if (graphTablePage == null || graphTablePage >= pages) graphTablePage = pages - 1;
+  const from = graphTablePage * TABLE_PAGE, to = Math.min(rows.length, from + TABLE_PAGE);
+  const unit = resolveTimeUnit(g ? g.timeUnit : 'auto');
+  const div = TIME_UNITS[unit].div;
+  const t0 = liveSession.startedAt || rows[0]._t;
+  const hasLight = rows.some(r => r._light != null);
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4, keepTop = box.scrollTop;
+  box.innerHTML = `<table class="gw-table"><thead><tr><th>#</th><th>측정 시각</th><th>경과 시간 (${TIME_UNITS[unit].label})</th>${hasLight ? '<th>조명</th>' : ''}${keys.map(k => `<th>${escHtml(k)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.slice(from, to).map((r, i) => `<tr><td>${from + i + 1}</td><td>${hhmmss(new Date(r._t))}</td><td>${fmtNum((r._t - t0) / 1000 / div)}</td>${hasLight ? `<td class="${r._light ? 'light-on' : ''}">${r._light ? '켬' : '끔'}</td>` : ''}${keys.map(k => `<td>${typeof r[k] === 'number' ? fmtNum(r[k]) : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  foot.innerHTML = `<span class="hint" style="margin:0">${from + 1}~${to}번째 / 전체 ${rows.length}개</span>
+    <button class="mini-btn" data-page="first" ${graphTablePage === 0 ? 'disabled' : ''}>처음</button>
+    <button class="mini-btn" data-page="prev" ${graphTablePage === 0 ? 'disabled' : ''}>이전</button>
+    <button class="mini-btn" data-page="next" ${graphTablePage >= pages - 1 ? 'disabled' : ''}>다음</button>
+    <button class="mini-btn" data-page="last" ${graphTablePage >= pages - 1 ? 'disabled' : ''}>최근</button>
+    <button class="mini-btn" data-table-csv>데이터(CSV)</button>`;
+  box.scrollTop = atBottom ? box.scrollHeight : keepTop;
+}
+
+document.getElementById('gwTableFoot').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.tableCsv != null) { if (graphWinAll) downloadKeysCsv(allDataKeys(), '전체 데이터'); else downloadGraphData(graphWinId); return; }
+  const keys = tableKeys();
+  const pages = Math.ceil(liveRecords.filter(r => keys.some(k => typeof r[k] === 'number')).length / TABLE_PAGE);
+  graphTablePage = { first: 0, prev: graphTablePage - 1, next: graphTablePage + 1, last: pages - 1 }[b.dataset.page];
+  renderGraphTable();
+});
+document.querySelectorAll('#graphWin .gw-tab').forEach(b => b.addEventListener('click', () => showGraphWinTab(b.dataset.gwTab)));
+document.getElementById('gwCloseBtn').addEventListener('click', closeGraphWin);
+document.getElementById('gwSettingsBtn').addEventListener('click', () => openGraphSettings(graphWinId));
+document.getElementById('gwClearMarksBtn').addEventListener('click', () => clearGraphMarks(graphWinId));
+document.getElementById('gwPngBtn').addEventListener('click', () => downloadGraphImage(graphWinId));
+document.getElementById('gwCsvBtn').addEventListener('click', () => downloadGraphData(graphWinId));
+document.getElementById('graphWin').addEventListener('click', (e) => { if (e.target.id === 'graphWin') closeGraphWin(); });
+
+// ── 그래프 하나(=Chart.js 인스턴스 하나) 만들기 ─────────────────
 function buildLiveChart(canvasEl) {
   return new Chart(canvasEl, {
     type: 'scatter',
@@ -940,28 +1135,53 @@ function buildLiveChart(canvasEl) {
       } } });
 }
 
-function createGraphObject(seriesArr) {
+function updateEmptyHint() {
+  document.getElementById('lrEmpty').style.display = liveGraphs.length ? 'none' : '';
+}
+
+function createGraphObject(seriesArr, opts = {}) {
   const id = ++liveGraphSeq;
   const card = document.createElement('div');
-  card.className = 'graph-card'; // 끌기는 제목에서만 (그래프 위에서 끌면 점 클릭·툴팁을 방해하므로)
+  card.className = 'fg-card';
   document.getElementById('liveGraphs').appendChild(card);
-
-  const g = { id, card, title: '', xMin: '', xMax: '', xUnit: '', yMin: '', yMax: '', yUnit: '',
-    timeUnit: 'auto', xAuto: true, yAuto: true, marks: [], series: seriesArr };
+  const pos = opts.x != null ? { x: opts.x, y: opts.y } : nextCardPosition();
+  const g = { id, card, title: opts.title || '', xMin: '', xMax: '', xUnit: '', yMin: '', yMax: '', yUnit: '',
+    timeUnit: opts.timeUnit || 'auto', xAuto: true, yAuto: true, marks: [], series: seriesArr,
+    x: pos.x, y: pos.y, w: opts.w || CARD_W, h: opts.h || CARD_H, collapsed: !!opts.collapsed };
   renderGraphCard(g);
+  applyCardGeometry(g);
   g.chart = buildLiveChart(document.getElementById(`liveChart-${id}`));
   liveGraphs.push(g);
   attachGraphDragHandlers(g);
-  if (activeGraphId == null) setActiveGraph(id);
-  else renderGraphTabs();
+  updateEmptyHint();
+  saveGraphLayout();
   return g;
 }
 
-function addLiveGraph() {
-  if (liveGraphs.length >= MAX_LIVE_GRAPHS) return;
+function newSeries(xKey, yKey) {
   const sid = ++liveSeriesSeq;
-  const g = createGraphObject([{ sid, color: liveColorFor(String(sid)), xKey: '', yKey: '', visible: true }]);
+  return { sid, color: yKey ? liveColorFor(yKey) : liveColorFor(String(sid)), xKey: xKey || '', yKey: yKey || '', visible: true };
+}
+
+// 빈 그래프 (⚙에서 변인 고르기) - 위쪽 '＋ 그래프'
+function addLiveGraph() {
+  if (liveGraphs.length >= MAX_LIVE_GRAPHS) { showLiveToast(`그래프는 최대 ${MAX_LIVE_GRAPHS}개까지예요. 안 쓰는 그래프를 지우거나 합쳐 주세요`, true); return null; }
+  const g = createGraphObject([newSeries(TIME_AXIS_KEY, '')]);
   refreshLiveSelectOptions();
+  updateLiveChart(g);
+  return g;
+}
+
+// 센서 값 카드를 누르면: 그 센서의 '시간에 따른 변화' 그래프 (이미 있으면 그 카드를 잠깐 깜빡여 알려 줌)
+function addGraphForKey(key) {
+  const existing = liveGraphs.find(g => g.series.length === 1 && g.series[0].yKey === key && g.series[0].xKey === TIME_AXIS_KEY);
+  if (existing) {
+    existing.collapsed = false; applyCardGeometry(existing);
+    existing.card.classList.remove('flash'); void existing.card.offsetWidth; existing.card.classList.add('flash');
+    return existing;
+  }
+  if (liveGraphs.length >= MAX_LIVE_GRAPHS) { showLiveToast(`그래프는 최대 ${MAX_LIVE_GRAPHS}개까지예요. 안 쓰는 그래프를 지우거나 합쳐 주세요`, true); return null; }
+  const g = createGraphObject([newSeries(TIME_AXIS_KEY, key)]);
   updateLiveChart(g);
   updateCardTitleDisplay(g);
   return g;
@@ -971,23 +1191,45 @@ function removeLiveGraph(id) {
   const idx = liveGraphs.findIndex(g => g.id === id);
   if (idx === -1) return;
   if (gsCurrentGraphId === id) closeGraphSettings();
+  if (graphWinId === id) closeGraphWin();
   liveGraphs[idx].chart.destroy();
   liveGraphs[idx].card.remove();
   liveGraphs.splice(idx, 1);
-  // 지운 그래프 자리의 이웃을 보여 준다
-  if (activeGraphId === id) setActiveGraph(liveGraphs.length ? liveGraphs[Math.min(idx, liveGraphs.length - 1)].id : null);
-  else renderGraphTabs();
+  updateEmptyHint();
+  saveGraphLayout();
 }
 
-// '+' 탭: 새 그래프를 만들고 바로 그 그래프로 넘어간다
-document.getElementById('addGraphBtn').onclick = () => {
+document.getElementById('addGraphBtn').addEventListener('click', () => {
   const g = addLiveGraph();
-  if (g) setActiveGraph(g.id);
-};
+  if (g) openGraphSettings(g.id); // 빈 그래프는 바로 변인을 고르게
+});
+document.getElementById('arrangeGraphsBtn').addEventListener('click', arrangeGraphs);
 
-// 기본 그래프 2개로 시작 (처음엔 1번이 보임)
-addLiveGraph();
-addLiveGraph();
+// ── 그래프 구성·위치 저장/복원 ────────────────────────────
+let graphLayoutRestoring = false;
+function saveGraphLayout() {
+  if (graphLayoutRestoring || liveFile) return; // 지난 데이터 파일을 보는 중의 그래프는 저장하지 않음
+  const data = liveGraphs.map(g => ({ title: g.title, x: g.x, y: g.y, w: g.w, h: g.h, collapsed: !!g.collapsed, timeUnit: g.timeUnit,
+    xAuto: g.xAuto, yAuto: g.yAuto, xMin: g.xMin, xMax: g.xMax, yMin: g.yMin, yMax: g.yMax, xUnit: g.xUnit, yUnit: g.yUnit,
+    series: g.series.map(s => ({ color: s.color, xKey: s.xKey, yKey: s.yKey, visible: s.visible !== false })) }));
+  try { localStorage.setItem(LIVE_GRAPHS_KEY, JSON.stringify(data)); } catch (e) { /* 기억 못 해도 이번엔 동작 */ }
+}
+
+(function restoreGraphLayout() {
+  let data = [];
+  try { data = JSON.parse(localStorage.getItem(LIVE_GRAPHS_KEY) || '[]'); } catch (e) { data = []; }
+  graphLayoutRestoring = true;
+  for (const d of data.slice(0, MAX_LIVE_GRAPHS)) {
+    const series = (d.series || []).map(s => ({ ...newSeries(s.xKey, s.yKey), color: s.color || liveColorFor(s.yKey || 'x'), visible: s.visible !== false }));
+    if (!series.length) continue;
+    const g = createGraphObject(series, d);
+    Object.assign(g, { xAuto: d.xAuto !== false, yAuto: d.yAuto !== false, xMin: d.xMin || '', xMax: d.xMax || '',
+      yMin: d.yMin || '', yMax: d.yMax || '', xUnit: d.xUnit || '', yUnit: d.yUnit || '' });
+    updateLiveChart(g);
+  }
+  graphLayoutRestoring = false;
+  updateEmptyHint();
+})();
 
 // ── 센서 키 → 3D 아크릴 효과 매핑 ────────────────────────────
 // 키 이름이 아래 이름과 "정확히 일치"해야 매칭됨 (대소문자 무관, 부분 포함은 매칭 안 됨).
@@ -1019,7 +1261,7 @@ const sensorEffectMap = {
 };
 
 // ── 센서별 "역할" (어떤 3D 효과로 이어지는지) ──────────────────
-// 실험 준비의 '센서 배치'에서 정한다 (live-setup.js의 setSensorPlacement): 놓은 구역 + 센서 종류 → 역할.
+// 실험 준비의 '센서 배치'에서 정한다 (live-setup.js의 placeGroup): 놓은 구역 + 센서 종류 → 역할.
 // 예: 물속에 놓은 온도 센서 = 수온, 도시 공기에 놓은 온도 센서 = 기온.
 // 수온은 아직 전용 3D 효과가 없어서 기온과 동일하게 처리(TODO: 수온 전용 효과 추가 시 분리).
 const sensorRoles = {}; // { [센서 키]: roleId }
@@ -1063,43 +1305,38 @@ function startExperiment() {
 }
 
 async function endExperiment() {
-  if (!await liveConfirm('실험을 끝낼까요? 끝난 뒤에도 기록은 남아 있고, 아래에서 분석·편집·내보내기를 할 수 있어요.')) return;
+  const ask = liveSession.state === 'armed'
+    ? '자동 시작 조건 대기를 취소할까요? 아직 기록된 값은 없어요.'
+    : '실험을 끝낼까요? 끝난 뒤에도 기록은 남아 있고, 그래프를 눌러 데이터 표·편집·내보내기를 할 수 있어요.';
+  if (!await liveConfirm(ask)) return;
   liveSend({ _type: 'session', action: 'stop' });
 }
 
-document.getElementById('startExperimentBtn').addEventListener('click', startExperiment);
-document.getElementById('endExperimentBtn').addEventListener('click', endExperiment);
+// ── 조명 (실제 실험에서 아크릴에 조명을 비추는지) ──────────────────
+// 누르면 서버에 알리고, 서버는 기록마다 _light(1/0)를 붙이고 켜고 끈 시각(lightEvents)을 모은다.
+// 화면에서는 그래프의 조명 켠 구간을 노랗게, 데이터 표·CSV에 '조명' 칸, 3D 스탠드 조명도 켜고 끈다.
+document.getElementById('lightBtn').addEventListener('click', () => {
+  const on = !liveSession.light;
+  if (!liveSend({ _type: 'session', action: 'light', on })) { showLiveToast('서버에 연결되지 않아 바꿀 수 없어요', true); return; }
+  showLiveToast(on ? '💡 조명을 켰어요 — 지금부터 기록에 "조명 켬"으로 남아요' : '조명을 껐어요 — 지금부터 기록에 "조명 끔"으로 남아요');
+});
 
-// ── 오른쪽 위(그래프) / 오른쪽 아래(분석) 경계선 끌기 ──────────────
-// 실험 중에는 그래프를 크게, 실험이 끝나면 분석 칸을 크게 보고 싶어서 경계를 직접 옮길 수 있게 했다.
-// 경계선을 더블클릭하면 분석 칸을 접었다 폈다 한다.
-(function setupLiveSplitter() {
-  const splitter = document.getElementById('liveSplitter');
-  const panel = document.getElementById('tab-live');
-  let saved = 42;
-  try { saved = Number(localStorage.getItem('liveAnalysisPct')) || 42; } catch (e) { /* 기본값 */ }
-  const apply = (pct) => {
-    panel.style.setProperty('--an-pct', `${pct}%`);
-    liveGraphs.forEach(g => g.chart.resize());
-    if (typeof resizeAnalysisChart === 'function') resizeAnalysisChart();
-  };
-  apply(saved);
-  let dragging = false;
-  splitter.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); document.body.style.cursor = 'row-resize'; });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const r = panel.getBoundingClientRect();
-    saved = Math.max(8, Math.min(85, (r.bottom - e.clientY) / r.height * 100));
-    apply(saved);
-  });
-  window.addEventListener('mouseup', () => {
-    if (!dragging) return;
-    dragging = false;
-    document.body.style.cursor = '';
-    try { localStorage.setItem('liveAnalysisPct', String(Math.round(saved))); } catch (e) { /* 기억 못 해도 됨 */ }
-  });
-  splitter.addEventListener('dblclick', () => { saved = saved > 12 ? 8 : 42; apply(saved); });
-})();
+// 3D 아크릴의 스탠드 조명(SpotLight). 실험 화면에서만 켬/끔을 따르고, 준비 화면에서는 늘 켜 둔다 (잘 보이게)
+function applyLampLight() {
+  if (sceneLive.dormant) return;
+  const lamp = sceneLive.scene.children.find(o => o.isSpotLight);
+  if (!lamp) return;
+  if (lamp.userData.baseIntensity == null) lamp.userData.baseIntensity = lamp.intensity;
+  const dim = typeof liveView !== 'undefined' && liveView === 'experiment' && !liveSession.light;
+  lamp.intensity = lamp.userData.baseIntensity * (dim ? 0.3 : 1);
+}
+
+// 위쪽 큰 버튼 하나로 시작/종료
+document.getElementById('startStopBtn').addEventListener('click', () => {
+  if (liveFile) { closeDataFile(); return; }
+  if (liveSession.state === 'armed' || liveSession.state === 'recording') endExperiment();
+  else startExperiment();
+});
 
 // main.js가 직접 실험 탭을 열 때 부른다 (다른 탭에서는 서버에 연결할 필요가 없음)
 let liveActivated = false;
@@ -1111,3 +1348,64 @@ function activateLiveTab() {
   connectLiveSocket();
   showLiveSetup();
 }
+
+// ── 시리얼 모니터 (위쪽 '🖥 시리얼 모니터') ─────────────────────
+// 서버가 보드에서 받은 줄을 그대로 보내 준다 (값이 아닌 디버그 글·오류도). 최근 500줄만 둔다.
+const monitorLines = [];
+let monitorPaused = false;
+function monitorDevName(id) { const d = liveDevices.find(x => x.id === id); return d ? d.name : id; }
+function monitorLineHtml(m) {
+  const isJson = /^\s*(\[\w+\]\s*)?\{/.test(m.line);
+  return `<div class="lm-line${isJson ? ' json' : ''}"><span class="lm-t">${hhmmss(new Date(m.t))}</span><span class="lm-dev">${escHtml(monitorDevName(m.dev))}</span><span class="lm-text">${escHtml(m.line)}</span></div>`;
+}
+function monitorFilter(m) {
+  const dev = document.getElementById('lmDev').value;
+  if (dev && m.dev !== dev) return false;
+  if (document.getElementById('lmOnlyText').checked && /^\s*(\[\w+\]\s*)?\{/.test(m.line)) return false;
+  return true;
+}
+function renderMonitor() {
+  const body = document.getElementById('lmBody');
+  body.innerHTML = monitorLines.filter(monitorFilter).map(monitorLineHtml).join('') || '<div class="hint" style="padding:10px">아직 받은 줄이 없어요. 보드를 연결하면 여기에 보여요.</div>';
+  body.scrollTop = body.scrollHeight;
+}
+function refreshMonitorDevs() {
+  const sel = document.getElementById('lmDev');
+  const cur = sel.value;
+  const ids = [...new Set([...liveDevices.map(d => d.id), ...monitorLines.map(m => m.dev)])];
+  sel.innerHTML = '<option value="">모든 보드</option>' + ids.map(id => `<option value="${escHtml(id)}"${id === cur ? ' selected' : ''}>${escHtml(monitorDevName(id))}</option>`).join('');
+}
+function addMonitorLine(m) {
+  monitorLines.push(m);
+  if (monitorLines.length > 500) monitorLines.splice(0, monitorLines.length - 500);
+  const box = document.getElementById('lrMonitor');
+  if (!box.classList.contains('visible') || monitorPaused || !monitorFilter(m)) return;
+  const body = document.getElementById('lmBody');
+  const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 20;
+  if (body.firstElementChild && body.firstElementChild.classList.contains('hint')) body.innerHTML = '';
+  body.insertAdjacentHTML('beforeend', monitorLineHtml(m));
+  while (body.childElementCount > 500) body.firstElementChild.remove();
+  if (atBottom) body.scrollTop = body.scrollHeight;
+}
+async function openMonitor() {
+  const box = document.getElementById('lrMonitor');
+  box.classList.add('visible');
+  if (!monitorLines.length && liveConnected) {
+    try { (await (await fetch('/api/raw')).json()).forEach(m => monitorLines.push(m)); } catch (e) { /* 예전 서버 */ }
+  }
+  refreshMonitorDevs();
+  renderMonitor();
+}
+document.getElementById('monitorBtn').addEventListener('click', () => {
+  const box = document.getElementById('lrMonitor');
+  if (box.classList.contains('visible')) box.classList.remove('visible'); else openMonitor();
+});
+document.getElementById('lmClose').addEventListener('click', () => document.getElementById('lrMonitor').classList.remove('visible'));
+document.getElementById('lmClear').addEventListener('click', () => { monitorLines.length = 0; renderMonitor(); });
+document.getElementById('lmPause').addEventListener('click', (e) => {
+  monitorPaused = !monitorPaused;
+  e.target.textContent = monitorPaused ? '▶ 이어서' : '⏸ 멈춤';
+  if (!monitorPaused) renderMonitor();
+});
+document.getElementById('lmDev').addEventListener('change', renderMonitor);
+document.getElementById('lmOnlyText').addEventListener('change', renderMonitor);
