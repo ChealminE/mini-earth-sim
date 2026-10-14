@@ -16,6 +16,8 @@ const TL_START = 1750, TL_END = 2200;
 const FUT = {
   preset: 'bau',          // 인간활동 지구의 배출 시나리오 (bau | paris | nz2050 | custom)
   levers: { ...EarthSystem.LEVER_NOW },   // 직접 설계의 2050년 목표값
+  mode: 'scenario',       // scenario = 배출 시나리오 | fixed = 2024년부터 대기 CO2 고정
+  fixedPpm: 560,
   year: 2023,             // 재생 위치 (소수 가능 - 연도 사이 보간)
   playing: false,
   speed: 10,              // 년/초
@@ -31,7 +33,9 @@ function humanEmissionsFn() {
   return FUT.preset === 'custom' ? EarthSystem.leverEmissions(FUT.levers) : EarthSystem.presetEmissions(FUT.preset);
 }
 function computeHuman() {
-  FUT.human = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() });
+  FUT.human = FUT.mode === 'fixed'
+    ? EarthSystem.run({ fromYear: TL_START, toYear: TL_END, fixedPpm: FUT.fixedPpm })
+    : EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() });
 }
 
 // 연도 사이 선형 보간. 엔진 배열의 year=y 원소는 "y년 한 해를 적분한 뒤"의 상태다.
@@ -237,6 +241,8 @@ function updateCards(h) {
 
 function updateSink(h) {
   $('sinkYear').textContent = Math.round(h.year);
+  $('sinkLead').textContent = FUT.mode === 'fixed' && h.year >= 2024
+    ? '농도를 유지하는 데 필요했던 배출은 어디로 갔나' : '배출된 탄소는 어디로 갔나';
   SINK_PARTS.forEach((p, i) => { futChartSink.data.datasets[i].data = [h.cum[p.key]]; });
   futChartSink.update('none');
   const tot = h.cum.atm + h.cum.ocean + h.cum.land;
@@ -270,16 +276,17 @@ const ES = EarthSystem;
 // 산림: 토지이용 배출 +L2023(벌채 지속) → 나무 60 %, 0(벌채 중단) → 약 83 %, −1(대규모 조림) → 100 %
 const treeFracFromLuc = luc => Math.min(1, Math.max(0.3, 0.6 + 0.4 * (ES.L2023 - luc) / (ES.L2023 + 1)));
 function applyLevers3D(S, s) {
-  const custom = FUT.preset === 'custom' && s.year >= ES.LEVER_START;
+  const custom = FUT.mode === 'scenario' && FUT.preset === 'custom' && s.year >= ES.LEVER_START;
   const l = custom ? ES.leversAt(FUT.levers, s.year) : ES.LEVER_NOW;
-  const fossilNow = s.fossil != null ? s.fossil : 0;
+  // 농도 고정 구간은 배출이 정의되지 않으므로 도시는 2023년 모습으로 둔다
+  const fossilNow = s.fixed ? ES.E2023 : (s.fossil != null ? s.fossil : 0);
   S.state.fossil = custom ? 100 * l.fossilShare
     : Math.min(100, 100 * ES.LEVER_NOW.fossilShare * Math.max(0, fossilNow / ES.E2023));
   S.state.ev = 100 * l.ev;
   S.state.carbonRemoval = 100 * l.ccs / ES.LEVER_RANGE.ccs[1];
   S.state.nuclear = l.nuclearShare;
   S.state.renew = l.renewShare;
-  S.state.treeFrac = treeFracFromLuc(custom ? l.forest : (s.luc != null ? s.luc : ES.L2023));
+  S.state.treeFrac = treeFracFromLuc(custom ? l.forest : (s.luc != null && !s.fixed ? s.luc : ES.L2023));
 }
 
 // ── 시나리오 (오른쪽 지구) ─────────────────────────────────────────────
@@ -290,14 +297,57 @@ const PRESET_DESC = {
   custom: '직접 설계: 아래 레버로 2050년의 사회를 정해 보세요.',
 };
 const PRESET_KO = { ...Object.fromEntries(Object.entries(ES.PRESETS).map(([k, v]) => [k, v.ko])), custom: '직접 설계' };
+function humanLabel() {
+  return FUT.mode === 'fixed' ? `농도 고정 ${FUT.fixedPpm} ppm` : PRESET_KO[FUT.preset];
+}
 function setPreset(name) {
   FUT.preset = name;
   document.querySelectorAll('#fcPresets [data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === name));
   $('fcPresetDesc').textContent = PRESET_DESC[name];
   $('fcLevers').hidden = name !== 'custom';
-  $('earthSubR').textContent = PRESET_KO[name];
+  $('earthSubR').textContent = humanLabel();
   recomputeFuture();
 }
+
+// ── 농도 고정 모드 ──────────────────────────────────────────────────────
+// 2023년까지는 역사 배출로 진행하고, 2024년부터 대기 CO2를 고른 값에 묶는다.
+// 대기는 적분하지 않고 바다·토양·기온만 그 농도에서 계속 적분하므로 "농도가 그대로면
+// 무엇이 계속 변하는가"를 따로 떼어 볼 수 있다 (js/earth-system.js run의 fixedPpm).
+const FIXED_DESC = {
+  280: '280 ppm: "지금 당장 산업화 이전 농도로 되돌린다면?"이라는 <b>사고실험</b>입니다. 현실에서 가능한 경로가 아니라, 대기를 되돌려도 바다와 기온이 얼마나 늦게 돌아오는지 보려는 것입니다.',
+  418: '418 ppm: 2023년 농도에서 멈춘다면. 배출을 멈춰도 농도를 이 값에 묶어 두면 기온은 수백 년 동안 더 오릅니다(평형 +1.8 °C).',
+  560: '560 ppm: 산업화 이전의 두 배(이 모형의 현재 추세로는 2069년 도달). 기온이 따라가는 데 수백 년이 걸립니다(평형 +3.1 °C).',
+  800: '800 ppm: 이 모형의 현재 추세로는 2119년에 도달하는 수준입니다(평형 +4.7 °C).',
+  1000: '1000 ppm: 현재 추세로는 2156년 도달. pH는 고정하자마자 7.7대로 떨어집니다(평형 기온 +5.7 °C).',
+};
+function setMode(mode) {
+  FUT.mode = mode;
+  document.querySelectorAll('#fcMode [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  $('fcFixed').hidden = mode !== 'fixed';
+  $('fcScenario').hidden = mode !== 'scenario';
+  setFixedButtons();
+  $('earthSubR').textContent = humanLabel();
+  recomputeFuture();
+}
+function setFixedButtons() {
+  document.querySelectorAll('#fcFixedBtns [data-ppm]').forEach(b => b.classList.toggle('on', Number(b.dataset.ppm) === FUT.fixedPpm));
+  $('fcFixedDesc').innerHTML = FIXED_DESC[FUT.fixedPpm] || '';
+}
+$('fcMode').addEventListener('click', e => {
+  const b = e.target.closest('[data-mode]');
+  if (b && b.dataset.mode !== FUT.mode) setMode(b.dataset.mode);
+});
+$('fcFixedBtns').addEventListener('click', e => {
+  const b = e.target.closest('[data-ppm]');
+  if (!b) return;
+  FUT.fixedPpm = Number(b.dataset.ppm);
+  setFixedButtons();
+  $('earthSubR').textContent = humanLabel();
+  recomputeFuture();
+  // 고르면 2023년부터 재생해서 고정 뒤 바다·기온이 수렴하는 과정을 보여 준다
+  setYear(2023);
+  setPlaying(true);
+});
 $('fcPresets').addEventListener('click', e => {
   const b = e.target.closest('[data-preset]');
   if (b) setPreset(b.dataset.preset);

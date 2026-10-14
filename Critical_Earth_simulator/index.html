@@ -108,6 +108,24 @@
 
     <!-- 미래 예측 탭에서만 보임: 오른쪽(인간활동) 지구의 배출 조작 (js/tab-future.js) -->
     <div class="future-only fc" id="futureControls">
+      <div class="fc-mode" id="fcMode">
+        <button data-mode="scenario" class="on">시나리오</button><button data-mode="fixed">농도 고정</button>
+      </div>
+
+      <div id="fcFixed" hidden>
+        <div class="fc-title">2024년부터 오른쪽 지구의 CO₂를 고정 <span>(대기만 고정, 바다·토양·기온은 계속 계산)</span></div>
+        <div class="fc-btns" id="fcFixedBtns">
+          <button class="mini-btn" data-ppm="280">280 ppm</button>
+          <button class="mini-btn" data-ppm="418">418 ppm</button>
+          <button class="mini-btn" data-ppm="560">560 ppm</button>
+          <button class="mini-btn" data-ppm="800">800 ppm</button>
+          <button class="mini-btn" data-ppm="1000">1000 ppm</button>
+        </div>
+        <p class="fc-note">pH는 바로 바뀌지만, 바다가 데워지는 데는 수백 년이 걸려서 기온은 천천히 따라간다.</p>
+        <p class="fc-desc" id="fcFixedDesc"></p>
+      </div>
+
+      <div id="fcScenario">
       <div class="fc-title">인간활동 지구의 배출 <span>(오른쪽 지구)</span></div>
       <div class="fc-btns" id="fcPresets">
         <button class="mini-btn" data-preset="bau">현재 추세</button>
@@ -146,6 +164,7 @@
         </div>
         <div class="fc-result" id="lvResult"></div>
         <button class="mini-btn" id="lvReset">지금 값으로 되돌리기</button>
+      </div>
       </div>
     </div>
   </div>
@@ -202,7 +221,7 @@
         <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)</div><div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)</div><div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">해수 pH · 아라고나이트 포화도 Ω</div><div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title" id="sinkTitle">배출된 탄소는 어디로 갔나 (<b id="sinkYear">2023</b>년까지 누적, GtC)</div><div class="chart-wrap sink-wrap"><canvas id="futChartSink"></canvas></div>
+        <div class="chart-block"><div class="chart-title" id="sinkTitle"><span id="sinkLead">배출된 탄소는 어디로 갔나</span> (<b id="sinkYear">2023</b>년까지 누적, GtC)</div><div class="chart-wrap sink-wrap"><canvas id="futChartSink"></canvas></div>
           <div class="sink-note" id="sinkNote"></div></div>
       </div>
 
