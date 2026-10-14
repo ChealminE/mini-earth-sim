@@ -58,12 +58,23 @@ mlo = {int(r['Year']): float(r['Mean']) for r in csv.DictReader(open(os.path.joi
 PPM2GTC = 2.124
 MOL2GTC = 12e-15
 A_OCEAN = 3.61e14; RHO = 1025
-P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=5.0,    # 해양
-         npp0=60.0, tau_land=50.0, beta=0.32, q10=2.0,             # 토양·식생
+# 보정값: 앱이 2023년을 지구 평균 418.24 ppm으로 보여 주므로 마우나로아가 아니라
+# 지구 평균(js/tab-current.js의 histCo2)에 맞춰 격자 탐색으로 고른 값이다.
+# (예전 MLO 기준값: tau_mix=5.0, beta=0.32, c0=277.0)
+P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=6.0,    # 해양
+         npp0=60.0, tau_land=50.0, beta=0.38, q10=2.0,             # 토양·식생
          lam=1.2, Cs=8.0, Cd=100.0, gamma=0.7,                     # 2층 기온 (W, yr, m2, K)
-         sst0=18.0, c0=277.0)
+         sst0=18.0, c0=278.0)
 
-def run(years, emis_fn, p=P, dt=0.1):
+# 지구 평균 CO2 1988~2023 - js/tab-current.js의 histCo2를 그대로 옮긴 것 (검증용)
+GLOBAL_CO2_START = 1988
+GLOBAL_CO2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24]
+
+# dt는 0.25년으로 고정한다. 결과가 dt에 따라 조금씩 달라지므로(전진 오일러)
+# 보정값과 js/earth-system.js 대조가 모두 이 dt를 전제로 한다.
+DT = 0.25
+
+def run(years, emis_fn, p=P, dt=DT):
     Ms = A_OCEAN*p['h_mix']*RHO; Md = A_OCEAN*p['h_deep']*RHO
     ca = p['c0']*PPM2GTC
     dic_s = state_from_pco2(p['c0'], p['sst0'])['dic']; dic_d0 = dic_s; dic_d = dic_s
@@ -109,3 +120,5 @@ if __name__ == '__main__':
     print(f"2014-23 avg: emis {E:.2f} ocean {O:.2f} land {L:.2f} atm {E-O-L:.2f} GtC/yr, airborne {(E-O-L)/E:.2f}")
     rmse = math.sqrt(np.mean([(R[y]['ppm']-mlo[y])**2 for y in range(1959, 2024)]))
     print('RMSE vs Mauna Loa 1959-2023: %.2f ppm' % rmse)
+    rmse_g = math.sqrt(np.mean([(R[GLOBAL_CO2_START+i]['ppm']-v)**2 for i, v in enumerate(GLOBAL_CO2)]))
+    print('RMSE vs global mean 1988-2023: %.2f ppm' % rmse_g)

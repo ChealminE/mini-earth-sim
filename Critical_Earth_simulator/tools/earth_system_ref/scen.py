@@ -1,5 +1,5 @@
 import engine as E, math, numpy as np
-p=dict(E.P); p.update(tau_mix=5,h_deep=2000,beta=0.32,tau_land=50,k_gas=0.25)
+p=dict(E.P); p.update(c0=278.0,tau_mix=6.0,h_deep=2000.0,beta=0.38,tau_land=50.0,k_gas=0.25)
 e23=E.em[2023][0]+E.em[2023][1]
 def mk(kind):
     def f(y):
