@@ -6,6 +6,11 @@
 // 궤적은 미리 계산한다: 시나리오가 바뀔 때만 EarthSystem.run을 돌려 연도별 배열을 만들고,
 // 재생은 그 배열을 인덱싱만 한다(연도 사이는 선형 보간). 렌더 루프 안에서 엔진을 돌리지 않는다.
 const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
+// 두 개의 지구: 같은 엔진을 "자연만(배출 0)"과 "인간활동"으로 각각 돌려 1750년부터 갈라지게 한다.
+// 왼쪽 = 자연, 오른쪽 = 인간활동 (common.js animate가 화면을 반으로 나눠 그린다)
+const sceneNature = sceneFor('future');
+sceneNature.state.nature = true;        // 도시 구역의 건물·자동차·공장·도로·포집 타워를 숨김
+splitView = { tab: 'future', left: sceneNature, right: sceneFuture };
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
@@ -244,6 +249,7 @@ function updateSink(h) {
 // 빙하는 기온 편차 T로 줄인다 (T = 5 °C에서 최대 축소).
 const ICE_MELT_T = 5;
 function apply3D(S, s) {
+  if (S.dormant) return;
   S.state.co2 = s.ppm;
   S.state.ph = s.pH;
   S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
@@ -282,6 +288,7 @@ function renderFuture() {
   updateCards(h);
   updateSink(h);
   updateSpeciation(h, FUT.human[0]);
+  updateEarthLabels(sampleAt(FUT.nature, FUT.year), h);
   futChartCo2.draw(); futChartT.draw(); futChartPh.draw();
   return h;
 }
@@ -312,13 +319,21 @@ setInterval(() => {
   FUT.dirty = false;
   const h = renderFuture();
   apply3D(sceneFuture, h);
+  apply3D(sceneNature, sampleAt(FUT.nature, FUT.year));
 }, FUT_TICK_MS);
+
+// 각 지구 위 이름표: 현재 CO2·기온을 작게
+function updateEarthLabels(n, h) {
+  $('earthValL').textContent = `${n.ppm.toFixed(0)} ppm · ${fmtSigned(n.T, 2)} °C`;
+  $('earthValR').textContent = `${h.ppm.toFixed(0)} ppm · ${fmtSigned(h.T, 2)} °C`;
+}
 
 // 탭을 열 때 main.js가 부른다
 function activateFutureTab() {
   [futChartCo2, futChartT, futChartPh, futChartSink].forEach(c => c.resize());
   FUT.dirty = true;
   apply3D(sceneFuture, renderFuture());
+  apply3D(sceneNature, sampleAt(FUT.nature, FUT.year));
 }
 
 computeNature();

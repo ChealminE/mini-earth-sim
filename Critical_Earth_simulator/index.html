@@ -92,6 +92,9 @@
   <div id="gl-container">
     <canvas id="gl"></canvas>
     <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
+    <!-- 미래 예측 탭에서만 보임: 좌우 두 지구의 이름표 (js/tab-future.js) -->
+    <div class="earth-label left"><b>자연만 있는 지구</b> <span class="sub">배출 0</span><span class="val" id="earthValL"></span></div>
+    <div class="earth-label right"><b>인간활동 지구</b> <span class="sub" id="earthSubR">현재 추세</span><span class="val" id="earthValR"></span></div>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
       <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">

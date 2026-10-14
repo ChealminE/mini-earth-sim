@@ -20,7 +20,11 @@ function switchTab(name) {
   // 직접 실험 탭은 아크릴을 화면 가득 두고 그 위에 띄운다: 처음엔 '실험 준비'(body.live-setup),
   // 실험을 시작하면 '실험 화면'(body.live-run) - js/live-setup.js가 전환
   if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
+  // 미래 예측 탭은 두 지구를 좌우로 그리려고 3D 칸을 화면 위쪽 전체 폭으로 바꾼다 (style.css body.tab-future)
+  document.body.classList.toggle('tab-future', name === 'future');
+  if (name === 'future') ensureSceneBuilt(sceneNature);
   activeTab = name;
+  fitRenderer();   // 탭에 따라 3D 칸 크기가 달라진다
   if (name === 'future') {
     activateFutureTab();   // 그래프 크기 맞추기 + 재생 연도의 엔진 값을 3D에 반영 (js/tab-future.js)
   } else if (name === 'live') {

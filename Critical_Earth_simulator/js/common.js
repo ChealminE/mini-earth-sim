@@ -750,7 +750,7 @@ return {
   bubbleGeo, bubbleCount, bubbleSeed, bubbleBaseArr, bubbleMat,
   waterBody, waterNominalH, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
-  smokeMat, smokeGeo, smokeCount, smokeLife, factory,
+  smokeMat, smokeGeo, smokeCount, smokeLife, factory, smoke, roads: [mainRoad, crossRoad],
   buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE, OCEAN_BASE,
   condensationSpeed: 1,
@@ -834,8 +834,10 @@ function applyState(S) {
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
   const evCount = Math.round(carCount * (S.state.ev / 100));
+  // 미래 예측 탭의 "자연만 있는 지구"(state.nature)는 도시 구역의 인공물을 숨긴다 (지면은 그대로)
+  const nat = !!S.state.nature;
   S.carMeshes.forEach((c, i) => {
-    c.visible = i < carCount;
+    c.visible = !nat && i < carCount;
     const mat = i < evCount ? S.evCarMat : S.gasCarMat;
     c.userData.bodyParts.forEach(p => { p.material = mat; });
   });
@@ -846,11 +848,14 @@ function applyState(S) {
 
   // 도시화 지수 → 표시되는 건물 수
   const bCount = Math.max(1, Math.round((S.state.cityRatio / 100) * S.buildingMeshes.length));
-  S.buildingMeshes.forEach((bld, i) => { bld.visible = i < bCount; });
+  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && i < bCount; });
+  S.factory.visible = !nat;
+  S.smoke.visible = !nat;
+  S.roads.forEach(r => { r.visible = !nat; });
 
   // 탄소제거기술 도입률 → 포집 타워 등장/크기
   const crScale = S.state.carbonRemoval / 100;
-  S.captureTower.visible = crScale > 0.02;
+  S.captureTower.visible = !nat && crScale > 0.02;
   S.captureTower.scale.setScalar(0.3 + crScale * 0.7);
 
   // 습지 비율 → 습지 패치 크기, 겹치는 나무는 숨김
@@ -869,16 +874,49 @@ function applyState(S) {
 }
 
 // ================= 애니메이션 =================
+// 미래 예측 탭은 같은 렌더러로 두 지구(자연 | 인간활동)를 좌우에 그린다. tab-future.js가
+// splitView = { tab, left, right } 를 정해 두면 그 탭에서만 화면을 반으로 나눠 두 씬을 그리고,
+// 카메라 하나를 같이 써서 회전·줌이 두 지구에 똑같이 걸린다. 다른 탭은 지금처럼 하나만 그린다.
+let splitView = null;
+// 성능 확인용: 한 프레임에 실제로 나간 드로우콜 수 (두 씬을 그리면 두 번의 render 합계)
+renderer.info.autoReset = false;
+let lastFrameDrawCalls = 0;
 let t = 0;
+function setCameraAspect(a) {
+  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.updateProjectionMatrix(); }
+}
 function animate() {
   requestAnimationFrame(animate);
   t += 0.016;
-  const S = bundles[activeTab];
+  renderer.info.reset();
 
   // 수면 노멀맵을 서서히 흘려서 잔물결이 흐르는 느낌을 줌 (3개 씬이 텍스처를 공유해서 한 번만 갱신하면 됨)
   waterNormalTex.offset.x = (t * 0.015) % 1;
   waterNormalTex.offset.y = (t * 0.008) % 1;
 
+  const w = glContainer.clientWidth, h = glContainer.clientHeight;
+  if (splitView && activeTab === splitView.tab && !splitView.left.dormant && !splitView.right.dormant) {
+    const half = Math.floor(w / 2);
+    stepScene(splitView.left); stepScene(splitView.right);
+    setCameraAspect(half / h);
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, half, h); renderer.setScissor(0, 0, half, h);
+    renderer.render(splitView.left.scene, camera);
+    renderer.setViewport(half, 0, w - half, h); renderer.setScissor(half, 0, w - half, h);
+    renderer.render(splitView.right.scene, camera);
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, w, h);
+  } else {
+    const S = bundles[activeTab];
+    stepScene(S);
+    setCameraAspect(w / h);
+    renderer.render(S.scene, camera);
+  }
+  lastFrameDrawCalls = renderer.info.render.calls;
+}
+
+// 씬 하나의 한 프레임 움직임 (파도·입자·연기 등). 그리기는 animate()가 한다.
+function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
 
   // 대기 입자 드리프트
@@ -957,7 +995,6 @@ function animate() {
   }
   sp.needsUpdate = true;
 
-  renderer.render(S.scene, camera);
 }
 
 // ================= 화면별 아크릴은 필요할 때만 만들기 =================
