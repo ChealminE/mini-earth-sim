@@ -221,6 +221,28 @@
         <div class="stat-box"><div class="label">바다의 완충 능력 (1750 대비)</div><div class="value" id="cardBuffer">-</div></div>
       </div>
 
+      <!-- 측정 패널: 프로그램 공통 측정 요소 4개 (co2_ppm, air_temp, water_temp, ph) - 재생 연도 + 관측 계절 -->
+      <div class="chart-block meas-block">
+        <div class="chart-title">측정 — <b id="measWhen">2023년 봄</b>에 두 지구를 재면</div>
+        <div class="meas-grid" id="measGrid">
+          <div class="meas-h"></div><div class="meas-h">자연만 있는 지구</div><div class="meas-h">인간활동 지구</div>
+        </div>
+        <div class="meas-actions">
+          <span></span>
+          <button class="mini-btn" data-rec="nature">이 지구 기록</button>
+          <button class="mini-btn" data-rec="human">이 지구 기록</button>
+        </div>
+        <div class="meas-log-head">
+          <span>기록 <b id="measCount">0</b>줄</span>
+          <button class="mini-btn" id="measCsv">CSV 내보내기</button>
+          <button class="mini-btn" id="measClear">기록 지우기</button>
+        </div>
+        <div class="meas-log-wrap"><table class="spec-table meas-log">
+          <thead><tr><th>연도</th><th>계절</th><th>시나리오/고정값</th><th>지구</th><th>co2_ppm</th><th>air_temp</th><th>water_temp</th><th>ph</th></tr></thead>
+          <tbody id="measLog"></tbody>
+        </table></div>
+      </div>
+
       <div class="charts-2col">
         <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)</div><div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)</div><div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>

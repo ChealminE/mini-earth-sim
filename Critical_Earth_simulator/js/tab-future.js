@@ -277,6 +277,80 @@ $('seasonBtns').addEventListener('click', e => {
   if (b) setSeason(b.dataset.season);
 });
 
+// ── 측정 패널 ─────────────────────────────────────────────────────────
+// 프로그램 전체의 공통 측정 요소 4개. 열 이름(co2_ppm, air_temp, water_temp, ph)은
+// 직접 실험 탭과 1인칭 야장도 나중에 이 이름으로 맞출 예정이라 그대로 쓴다.
+// 게이지 범위는 눈금이 아니라 막대 길이용이다 (값은 숫자로 따로 보여 준다).
+const MEAS = [
+  { key: 'co2_ppm', name: '대기 CO₂', unit: 'ppm', digits: 0, csvDigits: 1, min: 250, max: 1300 },
+  { key: 'air_temp', name: '기온', unit: '°C', digits: 1, csvDigits: 2, min: -5, max: 35 },
+  { key: 'water_temp', name: '해수온', unit: '°C', digits: 1, csvDigits: 2, min: 10, max: 30 },
+  { key: 'ph', name: '해수 pH', unit: '', digits: 3, csvDigits: 3, min: 7.5, max: 8.3 },
+];
+const measCells = {};
+{
+  const grid = $('measGrid');
+  for (const m of MEAS) {
+    const lab = document.createElement('div');
+    lab.className = 'meas-name';
+    lab.innerHTML = `${m.name} <span>${m.key}</span>`;
+    grid.appendChild(lab);
+    measCells[m.key] = ['nature', 'human'].map(earth => {
+      const cell = document.createElement('div');
+      cell.className = 'meas-cell ' + earth;
+      cell.innerHTML = '<div class="meas-gauge"><div class="meas-fill"></div></div><div class="meas-val"></div>';
+      grid.appendChild(cell);
+      return { fill: cell.querySelector('.meas-fill'), val: cell.querySelector('.meas-val') };
+    });
+  }
+}
+let lastObs = null;
+function updateMeasure(n, h) {
+  const obs = { nature: observe(n), human: observe(h) };
+  lastObs = { year: Math.round(h.year), ...obs };
+  $('measWhen').textContent = `${Math.round(h.year)}년 ${SEASON_CLIMATE[FUT.season].ko}`;
+  for (const m of MEAS) {
+    ['nature', 'human'].forEach((earth, i) => {
+      const v = obs[earth][m.key], c = measCells[m.key][i];
+      c.fill.style.width = (100 * Math.min(1, Math.max(0, (v - m.min) / (m.max - m.min)))) + '%';
+      c.val.textContent = v.toFixed(m.digits) + (m.unit ? ' ' + m.unit : '');
+    });
+  }
+}
+const measRecords = [];
+const EARTH_KO = { nature: '자연', human: '인간활동' };
+function addRecord(earth) {
+  if (!lastObs) return;
+  const o = lastObs[earth];
+  const rec = { year: lastObs.year, season: SEASON_CLIMATE[FUT.season].ko,
+    scenario: earth === 'nature' ? '배출 0' : humanLabel(), earth: EARTH_KO[earth] };
+  for (const m of MEAS) rec[m.key] = Number(o[m.key].toFixed(m.csvDigits));
+  measRecords.push(rec);
+  const tr = document.createElement('tr');
+  tr.innerHTML = [rec.year, rec.season, rec.scenario, rec.earth, ...MEAS.map(m => rec[m.key].toFixed(m.csvDigits))]
+    .map(v => `<td>${v}</td>`).join('');
+  $('measLog').appendChild(tr);
+  $('measCount').textContent = measRecords.length;
+  tr.scrollIntoView({ block: 'nearest' });
+}
+document.querySelector('.meas-actions').addEventListener('click', e => {
+  const b = e.target.closest('[data-rec]');
+  if (b) addRecord(b.dataset.rec);
+});
+$('measClear').addEventListener('click', () => {
+  measRecords.length = 0;
+  $('measLog').innerHTML = '';
+  $('measCount').textContent = 0;
+});
+$('measCsv').addEventListener('click', () => {
+  if (!measRecords.length) return;
+  const cols = ['year', 'season', 'scenario', 'earth', ...MEAS.map(m => m.key)];
+  const esc = v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const csv = [cols.join(','), ...measRecords.map(r => cols.map(c => esc(r[c])).join(','))].join('\r\n');
+  // BOM: 엑셀에서 한글이 깨지지 않게 (직접 실험 탭 CSV와 같은 방식, downloadBlob은 js/xlsx-lite.js)
+  downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }), '미래예측_측정기록.csv');
+});
+
 // ── 3D ────────────────────────────────────────────────────────────────
 // 기존 매핑 상수(CO2_MIN/MAX, PH_MIN/MAX)를 그대로 쓴다. CO2_MAX(1000)는 1인칭과 공유하므로
 // 바꾸지 않는다 - 1000 ppm을 넘는 구간은 3D 효과만 포화된다(그래프는 그대로 그린다).
@@ -477,7 +551,9 @@ function renderFuture() {
   updateCards(h);
   updateSink(h);
   updateSpeciation(h, FUT.human[0]);
-  updateEarthLabels(sampleAt(FUT.nature, FUT.year), h);
+  const n = sampleAt(FUT.nature, FUT.year);
+  updateEarthLabels(n, h);
+  updateMeasure(n, h);
   futChartCo2.draw(); futChartT.draw(); futChartPh.draw();
   return h;
 }

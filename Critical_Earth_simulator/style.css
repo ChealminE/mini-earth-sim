@@ -572,3 +572,21 @@ body.tab-future .future-only { display: block; }
 .fc-mode button.on { background: #5DCAA5; color: #10231c; font-weight: 600; }
 .tl-season { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #9198a3; }
 .season-hint { margin: -4px 0 10px; }
+
+/* ── 미래 예측 탭: 측정 패널 ── */
+.meas-block .chart-title b { color: #e7e9ec; }
+.meas-grid, .meas-actions { display: grid; grid-template-columns: minmax(110px, 0.8fr) 1fr 1fr; gap: 6px 14px; align-items: center; }
+.meas-h { font-size: 11px; color: #cfd3da; font-weight: 600; }
+.meas-name { font-size: 11px; color: #cfd3da; }
+.meas-name span { font-size: 9.5px; color: #6b7178; font-family: ui-monospace, monospace; }
+.meas-cell { display: flex; align-items: center; gap: 8px; }
+.meas-gauge { flex: 1; height: 8px; border-radius: 4px; background: #23272f; overflow: hidden; }
+.meas-fill { height: 100%; border-radius: 4px; background: #5DCAA5; }
+.meas-cell.nature .meas-fill { background: #7d838d; }
+.meas-val { font-size: 13px; font-weight: 600; min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; color: #e7e9ec; }
+.meas-actions { margin-top: 8px; }
+.meas-actions .mini-btn { justify-self: start; }
+.meas-log-head { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11px; color: #9198a3; }
+.meas-log-head span { margin-right: auto; }
+.meas-log-wrap { max-height: 150px; overflow-y: auto; }
+.meas-log td, .meas-log th { text-align: right; }
