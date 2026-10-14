@@ -113,6 +113,70 @@ compare('자연(배출 0)', natRun, REF.runs.nature);
     `ppm ${lo.toFixed(4)}~${hi.toFixed(4)}  max|T| ${tmax.toExponential(2)}`);
 }
 
+// ═══════════════════════════ 게이트 B ═══════════════════════════════════════
+// ── 4a) 프리셋 3개: 파이썬(scen.py 정의) 대조 + 기대값 표 ─────────────────────
+{
+  const exp = {
+    bau:    { 2050: [495, 1.73], 2100: [702, 2.89, { pH: 7.857 }], 2200: [1269, 5.16, { omega: 1.41 }] },
+    paris:  { 2050: [451, 1.52], 2100: [415, 1.44], 2200: [399, 1.42] },
+    nz2050: { 2050: [422, 1.38], 2100: [383, 1.17], 2200: [375, 1.19] },
+  };
+  for (const k of Object.keys(exp)) {
+    const js = ES.run({ fromYear: 1750, toYear: 2200, emissionsFn: ES.presetEmissions(k) });
+    compare(`프리셋 ${ES.PRESETS[k].ko}`, js, REF.runs[k]);
+    const R = byYear(js);
+    for (const [y, [ppm, T, extra]] of Object.entries(exp[k])) {
+      const o = R[y];
+      let ok = Math.round(o.ppm) === ppm && r1(o.T, 2) === T;
+      let msg = `${o.ppm.toFixed(1)} ppm, T +${o.T.toFixed(3)}`;
+      if (extra && extra.pH != null) { ok = ok && r1(o.pH, 3) === extra.pH; msg += `, pH ${o.pH.toFixed(4)}`; }
+      if (extra && extra.omega != null) { ok = ok && r1(o.omega, 2) === extra.omega; msg += `, Ω ${o.omega.toFixed(3)}`; }
+      check(`  ${ES.PRESETS[k].ko} ${y} = ${ppm} ppm, +${T} °C`, ok, msg);
+    }
+  }
+}
+
+// ── 4b) 레버 현재값 그대로 = 2024년 이후 배출이 2023년 값으로 일정 (0.1% 이내) ──
+{
+  const fn = ES.leverEmissions({ ...ES.LEVER_NOW });
+  const e23 = ES.E2023 + ES.L2023;
+  let mx = 0;
+  for (let y = 2024; y <= 2200; y++) { const e = fn(y); mx = Math.max(mx, Math.abs((e.fossil + e.luc) / e23 - 1)); }
+  check('레버 현재값 → 배출 일정 (2024~2200, 0.1% 이내)', mx < 1e-3, `최대 상대오차 ${mx.toExponential(2)}`);
+  // 선형 전환: 2037년(중간)은 현재값과 목표의 정확히 가운데, 2050년 이후는 목표 유지
+  const tgt = { fossilShare: 0.2, nuclearShare: 0.2, renewShare: 0.6, ev: 0.6, ccs: 1, otherCut: 0.5, forest: -1 };
+  const mid = ES.leversAt(tgt, 2037), end = ES.leversAt(tgt, 2050), late = ES.leversAt(tgt, 2150);
+  const midOk = Math.abs(mid.ev - (0.03 + 0.6) / 2) < 1e-12 && Math.abs(mid.forest - (ES.L2023 - 1) / 2) < 1e-12;
+  const endOk = Object.keys(tgt).every(k => Math.abs(end[k] - tgt[k]) < 1e-12 && Math.abs(late[k] - tgt[k]) < 1e-12);
+  const sumOk = Math.abs(mid.fossilShare + mid.nuclearShare + mid.renewShare - 1) < 1e-12;
+  check('레버 선형 전환 (2037 중간값, 2050 이후 목표 유지, 전력 비중 합 1)', midOk && endOk && sumOk);
+  const pre = ES.leverEmissions(tgt)(2023), hist = ES.historicalEmissions(2023);
+  check('레버는 2023년까지 역사 배출을 바꾸지 않음', pre.fossil === hist.fossil && pre.luc === hist.luc);
+}
+
+// ── 4c) 농도 고정: 파이썬 run_fixed 대조 + 기대값 표 ─────────────────────────
+{
+  for (const c of ES.FIXED_PPMS) {
+    const js = ES.run({ fromYear: 1750, toYear: 2200, fixedPpm: c });
+    compare(`농도 고정 ${c} ppm`, js, REF.runs['fixed' + c]);
+  }
+  const exp = {
+    418: { 2030: [1.26, 8.052], 2100: 1.42, 2200: 1.56, eq: 1.82 },
+    560: { 2030: [1.94, 7.946], 2100: 2.37, 2200: 2.63, eq: 3.12 },
+    1000: { 2030: [3.28, 7.721], 2100: 4.25, 2200: 4.76, eq: 5.71 },
+  };
+  for (const [c, e] of Object.entries(exp)) {
+    const R = byYear(ES.run({ fromYear: 1750, toYear: 2200, fixedPpm: Number(c) }));
+    const eq = 5.35 * Math.log(c / ES.PARAMS.c0) / ES.PARAMS.lam;
+    const ok = r1(R[2030].T, 2) === e[2030][0] && r1(R[2030].pH, 3) === e[2030][1]
+            && r1(R[2100].T, 2) === e[2100] && r1(R[2200].T, 2) === e[2200] && r1(eq, 2) === e.eq;
+    let pinned = true;
+    for (let y = 2024; y <= 2200; y++) pinned = pinned && Math.abs(R[y].ppm - c) < 1e-9;
+    check(`  고정 ${c}: 2030 +${e[2030][0]} pH ${e[2030][1]} / 2100 +${e[2100]} / 2200 +${e[2200]} / 평형 ${e.eq}`, ok && pinned,
+      `2030 T ${R[2030].T.toFixed(3)} pH ${R[2030].pH.toFixed(4)} | 2100 ${R[2100].T.toFixed(3)} | 2200 ${R[2200].T.toFixed(3)} | 평형 ${eq.toFixed(3)}`);
+  }
+}
+
 // ── earth-model.js 역함수 ────────────────────────────────────────────────────
 {
   let mx = 0;

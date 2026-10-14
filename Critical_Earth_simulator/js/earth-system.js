@@ -50,6 +50,104 @@ const EarthSystem = (() => {
   }
   const natureEmissions = () => ({ fossil: 0, luc: 0 });
 
+  // 2023년 배출 - 프리셋·레버가 모두 이 값에서 출발한다
+  const E2023 = historicalEmissions(2023).fossil;   // 화석·산업 [GtC/yr]
+  const L2023 = historicalEmissions(2023).luc;      // 토지이용 변화 [GtC/yr]
+  const LAST_HIST_YEAR = 2023;                      // 이 해까지는 항상 역사 배출
+
+  // ── 프리셋 시나리오 ───────────────────────────────────────────────────────
+  // tools/earth_system_ref/scen.py 의 mk()와 같은 정의다 (대조 테스트로 확인).
+  const PRESETS = {
+    bau: {
+      ko: '현재 추세',
+      // 화석: 해마다 2023년 값의 1%씩 늘다가 2100년 이후 1.77배로 고정
+      // 토지이용: 2023년 값에서 80년에 걸쳐 0으로
+      fn: y => ({
+        fossil: y < 2100 ? E2023 * (1 + 0.01 * (y - 2023)) : E2023 * 1.77,
+        luc: L2023 * Math.max(0, 1 - (y - 2023) / 80),
+      }),
+    },
+    paris: { ko: '파리협약', end: 2075 },       // 2075년 순배출 0까지 선형 감소
+    nz2050: { ko: '2050 탄소중립', end: 2050 }, // 2050년 순배출 0까지 선형 감소
+  };
+  for (const k of ['paris', 'nz2050']) {
+    const end = PRESETS[k].end;
+    PRESETS[k].fn = y => {
+      const f = Math.max(0, 1 - (y - 2023) / (end - 2023));
+      return { fossil: E2023 * f, luc: L2023 * f };
+    };
+  }
+  // 2023년까지는 역사 배출, 2024년부터 프리셋 경로
+  function presetEmissions(name) {
+    const pr = PRESETS[name];
+    if (!pr) throw new Error('알 수 없는 프리셋: ' + name);
+    return y => (y <= LAST_HIST_YEAR ? historicalEmissions(y) : pr.fn(y));
+  }
+
+  // ── 직접 설계 (레버) ─────────────────────────────────────────────────────
+  // 레버 값은 '2050년 목표'다. 2024년의 현재값에서 2050년 목표까지 선형으로 바뀌고
+  // 2050년 이후에는 목표를 유지한다. 학생이 "2050년까지 이렇게 바꾸면?"을 묻는 구조.
+  //
+  // 화석 배출(t) = E2023 × [ s_power·P(t) + s_road·R(t) + s_other·(1 − 기타감축(t)) ] − 탄소포집(t)
+  //   P(t) = 화석발전비중(t) / f0                                   (발전 부문)
+  //   R(t) = [ (1−ev) + ev·k_ev·(화석발전비중/f0) ] / [ (1−ev0) + ev0·k_ev ]   (도로 수송)
+  //   전기차는 배출이 0이 아니라 '전력망만큼' 배출한다. 그래서 화석 발전을 줄여야
+  //   전기차 효과도 커진다. 원자력과 재생은 이 식에서 배출이 같다(둘 다 0) - 의도된 것.
+  // 토지이용 배출(t) = 산림 레버 (+L2023 = 벌채 지속, 0 = 벌채 중단, −1 = 대규모 조림)
+  //
+  // 상수 출처 (2026-10 웹 검색으로 확인, IEA·Ember 원문 페이지는 직접 열지 못함):
+  //   f0 = 0.61, 원자력 0.09, 재생 0.30 : Ember, Global Electricity Review 2024 (2023년 자료)
+  //       - 화석 61%, 원자력 9.1%, 재생 30% (Ember 2025 개정치로는 화석 60.6%)
+  //   s_power = 0.40 : 미확인 - IEA 자료에서 2023년 발전·열 부문 비중을 직접 확인하지 못함
+  //       (IEA는 "연료 연소 CO2의 40% 이상"이라고만 서술, 연도 불명)
+  //   s_road = 0.16 : 미확인 - 간접 추정만 일치. IEA(2024) 승용·승합차 3.8 Gt가 도로 수송의
+  //       60% 이상 → 도로 약 6 Gt ÷ 에너지 CO2 37.4 Gt(IEA CO2 Emissions in 2023) ≈ 0.16
+  //   s_other = 0.44 : 위 두 값의 나머지 (1 − 0.40 − 0.16)
+  //   ev0 = 0.03 : 미확인 - IEA Global EV Outlook 2024에 2023년말 전기차 4천만 대만 나오고
+  //       보유 비율은 직접 나오지 않음 (GEVO 2025: 2024년말 약 4%)
+  //   k_ev = 0.45 : 미확인 - 2023년 세계 전력망 기준 km당 배출비를 공개 자료에서 찾지 못함
+  const LEVER_K = Object.freeze({
+    s_power: 0.40, s_road: 0.16, s_other: 0.44,
+    f0: 0.61, ev0: 0.03, k_ev: 0.45,
+  });
+  // 레버의 현재값(2023년). 전력 구성 세 비중의 합은 항상 1.
+  const LEVER_NOW = Object.freeze({
+    fossilShare: 0.61, nuclearShare: 0.09, renewShare: 0.30,
+    ev: 0.03, ccs: 0, otherCut: 0, forest: L2023,
+  });
+  const LEVER_RANGE = Object.freeze({
+    ccs: [0, 3],               // 탄소포집 [GtC/yr]
+    otherCut: [0, 1],          // 기타 부문 감축 비율
+    forest: [-1.0, L2023],     // 토지이용 배출 [GtC/yr]
+    ev: [0, 1],
+  });
+  const LEVER_START = 2024, LEVER_TARGET = 2050;
+
+  // 재생 연도의 실제 레버 값 (선형 전환 중의 값). 3D 표시도 이 값을 쓴다.
+  function leversAt(target, y) {
+    if (y < LEVER_START) return { ...LEVER_NOW };
+    const f = Math.min(1, (y - LEVER_START) / (LEVER_TARGET - LEVER_START));
+    const out = {};
+    for (const k of Object.keys(LEVER_NOW)) {
+      const t = target[k] != null ? target[k] : LEVER_NOW[k];
+      out[k] = LEVER_NOW[k] + (t - LEVER_NOW[k]) * f;
+    }
+    return out;
+  }
+  function leverFossil(l) {
+    const K = LEVER_K;
+    const P = l.fossilShare / K.f0;
+    const R = ((1 - l.ev) + l.ev * K.k_ev * (l.fossilShare / K.f0)) / ((1 - K.ev0) + K.ev0 * K.k_ev);
+    return E2023 * (K.s_power * P + K.s_road * R + K.s_other * (1 - l.otherCut)) - l.ccs;
+  }
+  function leverEmissions(target) {
+    return y => {
+      if (y <= LAST_HIST_YEAR) return historicalEmissions(y);
+      const l = leversAt(target, y);
+      return { fossil: leverFossil(l), luc: l.forest };
+    };
+  }
+
   // ── 적분 ──────────────────────────────────────────────────────────────────
   // opts.fixedPpm 이 있으면 fixFrom(기본 2024)년부터 대기 CO2를 그 값에 고정한다
   // (농도 고정 모드). 대기는 적분하지 않고 해양·토양·기온만 그 농도에서 계속 적분한다.
@@ -115,7 +213,8 @@ const EarthSystem = (() => {
         pH: sw.pH, omega: sw.omega, co2aq: sw.co2aq, hco3: sw.hco3, co3: sw.co3, dic: dicS,
         bufferRel: bufferCapacityRel(ppm, sst, p.c0, p.sst0),
         oceanFlux: fo, landFlux: fl,
-        emissions: fixed ? null : Ef + El,
+        fixed,
+        emissions: fixed ? null : Ef + El,          // 고정 모드에서는 배출이 정의되지 않는다
         fossil: fixed ? null : Ef, luc: fixed ? null : El,
         landC: cl, dicDeep: dicD,
         cum: { ...cum },
@@ -124,9 +223,14 @@ const EarthSystem = (() => {
     return out;
   }
 
+  const FIXED_PPMS = [280, 418, 560, 800, 1000];
+
   return {
-    DT, PARAMS, PPM2GTC,
+    DT, PARAMS, PPM2GTC, E2023, L2023, LAST_HIST_YEAR,
     historicalEmissions, natureEmissions,
+    PRESETS, presetEmissions,
+    LEVER_K, LEVER_NOW, LEVER_RANGE, LEVER_START, LEVER_TARGET, leversAt, leverEmissions,
+    FIXED_PPMS,
     run,
   };
 })();
