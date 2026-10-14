@@ -51,3 +51,7 @@ Critical_Earth_simulator/.venv/
 # PyInstaller build output (재빌드 가능한 산출물, 배포는 GitHub Releases로)
 Critical_Earth_simulator/build/
 Critical_Earth_simulator/dist/
+
+# python venv
+venv/
+Critical_Earth_simulator/venv/
