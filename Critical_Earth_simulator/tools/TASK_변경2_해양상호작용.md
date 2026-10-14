@@ -200,6 +200,6 @@ dpCO2_sw/dt = (C_ocean − pCO2_sw) / τ_sw
 - 기준 브랜치는 `feature/first-person-mode` (`main` 아님).
 - **직접 푸시하지 말 것** — 두 사람이 같이 쓰는 브랜치다.
   `feature/ocean-interaction` 을 새로 따서 **단계마다 커밋**하고 PR 을 연다.
-- `Critical_Earth_simulator/yen진행상황.md` 갱신은 마스터 문서의 마무리 절차를 따른다.
+- `Critical_Earth_simulator/철민진행상황.md` 갱신은 마스터 문서의 마무리 절차를 따른다.
 - PR 본문에는 "통과했다"가 아니라 **각 단계 수용 조건의 실제 출력 숫자**를 적는다.
   특히 2-2 의 **±2 ppm 보정 결과**는 낮·밤 구역별 숫자를 전부 표로 넣을 것.

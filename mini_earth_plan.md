@@ -9,7 +9,7 @@
 > - **과학 모델 통일** (`js/earth-model.js`) — 해양 pH를 회귀식이 아니라 **탄산 평형식**으로 직접 푼다(관측 35점 RMSE 0.007). 조감·1인칭 두 모드가 이 파일을 공유하므로, 예측식을 바꾸려면 **여기만** 고칠 것. 4장의 "회귀식 기반 예측"은 이걸로 대체됐다
 > - **시작 화면** (`select.html`) — `"/"`가 시작 화면, 대시보드는 `/dashboard?tab=...`
 > - **단일 HTML 내보내기** (`dist/MiniEarth.html`) — 서버 없이 더블클릭으로 열리는 배포본
-> - 작업 로그 전체: `Critical_Earth_simulator/yen진행상황.md`
+> - 작업 로그 전체: `Critical_Earth_simulator/yen진행상황.md`(yen 작업) · `Critical_Earth_simulator/철민진행상황.md`(철민 작업)
 
 ---
 

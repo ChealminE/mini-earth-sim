@@ -106,48 +106,406 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
   border-radius: 6px; padding: 10px 12px; margin: 0 0 14px; line-height: 1.65; }
 .buffer-note b:first-child { font-size: 12px; color: #e7e9ec; }
 
-.live-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #9198a3; margin-bottom: 14px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #E24B4A; transition: background .2s; }
 .live-dot.on { background: #5DCAA5; }
-.experiment-btn { border: none; border-radius: 6px; font-size: 11px; font-weight: 600;
-  padding: 6px 12px; cursor: pointer; margin-left: auto; }
-.experiment-btn.start { background: #5DCAA5; color: #10231c; }
-.experiment-btn.start:hover:not(:disabled) { background: #4fb890; }
-.experiment-btn.end { background: #2a2e35; color: #e7e9ec; }
-.experiment-btn.end:hover:not(:disabled) { background: #3a3f47; }
-.experiment-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-#liveGraphs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
-.graph-card { background: #1f2329; border: 1px solid #2a2e35; border-radius: 8px; padding: 10px; margin-bottom: 0;
-  cursor: grab; }
-.graph-card.drag-over { outline: 2px solid #5DCAA5; outline-offset: 2px; }
-
-/* 1fr(빈 공간) / auto(제목) / 1fr(아이콘, 오른쪽 정렬) 3열 그리드로 제목을 카드 정중앙에 배치 */
-.graph-card-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; margin-bottom: 8px; }
-.graph-title-display { grid-column: 2; min-width: 0; max-width: 100%; text-align: center; font-size: 12px;
-  font-weight: 600; color: #e7e9ec; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 2px; }
-.graph-card-icons { grid-column: 3; justify-self: end; display: flex; gap: 2px; }
 .icon-btn { background: none; border: none; color: #7d838d; font-size: 13px; cursor: pointer;
   padding: 4px 6px; line-height: 1; flex-shrink: 0; border-radius: 5px; }
 .icon-btn:hover { color: #e7e9ec; background: #23272f; }
 .icon-btn.remove-btn:hover { color: #E24B4A; }
 
-.merge-drop-hint { font-size: 9.5px; color: #565b62; text-align: center; margin-top: 8px;
-  padding: 4px; border: 1px dashed #2a2e35; border-radius: 6px; }
-.add-graph-btn { width: 100%; background: #23272f; border: 1px dashed #3a3f47; color: #9198a3;
-  font-size: 11px; padding: 8px; border-radius: 8px; cursor: pointer; margin-bottom: 16px; }
-.add-graph-btn:hover { color: #e7e9ec; border-color: #5DCAA5; }
-.add-graph-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 16px; }
-.sensor-card { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5;
-  border-radius: 8px; padding: 10px 12px; }
-.sensor-card .key { font-size: 10px; color: #9198a3; text-transform: uppercase; letter-spacing: .04em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sensor-card .val { font-size: 18px; font-weight: 600; margin-top: 4px; color: #e7e9ec; }
-.sensor-card .updated { font-size: 9.5px; color: #7d838d; margin-top: 2px; }
-.sensor-role-select { width: 100%; background: #1a1d22; border: 1px solid #2a2e35; color: #9198a3;
-  font-size: 10px; padding: 3px 4px; border-radius: 5px; margin-top: 6px; }
 .empty-hint { grid-column: 1 / -1; font-size: 11px; color: #7d838d; padding: 8px 2px; line-height: 1.7; }
 .conn-status-hint { grid-column: 1 / -1; font-size: 11px; padding: 8px 10px; border-radius: 8px;
   line-height: 1.6; margin-bottom: 2px; }
 .conn-status-hint.error { background: rgba(226,75,74,.12); color: #E24B4A; border: 1px solid rgba(226,75,74,.3); }
 .conn-status-hint.warn { background: rgba(239,159,39,.12); color: #EF9F27; border: 1px solid rgba(239,159,39,.3); }
+
+.live-side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.live-side-title { font-size: 12px; font-weight: 600; color: #cfd3da; margin-right: auto; }
+#liveDeviceList { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
+.live-status-text { margin-right: auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exp-settings-summary { font-size: 10px; color: #EF9F27; }
+.exp-settings-summary:empty { display: none; }
+.live-dot.armed { background: #EF9F27; }
+.live-dot.rec { animation: rec-blink 1.4s infinite; }
+@keyframes rec-blink { 50% { opacity: .35; } }
+/* 보드 카드 */
+.dev-card { background: #20242b; border: 1px solid #2a2e35; border-radius: 8px; padding: 9px 10px; }
+.dev-card.offline { opacity: .6; }
+.dev-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #9198a3; flex-wrap: wrap; }
+.dev-name { font-size: 12.5px; font-weight: 600; color: #e7e9ec; }
+.dev-addr { font-size: 10px; color: #6b7178; }
+.dev-seen { margin-left: auto; font-size: 10px; color: #7d838d; }
+.dev-dot { width: 8px; height: 8px; border-radius: 50%; background: #565b62; flex-shrink: 0; }
+.dev-dot.on { background: #5DCAA5; }
+.dev-dot.warn { background: #EF9F27; }
+.dev-dot.off { background: #E24B4A; }
+.tag { font-size: 9.5px; padding: 1px 6px; border-radius: 9px; background: #2a2e35; color: #9198a3; white-space: nowrap; }
+.tag.ok { background: #10231c; color: #5DCAA5; }
+.tag.warn { background: #2a2118; color: #EF9F27; }
+.dev-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin: 8px 0 2px; font-size: 10.5px; color: #9198a3; }
+.dev-controls input { width: 52px; background: #111; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 3px 5px; font-size: 11px; }
+.dev-sensor { margin-top: 8px; padding-top: 7px; border-top: 1px dashed #2a2e35; }
+.dev-sensor.off .value-chips { opacity: .45; }
+.dev-sensor-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.dev-sensor-name { font-size: 11.5px; color: #cfd3da; font-weight: 600; }
+.toggle-btn { margin-left: auto; border: 1px solid #3a3f47; background: #2a2e35; color: #9198a3; font-size: 10.5px;
+  font-weight: 600; border-radius: 12px; padding: 3px 11px; cursor: pointer; }
+.toggle-btn.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; }
+.value-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.value-chip { background: #23272f; border: 1px solid #2a2e35; border-left: 3px solid #5DCAA5; border-radius: 7px; padding: 6px 8px; }
+.value-chip .key { font-size: 10px; color: #9198a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.value-chip .val { font-size: 17px; font-weight: 600; margin-top: 2px; color: #e7e9ec; }
+.value-chip .updated { font-size: 9px; color: #7d838d; }
+.mini-btn { background: #2a2e35; border: 1px solid #3a3f47; color: #cfd3da; font-size: 10.5px; border-radius: 6px;
+  padding: 4px 8px; cursor: pointer; white-space: nowrap; }
+.mini-btn:hover { border-color: #5DCAA5; color: #fff; }
+.mini-btn.primary { background: #5DCAA5; color: #10231c; border-color: #5DCAA5; font-weight: 600; }
+.live-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1100; max-width: min(560px, 90vw);
+  font-size: 12px; padding: 9px 14px; border-radius: 9px; background: #10231c; color: #cdeee2; border: 1px solid #2f8f7a; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.live-toast.visible { opacity: 1; }
+.live-toast.error { background: #2a1515; color: #f2b8b8; border-color: #7a3434; }
+
+/* 데이터 분석·편집 */
+.an-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 11px; color: #9198a3; }
+.an-head label { display: flex; align-items: center; gap: 4px; }
+.an-head .modal-input { width: auto; padding: 4px 6px; font-size: 11px; max-width: 150px; }
+.an-title { font-size: 12.5px; font-weight: 600; color: #e7e9ec; margin-right: 4px; }
+.an-body { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 14px; }
+.an-controls { font-size: 11px; color: #cfd3da; }
+.an-section-title { font-size: 11px; font-weight: 600; color: #9198a3; margin: 10px 0 5px; }
+.an-section-title:first-child { margin-top: 0; }
+.an-step { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 5px; line-height: 1.6; }
+.an-num { width: 54px; background: #111; border: 1px solid #333; color: #eee; border-radius: 5px; padding: 2px 5px; font-size: 11px; }
+.an-num:disabled, .an-step input:disabled { opacity: .4; }
+.an-lock-note { font-size: 10.5px; color: #EF9F27; background: rgba(239,159,39,.08); border: 1px solid rgba(239,159,39,.3);
+  border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.5; }
+.an-fit-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.an-fit-row .modal-input { width: auto; flex: 1; padding: 5px 7px; font-size: 11px; }
+.an-equation { font-size: 13px; font-weight: 600; color: #85B7EB; margin-top: 7px; word-break: break-all; }
+.an-r2 { font-size: 11px; color: #cfd3da; margin-top: 2px; }
+.an-r2 span { color: #7d838d; font-size: 10px; }
+.an-fit-error { font-size: 10.5px; color: #E24B4A; margin-top: 6px; }
+.an-main { min-width: 0; }
+.an-chart-wrap { height: 220px; }
+.an-tables { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; align-items: flex-start; }
+.an-table { border-collapse: collapse; font-size: 11px; }
+.an-table th, .an-table td { border: 1px solid #2a2e35; padding: 4px 8px; text-align: right; }
+.an-table thead th { background: #262a31; color: #cfd3da; text-align: center; }
+.an-table tbody th { text-align: left; color: #9198a3; font-weight: 500; background: #1b1e24; }
+.an-table td { color: #e7e9ec; }
+.an-table.compare tr[data-model] { cursor: pointer; }
+.an-table.compare tr[data-model]:hover td { background: #262a31; }
+.an-table.compare tr.best td, .an-table.compare tr.best th { color: #5DCAA5; }
+.an-table.compare td:nth-child(2) { text-align: left; max-width: 260px; word-break: break-all; }
+.an-table .muted { color: #6b7178; }
+
+/* 기본 실험 - 설정 바꿔서 받기 */
+.cs-form { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.cs-row { background: #1a1a1a; border: 1px solid #2c2c2c; border-radius: 7px; padding: 7px 9px; }
+.cs-label { font-size: 12px; color: #e7e9ec; margin-bottom: 4px; }
+.cs-label code { font-size: 10.5px; color: #7d838d; background: none; }
+.cs-input-row { display: flex; align-items: center; gap: 6px; }
+.cs-input-row .modal-input { flex: 1; padding: 5px 7px; }
+.cs-unit { font-size: 11px; color: #9198a3; }
+.cs-hint { font-size: 11px; color: #5DCAA5; white-space: nowrap; }
+.cs-help { font-size: 10.5px; color: #7d838d; margin-top: 4px; line-height: 1.5; }
+.cs-footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 20px; }
+.cs-changed { font-size: 11px; color: #EF9F27; margin-right: auto; }
+.code-preview { max-height: 260px; overflow: auto; }
+/* ── 직접 실험 - 실험 준비 화면 (body.live-setup) ─────────────────────────
+   아크릴 3D(#gl-container)를 화면 가득 깔고, 그 위에 처음 카드 / 오른쪽 단계 창 / 오른쪽 아래 '실험 시작'을 띄운다.
+   다른 칸은 그대로 두고 덮기만 한다 (확인 창 같은 모달이 #graph-panel 안에 있어서 숨기면 안 됨). */
+#liveSetup { display: none; }
+body.live-setup #gl-container { position: fixed; inset: 0; z-index: 5; border: none; }
+body.live-setup #hint { display: none; }
+body.live-setup #liveSetup { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #e7e9ec; }
+body.live-setup #liveSetup > * { pointer-events: auto; }
+body.live-setup #liveSetup .ls-drop-hint { pointer-events: none; }
+body.live-setup #brightnessControl { z-index: 11; }
+
+.ls-back { font-size: 11.5px; color: #9aa1ab; text-decoration: none; }
+.ls-back:hover { color: #5DCAA5; }
+.ls-cancel { margin-left: auto; }
+.ls-cancel:hover { border-color: #E24B4A !important; color: #f2b8b8 !important; }
+.ls-home { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(720px, 92vw);
+  background: rgba(20,23,28,0.78); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 16px; padding: 22px 26px; }
+.ls-home h1 { font-size: 21px; margin: 8px 0 4px; }
+.ls-name-line { font-size: 12.5px; color: #cfd3da; display: flex; gap: 8px; align-items: center; margin-bottom: 16px; min-height: 24px; }
+.ls-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .ls-cards { grid-template-columns: 1fr; } }
+.ls-card { text-align: left; font: inherit; color: inherit; background: #1b1e24; border: 1px solid #2a2e35; border-radius: 12px;
+  padding: 18px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: border-color .15s, transform .15s; }
+.ls-card:hover { border-color: #5DCAA5; transform: translateY(-2px); }
+.ls-card .icon { font-size: 26px; }
+.ls-card .title { font-size: 15px; font-weight: 600; }
+.ls-card .desc { font-size: 12px; color: #9198a3; line-height: 1.6; }
+.ls-home-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* 단계 창: 처음 카드 화면과 같은 반투명 창을 가운데에 크게. 코드 전문을 열면 오른쪽으로 비켜서 왼쪽에 코드 창,
+   센서 배치 단계는 아크릴에 끌어다 놓아야 하므로 오른쪽에 좁게 붙인다. */
+.ls-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(760px, 92vw); height: min(86vh, 900px); display: flex; flex-direction: column;
+  background: rgba(20,23,28,0.78); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 16px; overflow: hidden;
+  transition: left .25s, width .25s; }
+body.ls-code-open .ls-panel { left: auto; right: 2vw; transform: translateY(-50%); width: min(560px, 42vw); }
+body.ls-placing .ls-panel { left: auto; right: 16px; top: 16px; bottom: 84px; transform: none; height: auto; width: min(420px, 36vw); }
+
+/* 코드 전문 창 (실험 설계 단계, 왼쪽) */
+.ls-code { display: none; position: absolute; left: 2vw; top: 50%; transform: translateY(-50%);
+  width: calc(96vw - min(560px, 42vw) - 2vw); height: min(86vh, 900px); flex-direction: column;
+  background: rgba(14,16,20,0.9); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 16px; overflow: hidden; }
+body.ls-code-open .ls-code { display: flex; }
+.ls-code-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #2a2e35; }
+.ls-code-title { font-size: 13px; font-weight: 600; color: #e7e9ec; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-code-body { flex: 1; overflow: auto; padding: 8px 0; font: 12px/1.6 Consolas, 'D2Coding', monospace; color: #cfd3da; }
+.lc-line { display: flex; white-space: pre; padding: 0 12px 0 0; }
+.lc-line.has-tip { cursor: help; }
+.lc-line:hover { background: rgba(255,255,255,0.04); }
+.lc-no { flex: 0 0 44px; text-align: right; padding-right: 12px; color: #4d535c; user-select: none; }
+.lc-src { flex: 1; }
+.lc-c { color: #6f8a7d; }
+.lc-line.setting { background: rgba(239,159,39,0.08); }
+.lc-line.setting.changed { background: rgba(239,159,39,0.16); }
+.lc-line.active { background: rgba(93,202,165,0.22) !important; box-shadow: inset 3px 0 0 #5DCAA5; }
+.lc-input { font: inherit; color: #ffd28a; background: rgba(239,159,39,0.15); border: 1px solid rgba(239,159,39,0.5);
+  border-radius: 4px; padding: 0 3px; min-width: 3ch; }
+.lc-input:focus { outline: none; border-color: #5DCAA5; background: rgba(93,202,165,0.18); color: #fff; }
+.lc-explain { margin: 2px 12px 6px 56px; padding: 6px 10px; border-radius: 6px; background: #10231c; border: 1px solid #2f8f7a;
+  color: #cdeee2; font: 12px/1.6 system-ui, sans-serif; white-space: normal; }
+.ls-tip { display: none; position: fixed; z-index: 30; max-width: 320px; padding: 7px 10px; border-radius: 8px; background: #1b1e24;
+  border: 1px solid #3a3f47; color: #e7e9ec; font-size: 12px; line-height: 1.55; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+.ls-tip.visible { display: block; }
+.cs-row.active { border-color: #5DCAA5; box-shadow: 0 0 0 1px #5DCAA5 inset; }
+/* 코드 받기: 수정본·원본 고르기 카드 + 받기 버튼 */
+.dl-file { margin-top: 10px; font-size: 11.5px; color: #9198a3; }
+.dl-file b { color: #e7e9ec; font-weight: 600; }
+.lc-val { color: #ffd28a; }
+.ls-sensor.planned { background: #1b1e24; border-style: dashed; color: #cfd3da; }
+.ls-panel-head { padding: 12px 16px 10px; border-bottom: 1px solid #2a2e35; }
+.ls-panel-title { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ls-panel-name { font-size: 14px; font-weight: 600; margin-left: 4px; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; }
+.ls-step { color: #6b7178; }
+.ls-step.done { color: #9198a3; }
+.ls-step.active { color: #10231c; background: #5DCAA5; border-radius: 10px; padding: 2px 8px; font-weight: 600; }
+.ls-step-sep { color: #3a3f47; }
+.ls-panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; font-size: 12.5px; }
+.ls-panel-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 16px; border-top: 1px solid #2a2e35; }
+.ls-panel-foot .mini-btn { font-size: 12px; padding: 7px 12px; }
+.ls-panel-foot .mini-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.ls-section { background: #1b1e24; border: 1px solid #262a31; border-radius: 10px; padding: 11px 12px; margin-bottom: 10px; }
+.ls-section-title { font-size: 12.5px; font-weight: 600; color: #e7e9ec; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ls-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.ls-badge.warn { background: #2a2118; color: #EF9F27; border: 1px solid #6b4f2a; }
+.ls-badge.ok { background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a; }
+.ls-pick-label { font-size: 11px; color: #9198a3; margin: 10px 0 5px; }
+.ls-chips, .ls-board-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ls-board-tabs { margin-bottom: 10px; }
+.ls-chip { font: inherit; font-size: 11.5px; background: #23272f; border: 1px solid #2a2e35; color: #cfd3da; border-radius: 14px; padding: 5px 11px; cursor: pointer; }
+.ls-chip:hover { border-color: #3a3f47; color: #fff; }
+.ls-chip.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; }
+.ls-matches { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ls-match { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #23272f; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.ls-board { display: flex; align-items: center; gap: 10px; background: #23272f; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+.ls-board-num { width: 22px; height: 22px; border-radius: 50%; background: #10231c; color: #5DCAA5; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ls-board-main { flex: 1; min-width: 0; }
+.ls-board-title { font-size: 12.5px; font-weight: 600; }
+.ls-board-sub { font-size: 10.5px; color: #9198a3; }
+.ls-info td { text-align: left; }
+.ls-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.ls-row .modal-input { flex: 1; width: auto; min-width: 0; }
+.ls-check { display: flex; gap: 6px; align-items: center; font-size: 12px; margin-top: 8px; cursor: pointer; }
+.ls-details { margin-top: 8px; }
+.ls-details summary { cursor: pointer; font-size: 11.5px; color: #9198a3; }
+.ls-callout { background: rgba(239,159,39,.1); border: 1px solid rgba(239,159,39,.35); color: #f2d29b; border-radius: 8px; padding: 8px 10px; font-size: 11.5px; margin-bottom: 8px; line-height: 1.6; }
+.ls-guide { margin: 8px 0 0; padding-left: 20px; font-size: 11.5px; color: #cfd3da; line-height: 1.7; }
+.cs-row.changed { border-color: #6b4f2a; }
+.ls-conn { font-size: 12px; padding: 6px 8px; border-radius: 7px; margin-bottom: 5px; background: #23272f; display: flex; flex-direction: column; gap: 2px; }
+.ls-conn span { font-size: 10.5px; color: #9198a3; }
+.ls-conn.ok { border-left: 3px solid #5DCAA5; }
+.ls-conn.wait { border-left: 3px solid #EF9F27; }
+.ls-sensor-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ls-sensor { cursor: grab; background: #10231c; border: 1px solid #2f8f7a; color: #cdeee2; border-radius: 16px; padding: 6px 12px; font-size: 12px; user-select: none; }
+.ls-sensor span { color: #7fd4b6; margin-left: 4px; }
+.ls-sensor .ls-sensor-keys { font-size: 11px; color: #9fd9c4; }
+.ls-sensor:active { cursor: grabbing; }
+.ls-drop-hint { display: none; position: absolute; left: 24px; top: 24px; background: #10231c; border: 1px dashed #5DCAA5; color: #cdeee2;
+  padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+body.ls-dragging .ls-drop-hint { display: block; }
+.ls-start { position: absolute; right: 24px; bottom: 20px; font: inherit; font-size: 15px; font-weight: 700; padding: 13px 26px;
+  border: none; border-radius: 12px; background: #5DCAA5; color: #10231c; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.ls-start:hover { background: #4fb890; }
+.ls-zone-pop { display: none; position: fixed; z-index: 20; background: #1b1e24; border: 1px solid #2f8f7a; border-radius: 10px; padding: 10px; gap: 6px; flex-wrap: wrap; width: 230px; }
+.ls-zone-pop.visible { display: flex; }
+.ls-pop-title { width: 100%; font-size: 12px; margin-bottom: 4px; }
+.live-exp-name { font-size: 12px; font-weight: 600; color: #e7e9ec; }
+.live-exp-name:empty { display: none; }
+.ls-panel .cs-form { max-height: none; overflow: visible; } /* 큰 창 안에서는 설정 목록을 따로 스크롤하지 않음 */
+
+/* ── 직접 실험 - 실험 화면 (body.live-run) ─────────────────────────
+   준비 화면처럼 아크릴을 화면 가득 깔고, 위쪽 상태 줄 / 오른쪽 보드·센서 / 떠 있는 그래프 카드만 올린다.
+   그래프 카드는 제목 줄로 끌어 옮기고(다른 카드 위에 놓으면 합치기) 모서리로 크기 조절, 누르면 큰 창(#graphWin). */
+#liveRun { display: none; }
+html.booting #liveRun { visibility: hidden; }
+body.live-run #gl-container { position: fixed; inset: 0; z-index: 5; border: none; }
+body.live-run #hint { display: none; }
+body.live-run #brightnessControl { z-index: 11; }
+body.live-run #liveRun { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #e7e9ec; }
+body.live-run #liveRun > * { pointer-events: auto; }
+.lr-bar { position: absolute; left: 12px; right: 12px; top: 12px; height: 46px; display: flex; align-items: center; gap: 10px;
+  padding: 0 12px; background: rgba(20,23,28,0.82); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 12px; font-size: 11px; color: #9198a3; }
+.lr-bar .live-status-text { flex: 1; overflow: hidden; }
+.lr-bar .live-status-text > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-exp-name { font-size: 12.5px; font-weight: 600; color: #e7e9ec; }
+.live-exp-name:empty { display: none; }
+.lr-btn { background: #2a2e35; border: 1px solid #3a3f47; color: #cfd3da; font-size: 11.5px; border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
+.lr-btn:hover:not(:disabled) { border-color: #5DCAA5; color: #fff; }
+.lr-btn:disabled { opacity: .35; cursor: not-allowed; }
+.lr-main { border: none; border-radius: 8px; font-size: 12.5px; font-weight: 700; padding: 8px 16px; cursor: pointer; white-space: nowrap;
+  background: #5DCAA5; color: #10231c; }
+.lr-main:hover:not(:disabled) { background: #4fb890; }
+.lr-main.stop { background: #E24B4A; color: #fff; }
+.lr-main.stop:hover { background: #c93c3b; }
+.lr-main:disabled { opacity: .4; cursor: not-allowed; }
+
+.lr-side { position: absolute; right: 12px; top: 70px; max-height: calc(100% - 82px); width: min(340px, 30vw); display: flex; flex-direction: column;
+  padding: 10px 12px; background: rgba(20,23,28,0.82); backdrop-filter: blur(6px); border: 1px solid #2a2e35; border-radius: 12px; }
+.lr-side-hint { font-size: 10.5px; color: #7d838d; margin: -4px 0 8px; }
+.lr-side .value-chip { cursor: pointer; transition: border-color .15s, background .15s; }
+.lr-side .value-chip:hover { background: #2a2f38; border-color: #5DCAA5; }
+.lr-side .value-chip select { cursor: default; }
+
+/* 그래프 카드가 떠 있는 층: 비어 있는 곳은 아크릴을 그대로 돌릴 수 있게 클릭이 통과한다 */
+body.live-run #liveRun > .lr-graphs { position: absolute; left: 12px; top: 70px; bottom: 12px; right: calc(min(340px, 30vw) + 24px); pointer-events: none; }
+.lr-empty { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); width: min(460px, 90%); text-align: center;
+  font-size: 12px; line-height: 1.7; color: #cfd3da; background: rgba(20,23,28,0.72); border: 1px dashed #3a3f47; border-radius: 12px; padding: 12px 16px; }
+.fg-card { position: absolute; pointer-events: auto; display: flex; flex-direction: column; min-width: 220px; min-height: 140px;
+  background: rgba(22,25,31,0.9); backdrop-filter: blur(4px); border: 1px solid #2f343c; border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.35); resize: both; overflow: hidden; }
+.fg-card.collapsed { min-height: 0; resize: none; }
+.fg-card.collapsed .fg-chart { display: none; }
+.fg-card.dragging { opacity: .82; z-index: 5; box-shadow: 0 12px 34px rgba(0,0,0,.5); }
+.fg-card.drag-over { border-color: #5DCAA5; box-shadow: 0 0 0 2px #5DCAA5, 0 6px 22px rgba(0,0,0,.35); }
+.fg-card.flash { animation: fg-flash .9s; }
+@keyframes fg-flash { 30% { border-color: #EF9F27; box-shadow: 0 0 0 3px #EF9F27; } }
+.fg-head { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; padding: 4px 4px 2px 10px; cursor: grab; user-select: none; touch-action: none; }
+.fg-card.dragging .fg-head { cursor: grabbing; }
+.fg-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: #e7e9ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fg-chart { flex: 1 1 auto; min-height: 0; height: auto; position: relative; padding: 0 8px 8px; cursor: zoom-in; }
+.fg-nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #7d838d; pointer-events: none; }
+
+/* 그래프 큰 창 */
+#graphWin .gw-box { width: 92vw; height: 88vh; display: flex; flex-direction: column; background: #1b1e24; color: #e7e9ec;
+  border: 1px solid #2a2e35; border-radius: 14px; overflow: hidden; }
+.gw-head { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #2a2e35; }
+.gw-title { font-size: 14px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gw-tabs { display: flex; gap: 4px; margin: 0 auto; }
+.gw-tab { background: #23272f; border: 1px solid #2a2e35; color: #9198a3; font-size: 12px; padding: 6px 14px; border-radius: 16px; cursor: pointer; }
+.gw-tab:hover { color: #e7e9ec; }
+.gw-tab.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; font-weight: 600; }
+.gw-pane { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; padding: 12px 14px; }
+.gw-pane.on { display: flex; }
+.gw-chart { flex: 1 1 auto; min-height: 0; position: relative; }
+.gw-chart canvas { cursor: crosshair; }
+.gw-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.gw-foot .hint { margin-right: auto !important; }
+.gw-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid #2a2e35; border-radius: 8px; }
+.gw-table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+.gw-table th, .gw-table td { border-bottom: 1px solid #262a31; padding: 5px 10px; text-align: right; white-space: nowrap; }
+.gw-table thead th { position: sticky; top: 0; background: #262a31; color: #cfd3da; text-align: center; }
+.gw-table td:first-child { color: #6b7178; }
+.gw-pane[data-pane=analysis] { overflow: auto; }
+.gw-pane .live-analysis { flex: 1 1 auto; min-height: 0; }
+.gw-pane .an-chart-wrap { height: min(46vh, 420px); }
+@media (max-width: 760px) {
+  .lr-bar { flex-wrap: wrap; height: auto; padding: 8px; }
+  .lr-side { top: auto; height: 38vh; width: auto; left: 12px; }
+  body.live-run #liveRun > .lr-graphs { right: 12px; bottom: calc(38vh + 24px); }
+}
+
+/* ── 센서 배치: 부품 한 줄 요약 (SCD30 → 도시 · CO₂ · 온도 · 습도), 이름을 누르면 알약 버튼으로 고치기 ── */
+.pl-list { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.pl-row { font-size: 12px; background: #23272f; border: 1px solid transparent; border-radius: 8px; padding: 6px 6px 6px 8px; }
+.pl-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pl-name { font: inherit; font-weight: 700; color: #e7e9ec; background: none; border: none; padding: 2px 4px; border-radius: 5px; cursor: pointer; text-decoration: underline dotted #565b62; text-underline-offset: 3px; }
+.pl-name:hover { background: #2f343c; text-decoration-color: #5DCAA5; }
+.pl-arrow { color: #6b7178; }
+.pl-zone { color: #5DCAA5; font-weight: 600; }
+.pl-vals { display: flex; flex-wrap: wrap; gap: 4px; margin-left: 2px; flex: 1; min-width: 0; }
+.pl-val { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; color: #cfd3da; background: #1b1e24; border: 1px solid #2f343c; border-radius: 10px; padding: 1px 3px 1px 8px; }
+.pl-x { background: none; border: none; color: #565b62; font-size: 12px; line-height: 1; padding: 0 3px; cursor: pointer; border-radius: 50%; }
+.pl-x:hover { color: #E24B4A; }
+.pl-none { font-size: 11px; color: #7d838d; }
+.pl-remove { margin-left: auto; padding: 2px 5px; font-size: 11px; }
+.pl-done { margin-left: auto; padding: 3px 10px; }
+.pl-row.editing { border-color: #2f8f7a; }
+.pl-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.pl-pill { font: inherit; font-size: 11.5px; color: #9198a3; background: #1b1e24; border: 1px solid #2f343c; border-radius: 12px; padding: 3px 10px; cursor: pointer; }
+.pl-pill:hover { color: #e7e9ec; border-color: #3a3f47; }
+.pl-pill.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; font-weight: 600; }
+.pl-custom { margin-top: 6px; padding: 5px 8px; font-size: 12px; }
+
+/* 코드 창 머리: 수정본/원본 · 복사 · 받기 */
+.ls-code-hint { margin: 0 !important; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-code-title { margin-right: 0; flex-shrink: 0; max-width: 40%; }
+.lc-ver { display: flex; background: #1b1e24; border: 1px solid #2f343c; border-radius: 8px; padding: 2px; flex-shrink: 0; }
+.lc-ver button { font: inherit; font-size: 11px; color: #9198a3; background: none; border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.lc-ver button.on { background: #10231c; color: #5DCAA5; font-weight: 600; }
+.lc-tool { display: inline-flex; align-items: center; justify-content: center; padding: 5px; color: #9198a3; }
+.lc-tool:hover { color: #5DCAA5; }
+/* 코드 받기 단계의 큰 설정 칸 */
+.cs-form.big { gap: 6px; }
+.cs-form.big .cs-row { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(150px, 1.2fr); gap: 3px 12px; align-items: center; padding: 9px 12px; background: #1b1e24; }
+.cs-form.big .cs-label { font-size: 13px; font-weight: 600; margin: 0; }
+.cs-form.big .cs-input-row .modal-input { font-size: 14px; padding: 7px 10px; }
+.cs-form.big .cs-input-row .modal-input:disabled { opacity: .5; }
+.cs-form.big .cs-help { grid-column: 1 / -1; margin-top: 0; }
+.ls-guide-box summary { cursor: pointer; font-size: 12px; font-weight: 600; color: #cfd3da; }
+
+/* 조명 */
+.lr-light.on { background: #3a2f12; border-color: #c9a227; color: #ffe08a; }
+.gw-table td.light-on { color: #ffd65a; }
+
+/* 보드째로 놓기 */
+.ls-board-place { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed #2f343c; }
+.ls-sensor.ls-board { background: #1d2230; border-color: #4a5a85; color: #d6def5; }
+/* 실험 화면: 아크릴 위 센서를 누르면 뜨는 작은 창 */
+.lr-pop { display: none; position: fixed; z-index: 30; width: 270px; padding: 10px 12px; display: none; flex-direction: column; gap: 8px;
+  background: rgba(20,23,28,0.95); backdrop-filter: blur(6px); border: 1px solid #2f8f7a; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 12px; }
+.lr-pop.visible { display: flex; }
+.lp-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.lp-head .icon-btn { margin-left: auto; }
+.lp-zone { font-size: 11px; color: #5DCAA5; }
+.lp-vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.lp-val { display: flex; justify-content: space-between; gap: 6px; color: #9198a3; font-size: 11px; }
+.lp-val b { color: #e7e9ec; font-weight: 600; }
+.lp-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-top: 7px; border-top: 1px solid #262a31; }
+.lp-row .toggle-btn { margin-left: 0; }
+.lp-label { font-size: 11.5px; color: #cfd3da; margin-right: auto; }
+.lp-graph { align-self: flex-start; }
+
+/* 코드·회로도 받기: 회로도 PNG 줄 */
+.dl-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+/* 📋 데이터 = 큰 창을 '전체 데이터'로 (그래프 탭·⚙ 없음) */
+#graphWin.all-mode .gw-tab[data-gw-tab="graph"], #graphWin.all-mode #gwSettingsBtn { display: none; }
+/* 지난 데이터(파일) 보기: 보드·실험 관련 버튼 숨김 */
+body.live-file #lightBtn, body.live-file #backToSetupBtn, body.live-file #monitorBtn, body.live-file #connInfoBtn, body.live-file #rescanPortsBtn,
+body.live-file .lr-side-hint { display: none; }
+/* 시리얼 모니터 */
+.lr-monitor { display: none; position: absolute; left: 12px; bottom: 60px; width: min(640px, 60vw); height: 300px; flex-direction: column;
+  background: rgba(12,14,17,0.94); border: 1px solid #2f343c; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); resize: both; overflow: hidden; z-index: 6; }
+.lr-monitor.visible { display: flex; }
+.lm-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid #262a31; font-size: 12px; flex-wrap: wrap; }
+.lm-head b { margin-right: 4px; }
+.lm-head .modal-input { width: auto; padding: 3px 6px; font-size: 11px; }
+.lm-head .icon-btn { margin-left: auto; }
+.lm-check { font-size: 11px; color: #9198a3; display: flex; align-items: center; gap: 3px; }
+.lm-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 8px; font: 11.5px/1.55 Consolas, 'D2Coding', monospace; }
+.lm-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-all; }
+.lm-line.json .lm-text { color: #7fd4b6; }
+.lm-t { color: #565b62; flex-shrink: 0; }
+.lm-dev { color: #85B7EB; flex-shrink: 0; }
+.lm-text { color: #e7e9ec; }
+.lm-foot { margin: 0 !important; padding: 4px 8px; border-top: 1px solid #262a31; font-size: 10.5px; }

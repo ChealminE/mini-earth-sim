@@ -790,6 +790,7 @@ const scatterOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false,
   plugins: { legend: { display: false } } });
 
 function applyState(S) {
+  if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   S.lidMat.opacity = 0.12 + intensity * 0.35;
@@ -956,4 +957,23 @@ function animate() {
   sp.needsUpdate = true;
 
   renderer.render(S.scene, camera);
+}
+
+// ================= 화면별 아크릴은 필요할 때만 만들기 =================
+// 대시보드(index.html)에는 현재 실태·미래 예측·직접 실험 세 화면이 들어 있지만, 시작 화면에서 하나를
+// 골라 들어오므로 한 번에 하나만 보인다. 예전처럼 세 화면 아크릴을 다 만들면 둘은 만들기만 하고 안 쓰는
+// 셈이라(나무·물·건물 한 세트씩), 지금 연 화면 것만 만든다. 나머지는 state만 가진 빈 껍데기로 두고,
+// 그 화면을 실제로 열 때 ensureSceneBuilt()가 같은 객체를 채운다 - 탭 코드가 들고 있는 sceneFuture 같은
+// 변수가 그대로 같은 객체를 가리키므로 탭 코드는 고칠 필요가 없다.
+const DASHBOARD_TAB = new URLSearchParams(location.search).get('tab') || 'current';
+function sceneFor(tab) {
+  return tab === DASHBOARD_TAB ? buildAcrylicScene() : { dormant: true, state: {} };
+}
+function ensureSceneBuilt(S) {
+  if (!S || !S.dormant) return S;
+  const kept = S.state;            // 껍데기일 때 탭 코드가 넣어 둔 값(예: 슬라이더 CO2)은 살린다
+  Object.assign(S, buildAcrylicScene());
+  Object.assign(S.state, kept);
+  S.dormant = false;
+  return S;
 }
