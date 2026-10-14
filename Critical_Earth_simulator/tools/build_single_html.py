@@ -96,7 +96,7 @@ CSS = {
 }
 BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
-AERIAL_JS = ["js/earth-model.js", "js/common.js", "js/tab-current.js",
+AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
              "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",

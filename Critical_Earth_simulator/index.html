@@ -122,43 +122,63 @@
     </div>
 
     <div class="tab-panel" id="tab-future">
-      <div class="co2-row">
-        <span class="name">CO₂ 농도 (ppm)</span>
-        <input type="range" min="280" max="1000" step="1" value="418" id="co2slider">
-        <span class="value" id="co2out">418</span>
+      <!-- 1750~2200 타임라인. 궤적은 js/earth-system.js가 미리 계산하고 여기서는 배열을 읽기만 한다 (js/tab-future.js) -->
+      <div class="tl-bar">
+        <button class="tl-play" id="tlPlay" title="재생 / 일시정지">▶</button>
+        <span class="tl-year"><b id="tlYear">2023</b>년</span>
+        <input type="range" id="tlScrub" min="1750" max="2200" step="1" value="2023" title="연도 이동">
+        <select class="modal-input tl-speed" id="tlSpeed" title="재생 속도">
+          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="25">25년/초</option>
+        </select>
       </div>
-      <p class="hint">실측 범위: 350~418ppm (1988~2023). 해양 pH는 회귀가 아니라 <b>탄산 평형식</b>을 직접 풀어 구합니다(관측 35점을 RMSE 0.008로 재현). 기온편차는 복사강제력이 농도의 로그에 비례하는 점을 반영해 <b>log₂ 형태로 회귀</b>했습니다. 그래도 실측 범위 밖은 추정치이고, 기후 시스템은 임계점을 지나면 관계가 깨질 수 있어 극단값은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬과 <b>1인칭 탐험 모드</b>에도 똑같이 반영됩니다.</p>
+      <div class="tl-jumps" id="tlJumps">
+        <button class="mini-btn" data-year="1750">1750 산업혁명 이전</button>
+        <button class="mini-btn" data-year="1850">1850</button>
+        <button class="mini-btn" data-year="1950">1950</button>
+        <button class="mini-btn" data-year="2023">2023 현재</button>
+        <button class="mini-btn" data-year="2100">2100</button>
+        <button class="mini-btn" data-year="2200">2200</button>
+      </div>
 
-      <div class="stat-grid">
-        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.60°C</div></div>
-        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.042</div></div>
-        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.51</div></div>
+      <p class="hint" id="futureHint">CO₂는 슬라이더로 넣는 값이 아니라 <b>배출을 쌓아 계산한 결과</b>입니다. 사람이 내보낸 탄소는 대기·바다·토양(식생)으로 나뉘어 들어가고, 대기에 남은 만큼 기온이 오르고, 바다에 녹은 만큼 pH가 내려갑니다. 2023년까지는 실제 배출량, 2024년부터는 고른 시나리오를 따릅니다.</p>
+
+      <div class="fut-cards-title">연평균 (엔진 계산) · <b id="cardsYear">2023</b>년</div>
+      <div class="stat-grid fut-cards">
+        <div class="stat-box"><div class="label">대기 CO₂</div><div class="value" id="cardCo2">-</div></div>
+        <div class="stat-box"><div class="label">기온 편차 (산업화 이전 대비)</div><div class="value temp" id="cardT">-</div></div>
+        <div class="stat-box"><div class="label">표층 해수온</div><div class="value temp" id="cardSst">-</div></div>
+        <div class="stat-box"><div class="label">해수 pH</div><div class="value ph" id="cardPh">-</div></div>
+        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="cardOmega">-</div></div>
+        <div class="stat-box"><div class="label">바다의 완충 능력 (1750 대비)</div><div class="value" id="cardBuffer">-</div></div>
       </div>
 
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (관측 r=0.924)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (관측 r=-0.972 · 곡선=탄산평형)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)</div><div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)</div><div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해수 pH · 아라고나이트 포화도 Ω</div><div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title" id="sinkTitle">배출된 탄소는 어디로 갔나 (<b id="sinkYear">2023</b>년까지 누적, GtC)</div><div class="chart-wrap sink-wrap"><canvas id="futChartSink"></canvas></div>
+          <div class="sink-note" id="sinkNote"></div></div>
       </div>
 
-      <!-- 화학종 분포: seawaterState()가 이미 계산하는 [CO2(aq)]·[HCO3-]·[CO3^2-]를 그대로 보여준다 -->
+      <!-- 화학종 분포: 재생 연도의 엔진 값(co2aq/hco3/co3)을 1750년과 비교한다 -->
       <div class="chart-block speciation-block">
-        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 수온 25 °C)</div>
+        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 표층 해수)</div>
         <div class="spec-bar-row">
-          <span class="spec-bar-label">산업화 이전<br>280 ppm</span>
+          <span class="spec-bar-label">1750년<br><span id="specRefPpm">278</span> ppm</span>
           <div class="spec-bar" id="specBarRef"></div>
         </div>
         <div class="spec-bar-row">
-          <span class="spec-bar-label">현재 설정<br><b id="specBarCo2">418</b> ppm</span>
+          <span class="spec-bar-label"><b id="specBarYear">2023</b>년<br><b id="specBarCo2">418</b> ppm</span>
           <div class="spec-bar" id="specBarNow"></div>
         </div>
         <table class="spec-table">
-          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>280 ppm 대비</th></tr></thead>
+          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>1750년 대비</th></tr></thead>
           <tbody id="specTableBody"></tbody>
         </table>
       </div>
-      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b>(280 → 1000 ppm에서 약 60 % 감소) <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다.</p>
+      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b> <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다. CO₃²⁻가 줄수록 바다가 CO₂를 더 받아 줄 여유도 줄어드는데, 이것이 <b>바다의 완충 능력</b> 감소입니다(용어: Revelle 계수).</p>
 
-      <p class="reg-note">기온편차 = 4.258 × log₂(CO₂/280) − 1.858 (r=0.924) · 여기서 4.258°C/배증이 이 관측 기록에서 읽어낸 기후민감도입니다 (IPCC 최적추정 3.0, 범위 2.5~4.0).<br>해양 pH는 회귀식이 아니라 탄산 평형(K₀·K₁·K₂ + 총알칼리도 일정)을 풀어 계산합니다 — 관측 35점 RMSE 0.008.</p>
+      <p class="reg-note" id="modelNote">이 계산은 <b>4상자 탄소순환</b>(대기 · 표층 바다 · 심층 바다 · 토양과 식생)과 <b>2층 에너지 균형</b>(표층·심층 바다의 열) 모형입니다. 기온은 CO₂가 가두는 열(복사강제력 5.35 × ln(CO₂/278) W/m²)로 데워지는데, 열의 상당 부분이 깊은 바다로 스며들어 <b>기온은 수백 년에 걸쳐 천천히</b> 따라갑니다. 반면 pH는 표층 바다가 대기와 몇 년 만에 맞춰지므로 <b>CO₂를 바로</b> 따라갑니다. 피드백: 기온이 오르면 바닷물의 CO₂ 용해도가 줄고(헨리 상수 K₀) 토양 호흡이 빨라져(Q10 = 2) 대기에 CO₂가 더 남습니다. 지구 평균 CO₂(1988~2023)를 RMSE 2.8 ppm으로 재현합니다.</p>
     </div>
 
     <div class="tab-panel" id="tab-live">
@@ -472,16 +492,18 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
-<script src="js/earth-model.js?v=3"></script>
-<script src="js/common.js?v=3"></script>
-<script src="js/tab-current.js?v=3"></script>
-<script src="js/tab-future.js?v=3"></script>
+<script src="js/earth-model.js?v=4"></script>
+<script src="js/earth-data.js?v=1"></script>
+<script src="js/earth-system.js?v=1"></script>
+<script src="js/common.js?v=4"></script>
+<script src="js/tab-current.js?v=4"></script>
+<script src="js/tab-future.js?v=4"></script>
 <script src="js/live-fit.js?v=4"></script>
 <script src="js/xlsx-lite.js?v=4"></script>
 <script src="js/tab-live.js?v=4"></script>
 <script src="js/live-analysis.js?v=4"></script>
 <script src="js/live-setup.js?v=4"></script>
 <script src="js/live-file.js?v=4"></script>
-<script src="js/main.js?v=4"></script>
+<script src="js/main.js?v=5"></script>
 </body>
 </html>

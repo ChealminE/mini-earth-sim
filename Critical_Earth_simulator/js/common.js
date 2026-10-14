@@ -811,7 +811,8 @@ function applyState(S) {
 
   // 실측 온도 → 빙하 축소 (CO2 강도와 실측 온도 중 더 강한 쪽을 반영, 시나리오 탭은 co2만 있어 기존과 동일하게 동작)
   const tempIntensity = Math.min(1, Math.max(0, (S.state.tmp - TMP_MIN) / (TMP_MAX - TMP_MIN)));
-  const iceIntensity = Math.max(intensity, tempIntensity);
+  // 미래 예측 탭은 엔진 기온 편차로 직접 정한 iceMelt(0~1)를 넣는다 (CO2 강도로 대신하지 않음)
+  const iceIntensity = S.state.iceMelt != null ? S.state.iceMelt : Math.max(intensity, tempIntensity);
   S.iceMeshes.forEach(o => {
     const shrink = 1 - iceIntensity * 0.5;
     o.mesh.scale.setScalar(shrink);
