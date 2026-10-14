@@ -107,8 +107,27 @@ def run(years, emis_fn, p=P, dt=DT):
     return out
 
 hist = lambda y: (em[y][0], em[y][1]) if y in em else (0, 0)
+nature = lambda y: (0, 0)
+
+def dump(path, runs):
+    # js/earth-system.js 대조용 (tools/test_earth_system.js가 읽는다)
+    import json
+    keys = ['y', 'ppm', 'T', 'ph', 'om', 'ocean', 'land', 'E', 'sst', 'rev']
+    data = dict(params=P, dt=DT, runs={k: {kk: [o[kk] for o in r] for kk in keys} for k, r in runs.items()})
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+
+def dump_runs():
+    years = range(1750, 2201)
+    return {'hist': run(years, hist), 'nature': run(years, nature)}
 
 if __name__ == '__main__':
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == '--dump':
+        # 사용: python engine.py --dump out.json
+        dump(sys.argv[2], dump_runs())
+        print('dumped ->', sys.argv[2])
+        sys.exit(0)
     print('Revelle(280,18)=%.2f  (418,18)=%.2f  (800,18)=%.2f' % (revelle(280,18), revelle(418,18), revelle(800,18)))
     r = run(range(1750, 2024), hist)
     R = {o['y']: o for o in r}
