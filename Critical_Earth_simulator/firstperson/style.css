@@ -66,6 +66,7 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
   display: inline-block; background: #262d36; border: 1px solid #3a434f; border-bottom-width: 2px;
   border-radius: 4px; padding: 1px 6px; margin-right: 3px; font-size: 11px; color: #dfe6ee;
 }
+#hudCoral.warn { color: #ff8a7a; font-weight: 600; }
 #helpPanel .note { color: #8b96a3; font-size: 11px; margin: 10px 0 0; }
 
 /* ── 단축바 (화면 중앙 하단) ───────────────────────────────────────── */
@@ -165,9 +166,43 @@ canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block
 }
 .field-note { margin: 6px 0 0; font-size: 11.5px; color: #6d828d; line-height: 1.5; }
 .field-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+#fieldTasksView.hidden, #fieldRecordsView.hidden { display: none; }
+
+/* ── 야장: 탐구 과제 ── */
+.field-tabs { display: flex; gap: 6px; margin: -4px 0 12px; border-bottom: 1px solid #2b3a43; }
+.field-tabs button {
+  background: none; border: none; border-bottom: 2px solid transparent; color: #8aa0ab;
+  font-size: 13px; font-weight: 600; padding: 6px 10px 8px; cursor: pointer; margin-bottom: -1px;
+}
+.field-tabs button.on { color: #7fe6bc; border-bottom-color: #3f9e7d; }
+.field-tabs button span { font-weight: 500; color: #6d828d; margin-left: 4px; }
+.task-intro {
+  margin: 0 0 12px; font-size: 12.5px; line-height: 1.6; color: #c9d8df;
+  background: rgba(63, 158, 125, .12); border: 1px solid rgba(63, 158, 125, .35); border-radius: 8px; padding: 9px 12px;
+}
+.task-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+.task-card { background: #18222a; border: 1px solid #2b3a43; border-radius: 10px; padding: 11px 13px 12px; }
+.task-card.done { border-color: #3f9e7d; background: #15261f; }
+.task-card .t-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.task-card .t-title { font-size: 14px; font-weight: 600; color: #e3edf2; }
+.task-card .t-badge { font-size: 11.5px; color: #6d828d; white-space: nowrap; }
+.task-card.done .t-badge { color: #7fe6bc; font-weight: 600; }
+.task-card .t-concept { font-size: 11px; color: #6d828d; margin: 2px 0 6px; }
+.task-card .t-line { font-size: 12px; line-height: 1.55; margin: 3px 0; color: #b8c8d0; }
+.task-card .t-line b { color: #d6e2e8; font-weight: 600; }
+.task-card .t-bar { height: 5px; background: #23313a; border-radius: 3px; margin: 8px 0 6px; overflow: hidden; }
+.task-card .t-bar i { display: block; height: 100%; background: #5dcaa5; border-radius: 3px; }
+.task-card .t-subs { display: flex; flex-wrap: wrap; gap: 5px; }
+.task-card .t-sub {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #23313a; color: #9db3bf;
+  font-variant-numeric: tabular-nums;
+}
+.task-card .t-sub.ok { background: #24483c; color: #7fe6bc; }
+.task-card .t-think { font-size: 11.5px; color: #8a9ea8; margin: 8px 0 0; line-height: 1.5; font-style: italic; }
 
 /* 설정창의 체크박스 행 */
 .settings-box .row.check { align-items: center; gap: 8px; }
+.settings-box .row .sea-eq { flex: 1; color: #dfe6ee; font-size: 12px; }
 .settings-box .row.check .lbl { width: auto; font-size: 12.5px; color: #9db3bf; }
 
 /* 설정창 안의 버튼 묶음 (계절·날씨 선택) */

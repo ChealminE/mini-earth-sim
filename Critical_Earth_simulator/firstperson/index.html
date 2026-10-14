@@ -20,6 +20,7 @@
     <h2>미니 지구 · 1인칭 탐험</h2>
     <p>화면을 클릭하면 전체화면으로 전환되고 마우스로 시점을 조작합니다.</p>
     <p class="sub"><b>ESC</b> 를 누르면 마우스가 풀립니다.</p>
+    <p class="sub"><b>F</b> 를 누르면 야장의 <b>탐구 과제</b>에서 무엇을 조사할지 볼 수 있습니다. (<b>H</b> 조작법)</p>
     <div class="start-btn">클릭해서 시작</div>
   </div>
 </div>
@@ -30,8 +31,9 @@
   <div class="hud-line dim">상태: <span id="hudMode">걷기</span></div>
   <div class="hud-line dim">자동차: <span id="hudCars">-</span></div>
   <div class="hud-line dim">바다: <span id="hudSea">-</span></div>
+  <div class="hud-line dim">산호: <span id="hudCoral">-</span></div>
   <div class="hud-line dim" id="hudTime">낮 12:00</div>
-  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>F</b> 야장 · <b>M</b> 지도 · <b>1~3</b> 도구</div>
+  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>F</b> 야장·과제 · <b>M</b> 지도 · <b>1~4</b> 도구</div>
 </div>
 
 <!-- 기본은 숨김: 펼쳐두면 우하단 도구의 표시창을 가려서 측정값을 못 읽는다 (H로 토글) -->
@@ -48,18 +50,25 @@
     <tr><td><span class="key">V</span> 또는 <span class="key">F5</span></td><td>1인칭 / 3인칭 전환</td></tr>
     <tr><td><span class="key">R</span></td><td>출발 지점으로 되돌아가기</td></tr>
     <tr><td><span class="key">E</span></td><td>설정창 열기/닫기 (밝기·CO₂·시각)</td></tr>
-    <tr><td><span class="key">F</span></td><td>야장 열기/닫기 (측정 기록·통계·횡단 조사·CSV)</td></tr>
+    <tr><td><span class="key">F</span></td><td>야장 열기/닫기 (탐구 과제·측정 기록·통계·횡단 조사·CSV)</td></tr>
     <tr><td><span class="key">T</span></td><td>시간 흐름 켜기/끄기 (낮↔밤)</td></tr>
     <tr><td><span class="key">M</span></td><td>미니맵 크기 (보통 → 크게 → 끄기)</td></tr>
     <tr><td><span class="key">1</span>~<span class="key">9</span></td><td>단축바에서 도구 선택</td></tr>
     <tr><td>좌클릭</td><td>든 도구로 바라보는 지점 측정</td></tr>
   </table>
   <p class="note"><b>1 온도계</b> — 어디든 측정됩니다. 해수 · 빙하 · 해변 모래 · 녹지 지면 ·
-    도시 지면, 그리고 하늘을 겨누면 해양/녹지/도심 <b>대기</b>. 도시가 가장 뜨겁고 빙하가 가장 찹니다.</p>
-  <p class="note"><b>2 pH미터</b> — 바다에서만. CO₂가 오르면 해수가 산성화됩니다.
-    pH는 탄산 평형식으로 계산하며, 조감 모드 '미래 예측' 탭과 정확히 같은 값이 나옵니다.</p>
+    도시 지면, 그리고 하늘을 겨누면 해양/녹지/도심 <b>대기</b>. 도시가 가장 뜨겁고 빙하가 가장 찹니다.
+    <b>유빙 주변 바다는 녹은 물 때문에 차갑습니다(냉수대).</b> 유빙에서 멀어지며 수온을 재 보세요.</p>
+  <p class="note"><b>2 pH미터</b> — 바다에서만. 겨눈 지점의 해수 상태로 계산하고 표시창에 <b>수온을 함께</b> 띄웁니다.
+    같은 CO₂·같은 수온이면 조감 모드 '미래 예측' 탭과 정확히 같은 값입니다.
+    수온은 pH를 거의 못 바꿉니다(냉수대와 개방 해역 차이 0.02 정도) — 온도 효과는 4번으로 보세요.</p>
+  <p class="note"><b>4 해수분석기</b> — 바다에서만. <b>용존 CO₂ · DIC(용존 무기탄소) · Ω(아라고나이트 포화도) · 수온</b>을
+    한 번에 잽니다. 차가운 물은 CO₂를 더 많이 녹이고(헨리 법칙) Ω가 낮습니다.
+    <b>Ω가 1 밑이면 빨간색</b> — 산호·조개 껍데기가 녹는 물입니다.</p>
   <p class="note"><b>3 CO₂센서</b> — 해양 · 녹지 · 도심에서 값이 다릅니다. 도심이 가장 높고,
-    <b>나무 근처</b>는 광합성 때문에 특히 낮게 나옵니다. (수중에서는 측정 불가)</p>
+    <b>나무 근처</b>는 광합성 때문에 특히 낮게 나옵니다. (수중에서는 측정 불가)
+    구역 공기는 <b>해륙풍</b>을 타고 섞입니다 — 낮에는 해풍이 도심을 환기하고,
+    <b>밤에는 육풍이 도심 CO₂를 바다 쪽으로 실어 나릅니다.</b> (HUD 맨 아래 줄에 지금 바람)</p>
   <p class="note"><b>계측기에는 오차가 있습니다.</b> 좌클릭하면 값이 바로 뜨지 않고 실제 센서처럼
     수렴합니다(막대가 다 차야 확정). 같은 자리를 다시 재도 값이 조금씩 다르니, 여러 번 재서
     평균을 내세요. 평균과 표준편차는 <b>야장(F)</b>이 자동으로 계산합니다.</p>
@@ -81,7 +90,7 @@
 <canvas id="minimap" width="220" height="124"></canvas>
 
 <!-- 기록된 측정 개수. 패널을 안 열어둬도 뭔가 남고 있다는 걸 알게 한다 -->
-<div id="fieldBadge">야장 0</div>
+<div id="fieldBadge">야장 0 · 과제 0/4</div>
 
 <!-- 짧은 안내 (동물 체온 이스터에그 등). 몇 초 뜨고 사라진다. -->
 <div id="toast"></div>
@@ -91,6 +100,20 @@
   <div class="field-box">
     <h3>야외조사 야장 <span class="hint-key">F</span> 로 닫기 · 기록 <b id="fieldCount">0</b>건</h3>
 
+    <!-- 탭: 탐구 과제(무엇을 조사할지) / 기록·통계(잰 값) -->
+    <div class="field-tabs">
+      <button data-tab="tasks" class="on">탐구 과제 <span id="fieldTaskTally">0/4</span></button>
+      <button data-tab="records">기록 · 통계</button>
+    </div>
+
+    <div id="fieldTasksView">
+      <p class="task-intro" id="fieldTaskIntro"></p>
+      <div class="task-grid" id="fieldTasks"></div>
+      <p class="field-note">완료 여부는 <b>야장에 쌓인 기록 수</b>로만 판정합니다 — 값이 맞고 틀리고가 아니라,
+        조건을 채울 만큼 재었는지를 봅니다. 결론은 '기록 · 통계' 탭의 평균과 표준편차로 내리세요.</p>
+    </div>
+
+    <div id="fieldRecordsView" class="hidden">
     <div class="field-cols">
       <div class="field-col">
         <h4>최근 측정</h4>
@@ -111,9 +134,11 @@
     <h4>횡단 조사 <span class="sub">해안 → 녹지 → 도심을 일직선으로 걸으며 재면 도시 열섬이 그래프 한 장에 나옵니다</span></h4>
     <p class="field-note" id="fieldTransectState"></p>
     <canvas id="fieldChart" width="620" height="180"></canvas>
+    </div>
 
     <div class="field-actions">
       <button id="fieldTransectBtn" class="settings-btn">횡단 조사 시작</button>
+      <button id="fieldCoastBtn" class="settings-btn">해안선 평행 조사</button>
       <button id="fieldCsvBtn" class="settings-btn">CSV 내보내기</button>
       <button id="fieldClearBtn" class="settings-btn ghost">기록 지우기</button>
       <button id="fieldCloseBtn" class="settings-btn ghost">돌아가기</button>
@@ -136,6 +161,14 @@
       <span class="val"><span id="co2Out">418</span> ppm</span>
     </label>
     <p class="note">CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <div class="row">
+      <span class="lbl">바다</span>
+      <span class="sea-eq" id="seaEqState">-</span>
+      <div class="btn-row" style="flex:0 0 auto"><button id="seaEqBtn">즉시 평형</button></div>
+    </div>
+    <p class="note">바다는 대기 CO₂를 <b>천천히</b> 따라갑니다(약 2게임일 ≈ 실시간 10분에 63 %).
+      CO₂를 바꾼 직후 pH를 재면 아직 옛 값에 가깝습니다 — 시간을 두고 반복 측정해 보세요.
+      수업 시간이 부족하면 <b>즉시 평형</b>을 누르면 해수가 지금 해양 대기와 바로 평형이 됩니다.</p>
     <label class="row">
       <span class="lbl">시각</span>
       <input type="range" id="timeSlider" min="0" max="23.99" step="0.05" value="12">

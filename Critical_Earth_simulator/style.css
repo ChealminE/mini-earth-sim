@@ -40,6 +40,23 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
   padding: 18px 18px 16px; overflow-y: auto;
 }
 
+/* ── 와이드 화면 (교실 빔프로젝터 1440×900, 1920×1080 등) ──
+   위의 3등분 배치는 3D가 가로 1/3에 묶여 1440×900에서 캔버스가 479×449였고,
+   왼쪽 아래 칸(탭 제목·설명 두 줄)이 화면 높이의 절반을 빈 채로 차지했다.
+   넓은 화면에서는 왼쪽 열을 44%로 넓히고, 3D 칸 높이는 '폭 ÷ 1.07'로 정한다.
+   1.07은 예전 캔버스(479×449)의 종횡비 - 카메라 화각(세로 기준)이 그대로라서 이 비를
+   지키면 모형이 화면에 잡히는 구도가 예전과 같고 크기만 커진다. 남는 높이는 제목 칸이 갖는다.
+   1360px 미만(노트북 1280×800 등)은 위의 기존 배치를 그대로 쓴다 - 좁은 화면에서
+   그래프 칸이 좁아지면 통계 카드 4개가 한 줄에 못 들어가기 때문이다. */
+@media (min-width: 1360px) {
+  #app {
+    grid-template-columns: minmax(0, 44fr) minmax(0, 56fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  #gl-container { aspect-ratio: 1.07; max-height: calc(100vh - 130px); }
+  #graph-panel { grid-column: 2; }
+}
+
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
@@ -64,6 +81,30 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 .hint { font-size: 10.5px; color: #7d838d; line-height: 1.5; margin: 0 0 16px; }
 .reg-note { font-size: 10.5px; color: #b08a5a; background: rgba(232,162,60,0.1); border-radius: 8px;
   padding: 10px 12px; margin-top: 4px; line-height: 1.6; }
+
+/* ── 미래 예측 탭: 탄산 화학종 분포 막대 ── */
+/* CO3^2- 는 Ω 와 직결되므로 Ω 수치 카드와 같은 초록 계열로 묶는다 */
+.stat-box.omega-box { box-shadow: inset 3px 0 0 #5DCAA5; }
+.spec-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.spec-bar-label { font-size: 10.5px; color: #9198a3; line-height: 1.35; width: 70px; flex-shrink: 0; text-align: right; }
+.spec-bar-label b { color: #e7e9ec; }
+.spec-bar { flex: 1; display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: #23272f; }
+.spec-seg { height: 100%; min-width: 2px; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; white-space: nowrap; font-size: 10.5px; font-weight: 600; color: #10231c; }
+.spec-seg.co2aq { background: #d08a2c; }
+.spec-seg.hco3 { background: #85B7EB; }
+.spec-seg.co3 { background: #5DCAA5; }
+.spec-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+.spec-table th { font-weight: 500; color: #7d838d; text-align: right; padding: 4px 8px; border-bottom: 1px solid #2a2e35; }
+.spec-table th:first-child, .spec-table td:first-child { text-align: left; }
+.spec-table td { padding: 5px 8px; text-align: right; color: #e7e9ec; font-variant-numeric: tabular-nums; border-bottom: 1px solid #23272f; }
+.spec-table tr.total td { color: #9198a3; border-bottom: none; }
+.spec-table .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.spec-table .down { color: #f0997b; }
+.spec-table .up { color: #85B7EB; }
+.buffer-note { font-size: 11px; color: #cfe9df; background: rgba(93,202,165,0.1); border-left: 3px solid #5DCAA5;
+  border-radius: 6px; padding: 10px 12px; margin: 0 0 14px; line-height: 1.65; }
+.buffer-note b:first-child { font-size: 12px; color: #e7e9ec; }
 
 .live-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #9198a3; margin-bottom: 14px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #E24B4A; transition: background .2s; }
