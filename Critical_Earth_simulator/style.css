@@ -543,3 +543,27 @@ body.tab-future #graph-panel { grid-column: 2; grid-row: 2; }
 .earth-label.right { left: 75%; }
 body.tab-future .earth-label { display: block; }
 body.tab-future #hint { top: auto; left: auto; right: 14px; bottom: 14px; }
+
+/* ── 미래 예측 탭: 조작 패널 (왼쪽 아래 칸) ── */
+.future-only { display: none; }
+body.tab-future .future-only { display: block; }
+.fc { margin-top: 14px; border-top: 1px solid #2a2e35; padding-top: 12px; }
+.fc-title { font-size: 12px; font-weight: 600; color: #cfd3da; margin-bottom: 7px; }
+.fc-title span { font-weight: 400; color: #7d838d; font-size: 10.5px; }
+.fc-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+.fc-btns .mini-btn.on, .tl-jumps .mini-btn.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; font-weight: 600; }
+.fc-desc { font-size: 10.5px; color: #9198a3; line-height: 1.55; margin: 7px 0 4px; }
+.fc-note { font-size: 10.5px; color: #cfe9df; background: rgba(93,202,165,0.08); border-radius: 6px; padding: 7px 9px; line-height: 1.55; margin: 8px 0; }
+.lv { margin: 10px 0; }
+.lv-head { font-size: 11px; color: #cfd3da; display: flex; justify-content: space-between; gap: 6px; margin-bottom: 3px; }
+.lv-val { color: #5DCAA5; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lv input[type=range] { width: 100%; accent-color: #5DCAA5; }
+.lv-sub { display: block; font-size: 10px; color: #9198a3; margin-top: 3px; }
+.lv-help { font-size: 10px; color: #7d838d; line-height: 1.5; }
+.lv-scale { display: flex; justify-content: space-between; font-size: 9.5px; color: #7d838d; }
+.mix-bar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: #23272f; margin: 3px 0 2px; }
+.mix-seg { height: 100%; font-size: 9.5px; color: #10231c; font-weight: 600; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.mix-seg.fossil { background: #9a9a96; }
+.mix-seg.nuclear { background: #d9c46c; }
+.mix-seg.renew { background: #5DCAA5; }
+.fc-result { font-size: 11px; color: #e7e9ec; background: #23272f; border-radius: 6px; padding: 7px 9px; margin: 8px 0; line-height: 1.5; }

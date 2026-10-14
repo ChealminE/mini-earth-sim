@@ -105,6 +105,49 @@
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
     <div class="sub" id="tabHeaderDesc">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+
+    <!-- 미래 예측 탭에서만 보임: 오른쪽(인간활동) 지구의 배출 조작 (js/tab-future.js) -->
+    <div class="future-only fc" id="futureControls">
+      <div class="fc-title">인간활동 지구의 배출 <span>(오른쪽 지구)</span></div>
+      <div class="fc-btns" id="fcPresets">
+        <button class="mini-btn" data-preset="bau">현재 추세</button>
+        <button class="mini-btn" data-preset="paris">파리협약</button>
+        <button class="mini-btn" data-preset="nz2050">2050 탄소중립</button>
+        <button class="mini-btn" data-preset="custom">직접 설계</button>
+      </div>
+      <p class="fc-desc" id="fcPresetDesc"></p>
+
+      <div class="fc-levers" id="fcLevers" hidden>
+        <p class="fc-note">레버 값은 <b>2050년 목표</b>입니다. <b>2024년부터</b> 지금 값에서 목표까지 차츰 바뀌고, 2050년 뒤로는 목표를 유지합니다. 2023년까지는 실제 배출량 그대로입니다.</p>
+        <div class="lv">
+          <div class="lv-head">전력 구성 <span class="lv-val" id="lvMixVal"></span></div>
+          <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
+          <label class="lv-sub">화석 연료 발전 비중 <input type="range" id="lvFossil" min="0" max="100" step="1"></label>
+          <label class="lv-sub">나머지(무탄소) 중 원자력 몫 <input type="range" id="lvNucShare" min="0" max="100" step="1"></label>
+          <div class="lv-help">세 비중의 합은 항상 100 %. 원자력과 재생에너지는 <b>CO₂ 배출만 보면 같습니다</b>(둘 다 0).</div>
+        </div>
+        <div class="lv">
+          <div class="lv-head">전기차 비율 (보유 차량 중) <span class="lv-val" id="lvEvVal"></span></div>
+          <input type="range" id="lvEv" min="0" max="100" step="1">
+          <div class="lv-help">전기차도 충전하는 전기만큼 배출합니다. 화석 발전을 같이 줄여야 효과가 커집니다.</div>
+        </div>
+        <div class="lv">
+          <div class="lv-head">탄소 포집 <span class="lv-val" id="lvCcsVal"></span></div>
+          <input type="range" id="lvCcs" min="0" max="3" step="0.1">
+        </div>
+        <div class="lv">
+          <div class="lv-head">기타 부문 감축 (산업·건물·항공·해운 등) <span class="lv-val" id="lvOtherVal"></span></div>
+          <input type="range" id="lvOther" min="0" max="100" step="1">
+        </div>
+        <div class="lv">
+          <div class="lv-head">산림 (토지이용 배출) <span class="lv-val" id="lvForestVal"></span></div>
+          <input type="range" id="lvForest" step="0.05">
+          <div class="lv-scale"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
+        </div>
+        <div class="fc-result" id="lvResult"></div>
+        <button class="mini-btn" id="lvReset">지금 값으로 되돌리기</button>
+      </div>
+    </div>
   </div>
 
   <div id="graph-panel">

@@ -742,6 +742,60 @@ towerFan.position.y = 0.3;
 towerFan.rotation.x = Math.PI / 2;
 captureTower.add(towerFan);
 
+// 원자력 발전소 냉각탑 (미래 예측 탭 레버 전용, state.nuclear가 있을 때만 보임)
+// 쌍곡면 모양이라야 냉각탑으로 읽힌다 - 반지름 r(y) = a·√(1 + ((y−허리)/b)²) 를 돌려 만든다.
+const coolingTowers = [];
+{
+  const H = 0.26, waist = H * 0.68, a = 0.045, b = 0.11;
+  const prof = [];
+  for (let i = 0; i <= 12; i++) {
+    const y = H * i / 12;
+    prof.push(new THREE.Vector2(a * Math.sqrt(1 + ((y - waist) / b) ** 2), y));
+  }
+  const towerGeo = new THREE.LatheGeometry(prof, 24);
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0xc9c6bf, roughness: 0.85, side: THREE.DoubleSide });
+  const steamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, roughness: 1, depthWrite: false });
+  [[0.66, 0.95], [0.86, 1.24]].forEach(([x, z]) => {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(towerGeo, towerMat);
+    body.castShadow = true;
+    g.add(body);
+    const steam = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), steamMat);
+    steam.scale.set(1, 0.7, 1);
+    steam.position.y = H + 0.03;
+    g.add(steam);
+    g.position.set(x, CITY_BASE, z);
+    g.visible = false;
+    cityGroup.add(g);
+    coolingTowers.push(g);
+  });
+}
+
+// 태양광 패널 (미래 예측 탭 레버 전용, state.renew 비중만큼 개수가 늘어남)
+// 패널은 수십 장이라 InstancedMesh 하나로 그려 드로우콜을 1번으로 묶는다.
+// 자리는 건물·도로·냉각탑이 없는 도시 구역 앞쪽 빈 땅 (z 0.8~1.35, 세로 도로 x≈0.09는 비움)
+const SOLAR_SPOTS = [];
+for (const z of [0.82, 0.95, 1.08, 1.21, 1.34]) {
+  for (let x = -0.85; x <= 0.40; x += 0.11) if (Math.abs(x - CROSS_ROAD_X) > 0.09) SOLAR_SPOTS.push([x, z]);
+}
+const solarPanels = new THREE.InstancedMesh(
+  new THREE.BoxGeometry(0.08, 0.004, 0.055),
+  new THREE.MeshStandardMaterial({ color: 0x1d3b6e, roughness: 0.3, metalness: 0.6, emissive: 0x0a1a33, emissiveIntensity: 0.3 }),
+  SOLAR_SPOTS.length);
+{
+  const d = new THREE.Object3D();
+  SOLAR_SPOTS.forEach(([x, z], i) => {
+    d.position.set(x, CITY_BASE + 0.022, z);
+    d.rotation.set(-0.5, 0, 0);       // 해(앞쪽 위)를 향해 기울임
+    d.updateMatrix();
+    solarPanels.setMatrixAt(i, d.matrix);
+  });
+  solarPanels.instanceMatrix.needsUpdate = true;
+}
+solarPanels.count = 0;
+solarPanels.visible = false;
+cityGroup.add(solarPanels);
+
 return {
   scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
@@ -751,7 +805,8 @@ return {
   waterBody, waterNominalH, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
   smokeMat, smokeGeo, smokeCount, smokeLife, factory, smoke, roads: [mainRoad, crossRoad],
-  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
+  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh, leafMat,
+  coolingTowers, solarPanels,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE, OCEAN_BASE,
   condensationSpeed: 1,
   bubbleSpeed: 1,
@@ -858,14 +913,25 @@ function applyState(S) {
   S.captureTower.visible = !nat && crScale > 0.02;
   S.captureTower.scale.setScalar(0.3 + crScale * 0.7);
 
+  // 원자력·재생 비중 → 냉각탑·태양광 패널 (미래 예측 탭만 이 값을 넣는다. 다른 탭은 숨김)
+  const nuc = S.state.nuclear, ren = S.state.renew;
+  S.coolingTowers.forEach((g, i) => {
+    g.visible = !nat && nuc != null && nuc > (i === 0 ? 0.01 : 0.25);
+    if (nuc != null) g.scale.setScalar(0.7 + 0.9 * Math.min(1, nuc / 0.5));
+  });
+  S.solarPanels.visible = !nat && ren != null && ren > 0.005;
+  if (ren != null) S.solarPanels.count = Math.round(Math.min(1, ren) * S.solarPanels.instanceMatrix.count);
+
   // 습지 비율 → 습지 패치 크기, 겹치는 나무는 숨김
   const wetRadius = 0.15 + (S.state.wetlandRatio / 100) * 0.85;
   S.wetlandPatch.scale.setScalar(wetRadius / 0.1);
-  S.treeMeshes.forEach(t => {
+  // treeFrac(0~1)이 있으면 그 비율만큼만 나무를 보인다 (미래 예측 탭 산림 레버: 벌채면 줄고 조림이면 늘어남)
+  const treeShown = S.state.treeFrac != null ? Math.round(S.state.treeFrac * S.treeMeshes.length) : S.treeMeshes.length;
+  S.treeMeshes.forEach((t, i) => {
     const dx = t.baseX - S.wetlandPatch.position.x;
     const dz = t.baseZ - S.wetlandPatch.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    t.group.visible = dist > wetRadius * 0.9;
+    t.group.visible = dist > wetRadius * 0.9 && i < treeShown;
   });
 
   // 습지 비율/실측 습도 중 더 강한 쪽 → 풀 인스턴싱 밀도

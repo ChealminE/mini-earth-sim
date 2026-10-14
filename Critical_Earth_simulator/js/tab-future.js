@@ -14,7 +14,8 @@ splitView = { tab: 'future', left: sceneNature, right: sceneFuture };
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
-  preset: 'bau',          // 인간활동 지구의 배출 시나리오
+  preset: 'bau',          // 인간활동 지구의 배출 시나리오 (bau | paris | nz2050 | custom)
+  levers: { ...EarthSystem.LEVER_NOW },   // 직접 설계의 2050년 목표값
   year: 2023,             // 재생 위치 (소수 가능 - 연도 사이 보간)
   playing: false,
   speed: 10,              // 년/초
@@ -26,8 +27,11 @@ const FUT = {
 function computeNature() {
   FUT.nature = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.natureEmissions });
 }
+function humanEmissionsFn() {
+  return FUT.preset === 'custom' ? EarthSystem.leverEmissions(FUT.levers) : EarthSystem.presetEmissions(FUT.preset);
+}
 function computeHuman() {
-  FUT.human = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.presetEmissions(FUT.preset) });
+  FUT.human = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() });
 }
 
 // 연도 사이 선형 보간. 엔진 배열의 year=y 원소는 "y년 한 해를 적분한 뒤"의 상태다.
@@ -253,8 +257,116 @@ function apply3D(S, s) {
   S.state.co2 = s.ppm;
   S.state.ph = s.pH;
   S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
+  if (S === sceneFuture) applyLevers3D(S, s);
+  else S.state.treeFrac = 1;            // 자연 지구: 벌채가 없으니 나무가 다 있다
   applyState(S);
 }
+
+// 레버 → 3D. 레버 목표값이 아니라 재생 연도의 실제 레버 값(선형 전환 중의 값)을 보여 준다.
+// 직접 설계가 아닌 프리셋은 전력 구성 같은 세부가 정해져 있지 않으므로, 연기는 그해 화석 배출의
+// 2023년 대비 비율로, 나무는 그해 토지이용 배출로 정하고 나머지는 2023년 값으로 둔다.
+// 2023년까지(역사 구간)도 같은 규칙이다.
+const ES = EarthSystem;
+// 산림: 토지이용 배출 +L2023(벌채 지속) → 나무 60 %, 0(벌채 중단) → 약 83 %, −1(대규모 조림) → 100 %
+const treeFracFromLuc = luc => Math.min(1, Math.max(0.3, 0.6 + 0.4 * (ES.L2023 - luc) / (ES.L2023 + 1)));
+function applyLevers3D(S, s) {
+  const custom = FUT.preset === 'custom' && s.year >= ES.LEVER_START;
+  const l = custom ? ES.leversAt(FUT.levers, s.year) : ES.LEVER_NOW;
+  const fossilNow = s.fossil != null ? s.fossil : 0;
+  S.state.fossil = custom ? 100 * l.fossilShare
+    : Math.min(100, 100 * ES.LEVER_NOW.fossilShare * Math.max(0, fossilNow / ES.E2023));
+  S.state.ev = 100 * l.ev;
+  S.state.carbonRemoval = 100 * l.ccs / ES.LEVER_RANGE.ccs[1];
+  S.state.nuclear = l.nuclearShare;
+  S.state.renew = l.renewShare;
+  S.state.treeFrac = treeFracFromLuc(custom ? l.forest : (s.luc != null ? s.luc : ES.L2023));
+}
+
+// ── 시나리오 (오른쪽 지구) ─────────────────────────────────────────────
+const PRESET_DESC = {
+  bau: '현재 추세: 화석 배출이 해마다 2023년 값의 1 %씩 늘어 2100년에 1.77배가 되고 그 뒤로 그대로. 숲 벌채(토지이용 배출)는 80년에 걸쳐 멈춥니다.',
+  paris: '파리협약: 화석·토지이용 배출을 2023년 값에서 매년 같은 양씩 줄여 2075년에 0으로.',
+  nz2050: '2050 탄소중립: 화석·토지이용 배출을 2023년 값에서 매년 같은 양씩 줄여 2050년에 0으로.',
+  custom: '직접 설계: 아래 레버로 2050년의 사회를 정해 보세요.',
+};
+const PRESET_KO = { ...Object.fromEntries(Object.entries(ES.PRESETS).map(([k, v]) => [k, v.ko])), custom: '직접 설계' };
+function setPreset(name) {
+  FUT.preset = name;
+  document.querySelectorAll('#fcPresets [data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === name));
+  $('fcPresetDesc').textContent = PRESET_DESC[name];
+  $('fcLevers').hidden = name !== 'custom';
+  $('earthSubR').textContent = PRESET_KO[name];
+  recomputeFuture();
+}
+$('fcPresets').addEventListener('click', e => {
+  const b = e.target.closest('[data-preset]');
+  if (b) setPreset(b.dataset.preset);
+});
+
+// 레버 6개. 전력 구성은 "화석 비중" + "나머지 중 원자력 몫" 두 손잡이로 한 덩어리로 다뤄서
+// 화석/원자력/재생의 합이 언제나 100 %가 되게 한다.
+const lvFossil = $('lvFossil'), lvNucShare = $('lvNucShare'), lvEv = $('lvEv'), lvCcs = $('lvCcs'),
+      lvOther = $('lvOther'), lvForest = $('lvForest');
+lvForest.min = ES.LEVER_RANGE.forest[0];
+lvForest.max = ES.LEVER_RANGE.forest[1].toFixed(2);
+const pct = v => (100 * v).toFixed(0) + ' %';
+function leversToInputs(L) {
+  lvFossil.value = Math.round(100 * L.fossilShare);
+  const clean = 1 - L.fossilShare;
+  lvNucShare.value = clean > 1e-9 ? Math.round(100 * L.nuclearShare / clean) : 23;
+  lvEv.value = Math.round(100 * L.ev);
+  lvCcs.value = L.ccs;
+  lvOther.value = Math.round(100 * L.otherCut);
+  lvForest.value = L.forest;
+}
+function inputsToLevers() {
+  const f = Number(lvFossil.value) / 100, k = Number(lvNucShare.value) / 100;
+  FUT.levers = {
+    fossilShare: f, nuclearShare: (1 - f) * k, renewShare: (1 - f) * (1 - k),
+    ev: Number(lvEv.value) / 100, ccs: Number(lvCcs.value),
+    otherCut: Number(lvOther.value) / 100, forest: Number(lvForest.value),
+  };
+}
+function forestLabel(v) {
+  if (v > ES.L2023 - 0.03) return `${v.toFixed(2)} GtC/년 (지금처럼 벌채)`;
+  if (Math.abs(v) < 0.03) return '0 (벌채 중단)';
+  return v > 0 ? `${v.toFixed(2)} GtC/년 (벌채 줄임)` : `${v.toFixed(2)} GtC/년 (조림으로 흡수)`;
+}
+function showLeverValues() {
+  const L = FUT.levers, N = ES.LEVER_NOW;
+  const segs = [['mixFossil', L.fossilShare, '화석'], ['mixNuclear', L.nuclearShare, '원자력'], ['mixRenew', L.renewShare, '재생']];
+  for (const [id, v, name] of segs) {
+    $(id).style.width = (100 * v) + '%';
+    $(id).textContent = v >= 0.12 ? `${name} ${pct(v)}` : '';
+  }
+  $('lvMixVal').textContent = `화석 ${pct(L.fossilShare)} · 원자력 ${pct(L.nuclearShare)} · 재생 ${pct(L.renewShare)}`;
+  $('lvEvVal').textContent = `${pct(L.ev)} (지금 ${pct(N.ev)})`;
+  $('lvCcsVal').textContent = `${L.ccs.toFixed(1)} GtC/년`;
+  $('lvOtherVal').textContent = pct(L.otherCut);
+  $('lvForestVal').textContent = forestLabel(L.forest);
+  // 레버 식의 결과를 숫자로: 2050년(목표가 다 이뤄진 해)의 배출이 2023년의 몇 %인가
+  const e = ES.leverEmissions(L)(ES.LEVER_TARGET), e23 = ES.E2023 + ES.L2023, tot = e.fossil + e.luc;
+  $('lvResult').innerHTML = `2050년 배출 <b>${tot.toFixed(2)} GtC/년</b> = 2023년의 <b>${(100 * tot / e23).toFixed(0)} %</b>`
+    + `<br><span style="color:#9198a3">화석 ${e.fossil.toFixed(2)} · 토지이용 ${e.luc.toFixed(2)} (2023년 ${e23.toFixed(2)})</span>`;
+}
+// 레버를 움직이는 동안 궤적을 한 프레임에 한 번만 다시 계산한다 (엔진 1회 ≈ 수 ms)
+let leverPending = false;
+function onLeverInput() {
+  inputsToLevers();
+  showLeverValues();
+  if (leverPending) return;
+  leverPending = true;
+  requestAnimationFrame(() => { leverPending = false; recomputeFuture(); });
+}
+[lvFossil, lvNucShare, lvEv, lvCcs, lvOther, lvForest].forEach(el => el.addEventListener('input', onLeverInput));
+$('lvReset').addEventListener('click', () => {
+  FUT.levers = { ...ES.LEVER_NOW };
+  leversToInputs(FUT.levers);
+  showLeverValues();
+  recomputeFuture();
+});
+leversToInputs(FUT.levers);
+showLeverValues();
 
 // ── 재생 ──────────────────────────────────────────────────────────────
 const tlPlay = $('tlPlay'), tlScrub = $('tlScrub'), tlYearEl = $('tlYear');
@@ -337,4 +449,4 @@ function activateFutureTab() {
 }
 
 computeNature();
-recomputeFuture();
+setPreset(FUT.preset);   // 궤적 계산 + 버튼 표시
