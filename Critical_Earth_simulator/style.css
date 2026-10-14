@@ -216,7 +216,8 @@ canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
    아크릴 3D(#gl-container)를 화면 가득 깔고, 그 위에 처음 카드 / 오른쪽 단계 창 / 오른쪽 아래 '실험 시작'을 띄운다.
    다른 칸은 그대로 두고 덮기만 한다 (확인 창 같은 모달이 #graph-panel 안에 있어서 숨기면 안 됨). */
 #liveSetup { display: none; }
-body.live-setup #gl-container { position: fixed; inset: 0; z-index: 5; border: none; }
+/* aspect-ratio·max-height는 위 와이드 화면(@media min-width:1360px) 규칙을 풀어 준다 - 안 풀면 1440×900에서 아크릴이 824×770으로 잘림 */
+body.live-setup #gl-container { position: fixed; inset: 0; z-index: 5; border: none; aspect-ratio: auto; max-height: none; }
 body.live-setup #hint { display: none; }
 body.live-setup #liveSetup { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #e7e9ec; }
 body.live-setup #liveSetup > * { pointer-events: auto; }
@@ -349,7 +350,7 @@ body.ls-dragging .ls-drop-hint { display: block; }
    그래프 카드는 제목 줄로 끌어 옮기고(다른 카드 위에 놓으면 합치기) 모서리로 크기 조절, 누르면 큰 창(#graphWin). */
 #liveRun { display: none; }
 html.booting #liveRun { visibility: hidden; }
-body.live-run #gl-container { position: fixed; inset: 0; z-index: 5; border: none; }
+body.live-run #gl-container { position: fixed; inset: 0; z-index: 5; border: none; aspect-ratio: auto; max-height: none; }
 body.live-run #hint { display: none; }
 body.live-run #brightnessControl { z-index: 11; }
 body.live-run #liveRun { display: block; position: fixed; inset: 0; z-index: 10; pointer-events: none; color: #e7e9ec; }
