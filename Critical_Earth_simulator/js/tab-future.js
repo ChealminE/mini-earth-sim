@@ -458,8 +458,10 @@ $('fcPresets').addEventListener('click', e => {
 // 화석/원자력/재생의 합이 언제나 100 %가 되게 한다.
 const lvFossil = $('lvFossil'), lvNucShare = $('lvNucShare'), lvEv = $('lvEv'), lvCcs = $('lvCcs'),
       lvOther = $('lvOther'), lvForest = $('lvForest');
+// 산림은 step="any"로 둔다. 눈금 간격이 있으면 지금 값(L2023 = 1.2952)이 1.30으로 끌려가서,
+// 다른 레버만 만져도 '벌채 지속' 배출이 슬그머니 바뀐다.
 lvForest.min = ES.LEVER_RANGE.forest[0];
-lvForest.max = ES.LEVER_RANGE.forest[1].toFixed(2);
+lvForest.max = ES.LEVER_RANGE.forest[1];
 const pct = v => (100 * v).toFixed(0) + ' %';
 function leversToInputs(L) {
   lvFossil.value = Math.round(100 * L.fossilShare);
