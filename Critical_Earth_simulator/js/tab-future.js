@@ -18,6 +18,7 @@ const FUT = {
   levers: { ...EarthSystem.LEVER_NOW },   // 직접 설계의 2050년 목표값
   mode: 'scenario',       // scenario = 배출 시나리오 | fixed = 2024년부터 대기 CO2 고정
   fixedPpm: 560,
+  season: 'spring',       // 관측 계절 - 재생 중 자동으로 바뀌지 않는다 (10년/초에서 깜빡이면 의미가 없음)
   year: 2023,             // 재생 위치 (소수 가능 - 연도 사이 보간)
   playing: false,
   speed: 10,              // 년/초
@@ -253,6 +254,29 @@ function updateSink(h) {
     : '아직 배출된 탄소가 거의 없습니다.';
 }
 
+// ── 관측 계절 ───────────────────────────────────────────────────────────
+// 엔진 값(연평균)에 SEASON_CLIMATE(js/earth-model.js)의 오프셋을 더해 "그 계절에 잰 값"을 만든다.
+// 기온은 엔진이 편차(T)만 내므로 산업화 이전 전 지구 평균 지표 기온 AIR_T0에 더한다.
+// AIR_T0 = 14 °C는 대략치다 (NOAA가 밝힌 20세기 전 지구 평균 13.9 °C를 반올림한 값).
+// pH는 계절로 바꾸지 않는다 (엔진 연평균 그대로).
+const AIR_T0 = 14.0;
+// 나뭇잎 색: firstperson/fp-world.js SEASONS의 leaf와 같은 값 (겨울 null = 잎이 진 나무). 3단계에서 합칠 것.
+const SEASON_LEAF = { spring: 0x6cae4a, summer: 0x3f7433, autumn: 0xc9772a, winter: null };
+function observe(s) {
+  const C = SEASON_CLIMATE[FUT.season];
+  return { co2_ppm: s.ppm + C.co2, air_temp: AIR_T0 + s.T + C.temp, water_temp: s.sst + C.seaT, ph: s.pH };
+}
+function setSeason(name) {
+  FUT.season = name;
+  document.querySelectorAll('#seasonBtns [data-season]').forEach(b => b.classList.toggle('on', b.dataset.season === name));
+  FUT.dirty = true;
+  renderFuture();
+}
+$('seasonBtns').addEventListener('click', e => {
+  const b = e.target.closest('[data-season]');
+  if (b) setSeason(b.dataset.season);
+});
+
 // ── 3D ────────────────────────────────────────────────────────────────
 // 기존 매핑 상수(CO2_MIN/MAX, PH_MIN/MAX)를 그대로 쓴다. CO2_MAX(1000)는 1인칭과 공유하므로
 // 바꾸지 않는다 - 1000 ppm을 넘는 구간은 3D 효과만 포화된다(그래프는 그대로 그린다).
@@ -260,7 +284,10 @@ function updateSink(h) {
 const ICE_MELT_T = 5;
 function apply3D(S, s) {
   if (S.dormant) return;
-  S.state.co2 = s.ppm;
+  const C = SEASON_CLIMATE[FUT.season];
+  S.state.co2 = s.ppm + C.co2;          // 3D 대기 효과는 '관측 계절'의 CO2로
+  S.state.iceScale = C.ice;
+  S.state.leafColor = SEASON_LEAF[FUT.season];
   S.state.ph = s.pH;
   S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
   if (S === sceneFuture) applyLevers3D(S, s);
@@ -485,9 +512,11 @@ setInterval(() => {
 }, FUT_TICK_MS);
 
 // 각 지구 위 이름표: 현재 CO2·기온을 작게
+// 계절을 반영한 측정값으로 보여 준다 (아래 측정 패널과 같은 값)
 function updateEarthLabels(n, h) {
-  $('earthValL').textContent = `${n.ppm.toFixed(0)} ppm · ${fmtSigned(n.T, 2)} °C`;
-  $('earthValR').textContent = `${h.ppm.toFixed(0)} ppm · ${fmtSigned(h.T, 2)} °C`;
+  const f = s => { const o = observe(s); return `CO₂ ${o.co2_ppm.toFixed(0)} ppm · 기온 ${o.air_temp.toFixed(1)} °C`; };
+  $('earthValL').textContent = f(n);
+  $('earthValR').textContent = f(h);
 }
 
 // 탭을 열 때 main.js가 부른다
@@ -500,3 +529,4 @@ function activateFutureTab() {
 
 computeNature();
 setPreset(FUT.preset);   // 궤적 계산 + 버튼 표시
+setSeason(FUT.season);

@@ -868,8 +868,9 @@ function applyState(S) {
   const tempIntensity = Math.min(1, Math.max(0, (S.state.tmp - TMP_MIN) / (TMP_MAX - TMP_MIN)));
   // 미래 예측 탭은 엔진 기온 편차로 직접 정한 iceMelt(0~1)를 넣는다 (CO2 강도로 대신하지 않음)
   const iceIntensity = S.state.iceMelt != null ? S.state.iceMelt : Math.max(intensity, tempIntensity);
+  const iceK = S.state.iceScale != null ? S.state.iceScale : 1;   // 계절 배수 (미래 예측 탭 관측 계절)
   S.iceMeshes.forEach(o => {
-    const shrink = 1 - iceIntensity * 0.5;
+    const shrink = (1 - iceIntensity * 0.5) * iceK;
     o.mesh.scale.setScalar(shrink);
     // 실제 y좌표는 매 프레임 animate()에서 shrinkY + 파도 높이를 합쳐 계산하므로 여기선 오프셋만 저장
     o.shrinkY = -(1 - shrink) * 0.1;
@@ -933,6 +934,12 @@ function applyState(S) {
     const dist = Math.sqrt(dx * dx + dz * dz);
     t.group.visible = dist > wetRadius * 0.9 && i < treeShown;
   });
+
+  // 계절 → 나뭇잎 색 (leafColor가 null이면 잎이 진 겨울나무). undefined면 다른 탭이라 그대로 둔다.
+  if (S.state.leafColor !== undefined) {
+    S.leafMat.visible = S.state.leafColor !== null;
+    if (S.state.leafColor !== null) S.leafMat.color.setHex(S.state.leafColor);
+  }
 
   // 습지 비율/실측 습도 중 더 강한 쪽 → 풀 인스턴싱 밀도
   const grassIntensity = Math.max(S.state.wetlandRatio / 100, humIntensity);
