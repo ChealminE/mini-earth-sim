@@ -3,9 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>미니 지구 모델 - 통합 시뮬레이션</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=4">
+<script>
+  // 이 페이지는 기본으로 '현재 실태' 화면이 켜진 채로 그려지고, 주소(?tab=...)에 맞는 화면으로 바꾸는 코드(main.js)는
+  // 3D·그래프 라이브러리를 다 불러온 맨 마지막에 돈다. 그 사이 현재 실태가 잠깐 보이지 않게 준비가 끝날 때까지 가려 둔다.
+  document.documentElement.classList.add('booting');
+</script>
 <style>
   /* ── 실시간 실험 안내 모달 (index.html 자체 내장 스타일, style.css와 무관하게 동작) ── */
+  html.booting #app, html.booting #liveSetup { visibility: hidden; }
+  html.booting body { background: #14171c; }
   .modal-overlay {
     display: none;
     position: fixed; inset: 0;
@@ -50,7 +57,9 @@
     font-size: 12.5px; padding: 7px 9px; border-radius: 6px;
   }
   .modal-input::placeholder { color: #6b7178; }
-  .gs-axis-row { display: flex; gap: 6px; }
+  .gs-axis-row { display: flex; gap: 6px; margin-top: 8px; }
+  .modal-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
   .gs-axis-row .modal-input { flex: 1; width: auto; min-width: 0; }
   .gs-series-list { display: flex; flex-direction: column; gap: 8px; }
   .gs-series-row {
@@ -68,25 +77,6 @@
   }
   .gs-remove-series-btn:hover { color: #E24B4A; }
 
-  .basic-exp-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 4px; }
-  .basic-exp-card {
-    background: #262626; border: 1px solid #333; border-radius: 8px;
-    padding: 12px 14px; cursor: pointer; text-align: left;
-  }
-  .basic-exp-card:hover { border-color: #5DCAA5; }
-  .basic-exp-card .title { font-size: 13.5px; font-weight: 600; color: #eee; margin-bottom: 4px; }
-  .basic-exp-card .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .basic-exp-badge {
-    font-size: 10.5px; padding: 2px 7px; border-radius: 10px;
-    background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
-  }
-  .basic-exp-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .basic-exp-sensor-checks { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
-  .basic-exp-sensor-check {
-    display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #ccc;
-    background: #262626; border: 1px solid #333; border-radius: 16px; padding: 5px 12px; cursor: pointer;
-  }
-  .basic-exp-sensor-check:has(input:checked) { border-color: #5DCAA5; color: #eee; }
   .pinmap-device-title { font-size: 12.5px; font-weight: 600; color: #ccc; margin: 10px 0 4px; }
   .pinmap-device-title:first-child { margin-top: 0; }
   .pinmap-table { width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 12px; }
@@ -108,15 +98,13 @@
     </div>
   </div>
 
-  <div id="graph-panel">
-    <h2>이산화탄소와 기후 · 실태와 예측</h2>
-    <div class="sub">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+  <div id="tab-header-panel">
+    <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
+    <h2 id="tabHeaderTitle">현재 실태</h2>
+    <div class="sub" id="tabHeaderDesc">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+  </div>
 
-    <div class="tabs">
-      <button class="tab-btn active" id="tab-btn-current" onclick="switchTab('current')">현재 실태</button>
-      <button class="tab-btn" id="tab-btn-future" onclick="switchTab('future')">미래 예측</button>
-      <button class="tab-btn" id="tab-btn-live" onclick="switchTab('live')">실시간 실험</button>
-    </div>
+  <div id="graph-panel">
 
     <div class="tab-panel active" id="tab-current">
       <div class="stat-grid">
@@ -125,143 +113,55 @@
         <div class="stat-box"><div class="label">해양 pH (2023)</div><div class="value ph">8.040</div><div class="delta">1989년 대비 -0.069</div></div>
         <div class="stat-box"><div class="label">화석연료배출 (2023)</div><div class="value">38,094백만톤</div><div class="delta">1988년 대비 +16,175백만톤</div></div>
       </div>
-      <div class="chart-block"><div class="chart-title">CO₂농도 추이</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
-      <div class="chart-block"><div class="chart-title">기온편차 추이</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
-      <div class="chart-block"><div class="chart-title">해양pH 추이</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
-      <div class="chart-block"><div class="chart-title">화석연료배출량 추이</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+      <div class="charts-2col">
+        <div class="chart-block"><div class="chart-title">CO₂농도 추이</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">기온편차 추이</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해양pH 추이</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">화석연료배출량 추이</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+      </div>
     </div>
 
     <div class="tab-panel" id="tab-future">
       <div class="co2-row">
         <span class="name">CO₂ 농도 (ppm)</span>
-        <input type="range" min="280" max="600" step="1" value="418" id="co2slider">
+        <input type="range" min="280" max="1000" step="1" value="418" id="co2slider">
         <span class="value" id="co2out">418</span>
       </div>
-      <p class="hint">실측 범위: 350~418ppm (1988~2023). 그 밖은 회귀식 기반 추정치예요. 기후 시스템은 임계점을 지나면 선형 관계가 깨질 수 있어 극단값 예측은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬의 대기·해수 상태에도 실시간으로 반영됩니다.</p>
+      <p class="hint">실측 범위: 350~418ppm (1988~2023). 해양 pH는 회귀가 아니라 <b>탄산 평형식</b>을 직접 풀어 구합니다(관측 35점을 RMSE 0.008로 재현). 기온편차는 복사강제력이 농도의 로그에 비례하는 점을 반영해 <b>log₂ 형태로 회귀</b>했습니다. 그래도 실측 범위 밖은 추정치이고, 기후 시스템은 임계점을 지나면 관계가 깨질 수 있어 극단값은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬과 <b>1인칭 탐험 모드</b>에도 똑같이 반영됩니다.</p>
 
       <div class="stat-grid">
-        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.62°C</div></div>
-        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.049</div></div>
+        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.60°C</div></div>
+        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.042</div></div>
+        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.51</div></div>
       </div>
 
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (r=0.925)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (r=-0.972)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (관측 r=0.924)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (관측 r=-0.972 · 곡선=탄산평형)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
       </div>
 
-      <p class="reg-note">회귀식: 기온편차 = 0.01608 × CO2농도 − 6.101 (R²=0.855) · 해양pH = −0.000942 × CO2농도 + 8.441 (R²=0.946)</p>
+      <!-- 화학종 분포: seawaterState()가 이미 계산하는 [CO2(aq)]·[HCO3-]·[CO3^2-]를 그대로 보여준다 -->
+      <div class="chart-block speciation-block">
+        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 수온 25 °C)</div>
+        <div class="spec-bar-row">
+          <span class="spec-bar-label">산업화 이전<br>280 ppm</span>
+          <div class="spec-bar" id="specBarRef"></div>
+        </div>
+        <div class="spec-bar-row">
+          <span class="spec-bar-label">현재 설정<br><b id="specBarCo2">418</b> ppm</span>
+          <div class="spec-bar" id="specBarNow"></div>
+        </div>
+        <table class="spec-table">
+          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>280 ppm 대비</th></tr></thead>
+          <tbody id="specTableBody"></tbody>
+        </table>
+      </div>
+      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b>(280 → 1000 ppm에서 약 60 % 감소) <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다.</p>
+
+      <p class="reg-note">기온편차 = 4.258 × log₂(CO₂/280) − 1.858 (r=0.924) · 여기서 4.258°C/배증이 이 관측 기록에서 읽어낸 기후민감도입니다 (IPCC 최적추정 3.0, 범위 2.5~4.0).<br>해양 pH는 회귀식이 아니라 탄산 평형(K₀·K₁·K₂ + 총알칼리도 일정)을 풀어 계산합니다 — 관측 35점 RMSE 0.008.</p>
     </div>
 
     <div class="tab-panel" id="tab-live">
-      <div id="liveFormatModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>실시간 실험 연동 전 확인사항</h3>
-          <p>보드에서 이 <b>JSON 형식</b>으로 값을 보내야 대시보드에 표시됩니다. 어떤 보드든, 어떤 통신 방식(WiFi/USB 시리얼/BLE)이든 이 형식으로만 보내면 자동 인식됩니다.</p>
-
-          <div class="modal-example">
-            <div class="modal-label">예시 (센서 이름은 자유롭게 정해도 됨)</div>
-            <pre>{"temp": 24.8, "ph": 7.21, "co2": 735}</pre>
-          </div>
-
-          <div class="modal-example">
-            <div class="modal-label">아두이노 코드 (마지막 출력 부분, ArduinoJson 사용)</div>
-            <pre>JsonDocument doc;
-doc["temp"] = tempValue;
-doc["ph"]   = phValue;
-doc["co2"]  = co2Value;
-serializeJson(doc, Serial);
-Serial.println();</pre>
-          </div>
-
-          <ul class="modal-notes">
-            <li>센서 이름(키)은 자유롭게 지어도 됩니다. (temp, ph, co2 외 다른 이름 가능)</li>
-            <li>측정하는 센서만 넣으면 됩니다. 전부 다 있을 필요는 없습니다.</li>
-            <li>3D 효과 연동: 키 이름이 <code>temp</code>, <code>ph</code>, <code>co2</code>와 정확히 일치할 때만 자동으로 연결됩니다. (예: <code>water_temp</code>처럼 이름이 다르면 카드/그래프에는 뜨지만 3D 효과는 연결되지 않습니다)</li>
-            <li>이름이 안 맞거나 같은 종류 센서가 여러 개면(예: 온도 센서 2개), 센서 카드 아래 드롭다운에서 "기온"/"수온" 등 역할을 직접 지정하면 그 값이 3D 효과에 연결됩니다.</li>
-            <li>어떤 보드든 이 JSON 형식으로 보내면 자동 인식됩니다 (WiFi POST / USB 시리얼 / BLE 전부 지원)</li>
-          </ul>
-
-          <label class="modal-checkbox">
-            <input type="checkbox" id="dontShowAgain"> 이번 실험에서 다시 보지 않기
-          </label>
-          <button id="modalCloseBtn" class="modal-close-btn">확인했어요 (실험 시작)</button>
-        </div>
-      </div>
-
-      <div id="basicExpBoardModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>1. 사용할 보드 선택</h3>
-          <p>연결하려는 보드/통신 방식을 고르세요.</p>
-          <div class="basic-exp-list" id="basicExpBoardList"></div>
-          <button class="modal-close-btn secondary" id="basicExpBoardCloseBtn">닫기</button>
-        </div>
-      </div>
-
-      <div id="basicExpSensorModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>2. 사용할 센서 선택</h3>
-          <p id="basicExpSensorBoardLabel"></p>
-          <p class="hint" style="margin-bottom:6px">실제로 연결한 센서를 전부 체크하세요 (동시에 여러 개 가능). 센서 없이 통신 연결만 확인하려면 아무것도 체크하지 마세요.</p>
-          <div class="basic-exp-sensor-checks" id="basicExpSensorChecks"></div>
-          <div class="basic-exp-list" id="basicExpSensorList"></div>
-          <button class="modal-close-btn secondary" id="basicExpSensorBackBtn">← 보드 다시 선택</button>
-        </div>
-      </div>
-
-      <div id="basicExpDetailModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3 id="basicExpTitle"></h3>
-          <div class="basic-exp-meta" id="basicExpMeta"></div>
-          <p id="basicExpSummary"></p>
-
-          <div class="modal-example" id="basicExpPinmapSection" style="display:none">
-            <div class="modal-label">핀맵</div>
-            <div id="basicExpPinmaps"></div>
-          </div>
-
-          <div class="modal-actions-row">
-            <button class="modal-close-btn secondary" id="basicExpSpecBtn" style="display:none">센서 사양</button>
-            <button class="modal-close-btn secondary" id="basicExpCodeInfoBtn" style="display:none">코드 설명</button>
-            <button class="modal-close-btn secondary" id="basicExpNotesBtn" style="display:none">연결 유의사항</button>
-          </div>
-
-          <div class="modal-example">
-            <div class="modal-label">코드 미리보기</div>
-            <pre id="basicExpCode"></pre>
-          </div>
-
-          <div class="modal-actions-row">
-            <a id="basicExpDownloadBtn" class="modal-close-btn" download>코드 다운로드</a>
-            <button id="basicExpCopyBtn" class="modal-close-btn secondary">코드 복사</button>
-          </div>
-          <button class="modal-close-btn secondary" id="basicExpDetailBackBtn">센서 목록으로</button>
-        </div>
-      </div>
-
-      <div id="basicExpSpecModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>센서 사양</h3>
-          <div id="basicExpSpecModalContent"></div>
-          <button class="modal-close-btn secondary" id="basicExpSpecCloseBtn">닫기</button>
-        </div>
-      </div>
-
-      <div id="basicExpCodeInfoModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>코드 설명</h3>
-          <div id="basicExpCodeInfoContent"></div>
-          <button class="modal-close-btn secondary" id="basicExpCodeInfoCloseBtn">닫기</button>
-        </div>
-      </div>
-
-      <div id="basicExpNotesModal" class="modal-overlay">
-        <div class="modal-box">
-          <h3>연결 유의사항</h3>
-          <ul class="modal-notes" id="basicExpNotesModalList"></ul>
-          <button class="modal-close-btn secondary" id="basicExpNotesCloseBtn">닫기</button>
-        </div>
-      </div>
-
       <div id="graphSettingsModal" class="modal-overlay">
         <div class="modal-box">
           <h3>그래프 설정</h3>
@@ -279,6 +179,10 @@ Serial.println();</pre>
 
           <div class="modal-example">
             <div class="modal-label">X축 (최소 · 최대 · 단위)</div>
+            <label class="modal-checkbox">
+              <input type="checkbox" id="gsXAuto" onchange="setAxisAuto(gsCurrentGraphId, 'x', this.checked)">
+              자동 스케일 (데이터 범위에 맞춰 자동 조정)
+            </label>
             <div class="gs-axis-row">
               <input type="number" class="modal-input" id="gsXMin" placeholder="최소" oninput="setAxisConfig(gsCurrentGraphId, 'xMin', this.value)">
               <input type="number" class="modal-input" id="gsXMax" placeholder="최대" oninput="setAxisConfig(gsCurrentGraphId, 'xMax', this.value)">
@@ -288,6 +192,10 @@ Serial.println();</pre>
 
           <div class="modal-example">
             <div class="modal-label">Y축 (최소 · 최대 · 단위)</div>
+            <label class="modal-checkbox">
+              <input type="checkbox" id="gsYAuto" onchange="setAxisAuto(gsCurrentGraphId, 'y', this.checked)">
+              자동 스케일 (데이터 범위에 맞춰 자동 조정)
+            </label>
             <div class="gs-axis-row">
               <input type="number" class="modal-input" id="gsYMin" placeholder="최소" oninput="setAxisConfig(gsCurrentGraphId, 'yMin', this.value)">
               <input type="number" class="modal-input" id="gsYMax" placeholder="최대" oninput="setAxisConfig(gsCurrentGraphId, 'yMax', this.value)">
@@ -296,14 +204,20 @@ Serial.println();</pre>
           </div>
 
           <div class="modal-example">
-            <label class="modal-checkbox">
-              <input type="checkbox" id="gsTrendToggle" onchange="setTrendVisible(gsCurrentGraphId, this.checked)">
-              추세선(선형 회귀) 표시 — 기울기·R² 자동 계산
-            </label>
+            <div class="modal-label">시간 축 단위 (X축이 '경과 시간'일 때)</div>
+            <select class="modal-input" id="gsTimeUnit" onchange="setGraphTimeUnit(gsCurrentGraphId, this.value)">
+              <option value="auto">자동 (10분 미만 초 · 3시간 미만 분 · 그 이상 시간)</option>
+              <option value="s">초</option><option value="min">분</option><option value="h">시간</option>
+            </select>
           </div>
 
           <div class="modal-example">
-            <div class="modal-label">내보내기</div>
+            <div class="modal-label">값 마크 — 그래프의 점을 클릭하면 (x, y) 값이 표시되고, 다시 클릭하면 그 마크만 지워져요</div>
+            <button class="modal-close-btn secondary" style="margin-top:0" onclick="clearGraphMarks(gsCurrentGraphId)">찍은 마크 전부 지우기</button>
+          </div>
+
+          <div class="modal-example">
+            <div class="modal-label">내보내기 (추세식·통계·편집과 엑셀 저장은 그래프를 눌러 여는 창의 '편집·분석' 탭에서)</div>
             <div class="modal-actions-row">
               <button class="modal-close-btn secondary" onclick="downloadGraphImage(gsCurrentGraphId)">이미지 다운로드 (PNG)</button>
               <button class="modal-close-btn secondary" onclick="downloadGraphData(gsCurrentGraphId)">데이터 다운로드 (CSV)</button>
@@ -325,27 +239,249 @@ Serial.println();</pre>
         </div>
       </div>
 
-      <div class="live-status">
-        <span class="live-dot" id="liveDot"></span><span id="liveStatusText">실험 대기중</span>
-        <button id="basicExperimentsBtn" class="experiment-btn end">기본 실험</button>
-        <button id="startExperimentBtn" class="experiment-btn start">실험 시작</button>
-        <button id="endExperimentBtn" class="experiment-btn end" disabled>실험 종료</button>
+      <div id="connInfoModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>연결 정보</h3>
+          <p>보드 코드에 넣을 주소들이에요. 노트북과 보드가 <b>같은 와이파이</b>에 있어야 WiFi 방식이 됩니다.</p>
+          <div id="connInfoContent"></div>
+          <ul class="modal-notes">
+            <li>USB: 케이블을 꽂으면 서버가 자동으로 찾습니다. CoolTerm·아두이노 시리얼 모니터가 그 포트를 열고 있으면 못 찾아요 (한 포트는 한 프로그램만 열 수 있음).</li>
+            <li>BLE(HM-10·ESP32): 서버를 <code>--ble</code> 옵션으로 켜야 합니다.</li>
+            <li>HC-06(클래식 블루투스): 윈도우 설정에서 먼저 페어링하면 COM 포트가 생기고, USB와 똑같이 자동으로 잡힙니다.</li>
+            <li>WiFi가 안 붙으면 윈도우 방화벽이 1883(MQTT) 포트를 막고 있는지 확인하세요.</li>
+          </ul>
+          <button class="modal-close-btn secondary" id="connInfoCloseBtn">닫기</button>
+        </div>
       </div>
-      <div id="liveGraphs"></div>
-      <button class="add-graph-btn" id="addGraphBtn" onclick="addLiveGraph()">+ 그래프 추가</button>
-      <div class="sensor-grid" id="sensorGrid">
-        <div class="empty-hint">'실험 시작' 버튼을 누르면 연결이 시작됩니다.<br>server.py가 실행 중이어야 연결됩니다.</div>
+
+      <div id="liveConfirmModal" class="modal-overlay">
+        <div class="modal-box">
+          <h3>확인</h3>
+          <p id="liveConfirmText"></p>
+          <div class="modal-actions-row">
+            <button class="modal-close-btn" id="liveConfirmYesBtn">확인</button>
+            <button class="modal-close-btn secondary" id="liveConfirmNoBtn">취소</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 직접 실험 - 실험 화면 (준비 화면처럼 아크릴을 화면 가득 두고 그 위에 띄움, js/tab-live.js) -->
+<div id="liveRun">
+  <div class="lr-bar">
+    <a href="/" class="ls-back" title="시작 화면으로">← 처음으로</a>
+    <span class="live-dot" id="liveDot"></span>
+    <div class="live-status-text"><span class="live-exp-name" id="liveExpName"></span><span id="liveStatusText">실험 대기 중</span><span id="expSettingsSummary" class="exp-settings-summary"></span></div>
+    <button class="lr-btn lr-light" id="lightBtn" title="아크릴에 조명을 비추는지 — 누를 때마다 켬/끔이 기록돼요">💡 조명 끔</button>
+    <button class="lr-btn" id="dataWinBtn" title="지금까지 기록된 값 전부를 표로 (편집·분석·내보내기도)">📋 데이터</button>
+    <button class="lr-btn" id="monitorBtn" title="보드가 보내는 줄을 그대로 보기 (값이 안 들어올 때 원인 찾기)">🖥 시리얼 모니터</button>
+    <button class="lr-btn" id="addGraphBtn" title="빈 그래프 추가 (⚙에서 변인 고르기)">＋ 그래프</button>
+    <button class="lr-btn" id="arrangeGraphsBtn" title="그래프를 왼쪽 위부터 가지런히">정리</button>
+    <button class="lr-btn" id="backToSetupBtn" title="보드·코드·센서 배치를 다시 보거나 새 실험을 준비">실험 준비</button>
+    <button class="lr-main" id="startStopBtn">▶ 실험 시작</button>
+  </div>
+
+  <div class="lr-graphs" id="liveGraphs">
+    <div class="lr-empty" id="lrEmpty">오른쪽 <b>센서 값</b>을 누르면 그 센서의 그래프가 여기 떠요.<br>
+      그래프는 제목 줄을 끌어 옮기고, 다른 그래프 위에 놓으면 합쳐지고, 누르면 크게 보며 데이터 표·편집을 할 수 있어요.</div>
+  </div>
+
+  <div class="lr-side">
+    <div class="live-side-head">
+      <span class="live-side-title">보드 · 센서</span>
+      <button class="mini-btn" id="connInfoBtn" title="보드 코드에 넣을 서버·브로커 주소">ⓘ 연결 정보</button>
+      <button class="mini-btn" id="rescanPortsBtn" title="USB 케이블을 새로 꽂았는데 안 잡힐 때">⟳ 포트</button>
+    </div>
+    <div class="lr-side-hint">값 카드를 누르면 그래프가 생겨요</div>
+    <div id="liveDeviceList"></div>
+  </div>
+
+  <!-- 시리얼 모니터: 보드가 보낸 줄을 그대로 (server.py raw_line) -->
+  <div class="lr-monitor" id="lrMonitor">
+    <div class="lm-head"><b>🖥 시리얼 모니터</b>
+      <select class="modal-input" id="lmDev" title="어느 보드의 줄을 볼지"><option value="">모든 보드</option></select>
+      <label class="lm-check"><input type="checkbox" id="lmOnlyText"> 값(JSON) 말고 글만</label>
+      <button class="mini-btn" id="lmPause">⏸ 멈춤</button>
+      <button class="mini-btn" id="lmClear">지우기</button>
+      <button class="icon-btn" id="lmClose" title="닫기">✕</button></div>
+    <div class="lm-body" id="lmBody"></div>
+    <div class="lm-foot hint" id="lmFoot">USB 보드는 보드가 출력하는 모든 줄이, WiFi·MQTT 보드는 서버로 보낸 값만 보여요 (Serial.print는 USB 선으로만 나가요)</div>
+  </div>
+
+  <!-- 아크릴 위 센서 이름표를 누르면 뜨는 작은 창: 센서 켜기·끄기 / 그 보드 멈춤·재부팅 / 그래프 (js/live-setup.js) -->
+  <div class="lr-pop" id="lrPop"></div>
+
+  <!-- 그래프를 누르면 열리는 큰 창: 그래프 / 데이터 표 / 편집·분석 -->
+  <div id="graphWin" class="modal-overlay">
+    <div class="gw-box">
+      <div class="gw-head">
+        <span class="gw-title" id="gwTitle"></span>
+        <div class="gw-tabs">
+          <button class="gw-tab" data-gw-tab="graph">그래프</button>
+          <button class="gw-tab" data-gw-tab="table">데이터 표</button>
+          <button class="gw-tab" data-gw-tab="analysis">편집·분석</button>
+        </div>
+        <button class="icon-btn" id="gwSettingsBtn" title="그래프 설정 (변인·축·색·합친 계열 나누기)">⚙</button>
+        <button class="icon-btn" id="gwCloseBtn" title="닫기">✕</button>
+      </div>
+      <div class="gw-pane" data-pane="graph">
+        <div class="gw-chart" id="gwChartWrap"></div>
+        <div class="gw-foot">
+          <span class="hint" style="margin:0">선 근처에 커서를 올리면 값이 보이고, 점을 누르면 값이 마크로 남아요 (다시 누르면 지워짐)</span>
+          <button class="mini-btn" id="gwClearMarksBtn">마크 지우기</button>
+          <button class="mini-btn" id="gwPngBtn">이미지(PNG)</button>
+          <button class="mini-btn" id="gwCsvBtn">데이터(CSV)</button>
+        </div>
+      </div>
+      <div class="gw-pane" data-pane="table">
+        <div class="gw-table-wrap" id="gwTable"></div>
+        <div class="gw-foot" id="gwTableFoot"></div>
+      </div>
+      <div class="gw-pane" data-pane="analysis">
+      <div class="live-analysis" id="liveAnalysis">
+        <div class="an-head">
+          <label>X <select class="modal-input" id="anXKey"></select></label>
+          <label>Y <select class="modal-input" id="anYKey"></select></label>
+          <label>시간 단위 <select class="modal-input" id="anTimeUnit">
+            <option value="auto">자동</option><option value="s">초</option><option value="min">분</option><option value="h">시간</option>
+          </select></label>
+        </div>
+        <div class="an-body">
+          <div class="an-controls">
+            <div class="an-lock-note" id="anLockNote" style="display:none">기록 중이에요. 통계와 추세식은 실시간으로 계산되고, <b>편집은 실험이 끝난 뒤</b>에 할 수 있어요.</div>
+            <div id="anSteps">
+              <div class="an-section-title">편집 단계 <span class="hint" style="margin:0">(위에서부터 차례로 적용 · 원본은 그대로)</span></div>
+              <label class="an-step"><input type="checkbox" data-step="trim.on"> 구간 자르기 — X
+                <input type="number" step="any" class="an-num" data-step="trim.xMin" placeholder="처음"> ~
+                <input type="number" step="any" class="an-num" data-step="trim.xMax" placeholder="끝"></label>
+              <label class="an-step" title="평균에서 표준편차의 이 배수보다 멀리 떨어진 값을 뺍니다"><input type="checkbox" data-step="outlier.on"> 이상값 빼기 — 평균 ± 표준편차 ×
+                <input type="number" step="0.5" min="0.5" class="an-num" data-step="outlier.k" value="3"> 밖</label>
+              <label class="an-step"><input type="checkbox" data-step="block.on">
+                <input type="number" step="1" min="2" class="an-num" data-step="block.n" value="5">개씩 묶어 평균</label>
+              <label class="an-step"><input type="checkbox" data-step="moving.on"> 이동 평균 — 직전
+                <input type="number" step="1" min="2" class="an-num" data-step="moving.n" value="5">개씩</label>
+              <button class="mini-btn" id="anResetBtn">편집 모두 끄기</button>
+            </div>
+            <div class="an-section-title">추세식</div>
+            <div class="an-fit-row">
+              <select class="modal-input" id="anFitModel">
+                <option value="none">그리지 않음</option>
+                <option value="linear" selected>직선 (일차식)</option>
+                <option value="poly2">이차식 (포물선)</option>
+                <option value="poly3">삼차식</option>
+                <option value="exp">지수 함수 (y = a·eᵇˣ)</option>
+                <option value="log">로그 함수 (y = a + b·ln x)</option>
+                <option value="power">거듭제곱 (y = a·xᵇ)</option>
+              </select>
+              <button class="mini-btn" id="anCompareBtn">식 종류별 비교</button>
+            </div>
+            <div id="anFitResult"></div>
+            <div class="an-section-title">내보내기</div>
+            <div class="an-fit-row">
+              <button class="mini-btn primary" id="anExportXlsxBtn">엑셀(.xlsx)로 저장</button>
+              <button class="mini-btn" id="anExportPngBtn">그래프 이미지(PNG)</button>
+            </div>
+            <p class="hint" style="margin:6px 0 0">엑셀 파일에는 원본 데이터 전체 · 편집한 데이터 · 통계와 추세식이 시트별로 들어가요.</p>
+          </div>
+          <div class="an-main">
+            <div class="chart-wrap an-chart-wrap"><canvas id="anChart"></canvas></div>
+            <div class="an-tables">
+              <div id="anStats"></div>
+              <div id="anCompare"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="liveToast" class="live-toast"></div>
+
+<!-- 직접 실험 - 실험 준비 화면 (아크릴 3D를 화면 가득 깔고 그 위에 띄움, js/live-setup.js) -->
+<div id="liveSetup">
+  <div class="ls-home" id="lsHome">
+    <a href="/" class="ls-back">← 처음으로</a>
+    <h1>직접 실험</h1>
+    <div class="ls-name-line"><span id="lsNameShow"></span> <button class="mini-btn" data-action="rename">이름 바꾸기</button></div>
+    <div class="ls-cards">
+      <button class="ls-card" data-mode="code">
+        <div class="icon">📄</div><div class="title">기본 코드·회로도 받기</div>
+        <div class="desc">보드 → 통신 방식 → 센서를 고르면 코드와 회로도를 줘요. 측정 간격 같은 설정을 고쳐서(수정본) 또는 그대로(원본) 받아요.</div>
+      </button>
+      <button class="ls-card" data-mode="run">
+        <div class="icon">▶</div><div class="title">실험 시작</div>
+        <div class="desc">코드를 올린 보드를 연결하고, 센서를 아크릴에 배치하고, 실험을 시작해요. 직접 만든 코드도 값만 보내면 돼요.</div>
+      </button>
+    </div>
+    <div class="ls-home-foot">
+      <button class="mini-btn" id="lsOpenFileBtn" title="내보낸 CSV·엑셀 파일이나 logs 폴더의 기록을 열어 편집·분석">📂 지난 데이터 열기</button>
+      <input type="file" id="lsFileInput" accept=".csv,.xlsx" style="display:none">
+      <span style="flex:1"></span>
+      <button class="mini-btn" id="lsGoExperiment" style="display:none">진행 중인(끝난) 실험 화면 보기</button>
+      <button class="mini-btn" id="lsNewBtn">새로 준비 (처음부터)</button>
+    </div>
+  </div>
+
+  <div class="ls-panel" id="lsPanel" style="display:none">
+    <div class="ls-panel-head">
+      <div class="ls-panel-title"><a href="/" class="ls-back">← 처음으로</a>
+        <span class="ls-panel-name" id="lsPanelName"></span><button class="mini-btn" data-action="rename">이름 바꾸기</button>
+        <button class="mini-btn ls-cancel" id="lsCancelBtn" title="준비한 내용(보드·설정·배치)을 지우고 처음 화면으로">준비 취소</button></div>
+      <div class="ls-steps" id="lsSteps"></div>
+    </div>
+    <div class="ls-panel-body" id="lsBody"></div>
+    <div class="ls-panel-foot">
+      <button class="mini-btn" id="lsPrev">← 이전</button>
+      <button class="mini-btn primary" id="lsNext">다음 →</button>
+    </div>
+  </div>
+
+  <div class="ls-code" id="lsCode">
+    <div class="ls-code-head">
+      <span class="ls-code-title" id="lsCodeTitle"></span>
+      <span class="hint ls-code-hint" id="lsCodeHint"></span>
+      <div class="lc-ver" id="lsCodeVer" style="display:none"><button data-ver="modified" title="실험 설계에서 바꾼 설정이 들어간 코드">수정본</button><button data-ver="original" title="설정을 하나도 안 바꾼 처음 코드">원본</button></div>
+      <button class="icon-btn lc-tool" id="lsCodeCopy" title="코드 복사 (IDE에 붙여넣기)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+      <button class="icon-btn lc-tool" id="lsCodeSave" title="코드 파일로 받기 (.ino)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
+      <button class="icon-btn" id="lsCodeClose" title="닫기">✕</button>
+    </div>
+    <div class="ls-code-body" id="lsCodeBody"></div>
+  </div>
+  <div class="ls-tip" id="lsTip"></div>
+
+  <div class="ls-drop-hint">여기 아크릴 모형 위에 놓으세요</div>
+  <button class="ls-start" id="lsStartBtn" style="display:none">▶ 실험 시작</button>
+  <div class="ls-zone-pop" id="lsZonePop"></div>
+
+  <div id="lsNameModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>실험 이름</h3>
+      <p>이 이름이 코드·엑셀·그래프 등 받는 파일 이름 앞에 자동으로 붙어요. (예: 탄산음료 CO2 6시간)</p>
+      <input type="text" class="modal-input" id="lsNameInput" maxlength="60" placeholder="비워 두면 '이름없음1'처럼 자동으로 붙어요">
+      <div class="modal-actions-row">
+        <button class="modal-close-btn" id="lsNameSaveBtn">확인</button>
+        <button class="modal-close-btn secondary" id="lsNameCancelBtn">취소</button>
       </div>
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="js/common.js"></script>
-<script src="js/tab-current.js"></script>
-<script src="js/tab-future.js"></script>
-<script src="js/tab-live.js"></script>
-<script src="js/main.js"></script>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="js/earth-model.js?v=3"></script>
+<script src="js/common.js?v=3"></script>
+<script src="js/tab-current.js?v=3"></script>
+<script src="js/tab-future.js?v=3"></script>
+<script src="js/live-fit.js?v=4"></script>
+<script src="js/xlsx-lite.js?v=4"></script>
+<script src="js/tab-live.js?v=4"></script>
+<script src="js/live-analysis.js?v=4"></script>
+<script src="js/live-setup.js?v=4"></script>
+<script src="js/live-file.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

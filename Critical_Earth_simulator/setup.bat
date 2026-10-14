@@ -16,10 +16,10 @@ if errorlevel 1 (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo 가상환경(.venv) 생성 중...
+    echo 가상환경^(.venv^) 생성 중...
     python -m venv .venv
 ) else (
-    echo 가상환경(.venv) 이미 있음, 건너뜀.
+    echo 가상환경^(.venv^) 이미 있음, 건너뜀.
 )
 
 echo.

@@ -44,6 +44,9 @@ next-env.d.ts
 __pycache__/
 *.pyc
 Critical_Earth_simulator/data_log.csv
+# 실험 한 번마다 서버가 남기는 기록 (logs/실험_날짜_시각.jsonl·.csv) - data_log.csv처럼 각자 PC에만 둔다
+Critical_Earth_simulator/logs/
+Critical_Earth_simulator/.venv/
 
 # PyInstaller build output (재빌드 가능한 산출물, 배포는 GitHub Releases로)
 Critical_Earth_simulator/build/

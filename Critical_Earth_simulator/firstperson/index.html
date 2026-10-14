@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>미니 지구 모델 - 1인칭 탐험 모드</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<!-- 수중 진입 시 화면 전체에 씌우는 파란 틴트 -->
+<div id="waterOverlay"></div>
+
+<!-- 화면 정중앙 크로스헤어 -->
+<div id="crosshair"><span></span><span></span></div>
+
+<!-- 포인터락이 풀려 있을 때 뜨는 시작/재개 안내 -->
+<div id="startOverlay">
+  <div class="start-box">
+    <h2>미니 지구 · 1인칭 탐험</h2>
+    <p>화면을 클릭하면 전체화면으로 전환되고 마우스로 시점을 조작합니다.</p>
+    <p class="sub"><b>ESC</b> 를 누르면 마우스가 풀립니다.</p>
+    <p class="sub"><b>F</b> 를 누르면 야장의 <b>탐구 과제</b>에서 무엇을 조사할지 볼 수 있습니다. (<b>H</b> 조작법)</p>
+    <div class="start-btn">클릭해서 시작</div>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="hud-line"><b id="hudZone">습지·숲</b></div>
+  <div class="hud-line dim" id="hudPos">X 0m · Z 0m · 고도 0m</div>
+  <div class="hud-line dim">상태: <span id="hudMode">걷기</span></div>
+  <div class="hud-line dim">자동차: <span id="hudCars">-</span></div>
+  <div class="hud-line dim">바다: <span id="hudSea">-</span></div>
+  <div class="hud-line dim">산호: <span id="hudCoral">-</span></div>
+  <div class="hud-line dim" id="hudTime">낮 12:00</div>
+  <div class="hud-line dim key-hint"><b>H</b> 조작법 · <b>E</b> 설정 · <b>F</b> 야장·과제 · <b>M</b> 지도 · <b>1~4</b> 도구</div>
+</div>
+
+<!-- 기본은 숨김: 펼쳐두면 우하단 도구의 표시창을 가려서 측정값을 못 읽는다 (H로 토글) -->
+<div id="helpPanel" class="hidden">
+  <h3>조작법 <span class="key">H</span> 로 열고 닫기</h3>
+  <table>
+    <tr><td><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></td><td>이동</td></tr>
+    <tr><td>마우스 이동</td><td>시점 회전 (전체화면·마우스 고정 상태)</td></tr>
+    <tr><td><span class="key">ESC</span></td><td>마우스 고정 해제</td></tr>
+    <tr><td><span class="key">Shift</span></td><td>달리기</td></tr>
+    <tr><td><span class="key">Space</span></td><td>점프 / 물에서 헤엄쳐 오르기</td></tr>
+    <tr><td><span class="key">Ctrl</span> 또는 <span class="key">C</span></td><td>앉기</td></tr>
+    <tr><td><span class="key">G</span></td><td>비행 모드 켜기/끄기</td></tr>
+    <tr><td><span class="key">V</span> 또는 <span class="key">F5</span></td><td>1인칭 / 3인칭 전환</td></tr>
+    <tr><td><span class="key">R</span></td><td>출발 지점으로 되돌아가기</td></tr>
+    <tr><td><span class="key">E</span></td><td>설정창 열기/닫기 (밝기·CO₂·시각)</td></tr>
+    <tr><td><span class="key">F</span></td><td>야장 열기/닫기 (탐구 과제·측정 기록·통계·횡단 조사·CSV)</td></tr>
+    <tr><td><span class="key">T</span></td><td>시간 흐름 켜기/끄기 (낮↔밤)</td></tr>
+    <tr><td><span class="key">M</span></td><td>미니맵 크기 (보통 → 크게 → 끄기)</td></tr>
+    <tr><td><span class="key">1</span>~<span class="key">9</span></td><td>단축바에서 도구 선택</td></tr>
+    <tr><td>좌클릭</td><td>든 도구로 바라보는 지점 측정</td></tr>
+  </table>
+  <p class="note"><b>1 온도계</b> — 어디든 측정됩니다. 해수 · 빙하 · 해변 모래 · 녹지 지면 ·
+    도시 지면, 그리고 하늘을 겨누면 해양/녹지/도심 <b>대기</b>. 도시가 가장 뜨겁고 빙하가 가장 찹니다.
+    <b>유빙 주변 바다는 녹은 물 때문에 차갑습니다(냉수대).</b> 유빙에서 멀어지며 수온을 재 보세요.</p>
+  <p class="note"><b>2 pH미터</b> — 바다에서만. 겨눈 지점의 해수 상태로 계산하고 표시창에 <b>수온을 함께</b> 띄웁니다.
+    같은 CO₂·같은 수온이면 조감 모드 '미래 예측' 탭과 정확히 같은 값입니다.
+    수온은 pH를 거의 못 바꿉니다(냉수대와 개방 해역 차이 0.02 정도) — 온도 효과는 4번으로 보세요.</p>
+  <p class="note"><b>4 해수분석기</b> — 바다에서만. <b>용존 CO₂ · DIC(용존 무기탄소) · Ω(아라고나이트 포화도) · 수온</b>을
+    한 번에 잽니다. 차가운 물은 CO₂를 더 많이 녹이고(헨리 법칙) Ω가 낮습니다.
+    <b>Ω가 1 밑이면 빨간색</b> — 산호·조개 껍데기가 녹는 물입니다.</p>
+  <p class="note"><b>3 CO₂센서</b> — 해양 · 녹지 · 도심에서 값이 다릅니다. 도심이 가장 높고,
+    <b>나무 근처</b>는 광합성 때문에 특히 낮게 나옵니다. (수중에서는 측정 불가)
+    구역 공기는 <b>해륙풍</b>을 타고 섞입니다 — 낮에는 해풍이 도심을 환기하고,
+    <b>밤에는 육풍이 도심 CO₂를 바다 쪽으로 실어 나릅니다.</b> (HUD 맨 아래 줄에 지금 바람)</p>
+  <p class="note"><b>계측기에는 오차가 있습니다.</b> 좌클릭하면 값이 바로 뜨지 않고 실제 센서처럼
+    수렴합니다(막대가 다 차야 확정). 같은 자리를 다시 재도 값이 조금씩 다르니, 여러 번 재서
+    평균을 내세요. 평균과 표준편차는 <b>야장(F)</b>이 자동으로 계산합니다.</p>
+  <p class="note"><b>살아 있는 것도 재집니다.</b> 동물이나 물고기를 겨눠 보세요.
+    포유류는 <b>정온동물</b>이라 CO₂·계절·시간이 변해도 체온이 일정하고,
+    어류는 <b>변온동물</b>이라 체온이 곧 수온입니다. 나란히 재서 비교해 보세요.
+    (겨울 곰은 동면 중이라 체온이 크게 내려갑니다)</p>
+  <p class="note"><b>야장 (F)</b> — 측정할 때마다 자동 기록됩니다. 지점별 평균·표준편차,
+    횡단 조사 그래프, CSV 내보내기가 있습니다. CSV는 조감 모드 '실시간 실험' 탭과 같은
+    형식이라 아두이노 실측값과 같은 표에서 비교할 수 있습니다.</p>
+  <p class="note">눈높이 기준 1유닛 = 약 50m로 환산했습니다. 나무는 약 10m, 가장 높은 건물은 약 24m(8층)로 보입니다.</p>
+  <p class="note">서쪽(왼쪽) 해안 절벽에서 바다로 뛰어내리면 헤엄칠 수 있습니다.</p>
+</div>
+
+<!-- 마인크래프트식 단축바 (숫자키 1~9) -->
+<div id="hotbar"></div>
+
+<!-- 미니맵: 하늘에서 내려다본 지도 + 현위치 점 + 시야 부채꼴 (M키) -->
+<canvas id="minimap" width="220" height="124"></canvas>
+
+<!-- 기록된 측정 개수. 패널을 안 열어둬도 뭔가 남고 있다는 걸 알게 한다 -->
+<div id="fieldBadge">야장 0 · 과제 0/4</div>
+
+<!-- 짧은 안내 (동물 체온 이스터에그 등). 몇 초 뜨고 사라진다. -->
+<div id="toast"></div>
+
+<!-- 야장(野帳): 측정 기록 · 반복측정 통계 · 횡단 조사 그래프 · CSV 내보내기 (F키) -->
+<div id="fieldPanel" class="hidden">
+  <div class="field-box">
+    <h3>야외조사 야장 <span class="hint-key">F</span> 로 닫기 · 기록 <b id="fieldCount">0</b>건</h3>
+
+    <!-- 탭: 탐구 과제(무엇을 조사할지) / 기록·통계(잰 값) -->
+    <div class="field-tabs">
+      <button data-tab="tasks" class="on">탐구 과제 <span id="fieldTaskTally">0/4</span></button>
+      <button data-tab="records">기록 · 통계</button>
+    </div>
+
+    <div id="fieldTasksView">
+      <p class="task-intro" id="fieldTaskIntro"></p>
+      <div class="task-grid" id="fieldTasks"></div>
+      <p class="field-note">완료 여부는 <b>야장에 쌓인 기록 수</b>로만 판정합니다 — 값이 맞고 틀리고가 아니라,
+        조건을 채울 만큼 재었는지를 봅니다. 결론은 '기록 · 통계' 탭의 평균과 표준편차로 내리세요.</p>
+    </div>
+
+    <div id="fieldRecordsView" class="hidden">
+    <div class="field-cols">
+      <div class="field-col">
+        <h4>최근 측정</h4>
+        <table class="field-table">
+          <thead><tr><th>#</th><th>항목</th><th>지점</th><th>값</th><th>X, Z (m)</th></tr></thead>
+          <tbody id="fieldTBody"></tbody>
+        </table>
+      </div>
+      <div class="field-col">
+        <h4>지점별 반복측정 <span class="sub">계측기에는 재현성 오차가 있어 한 번 잰 값은 못 믿습니다</span></h4>
+        <table class="field-table">
+          <thead><tr><th>항목</th><th>지점</th><th>n</th><th>평균</th><th>표준편차</th></tr></thead>
+          <tbody id="fieldSummary"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <h4>횡단 조사 <span class="sub">해안 → 녹지 → 도심을 일직선으로 걸으며 재면 도시 열섬이 그래프 한 장에 나옵니다</span></h4>
+    <p class="field-note" id="fieldTransectState"></p>
+    <canvas id="fieldChart" width="620" height="180"></canvas>
+    </div>
+
+    <div class="field-actions">
+      <button id="fieldTransectBtn" class="settings-btn">횡단 조사 시작</button>
+      <button id="fieldCoastBtn" class="settings-btn">해안선 평행 조사</button>
+      <button id="fieldCsvBtn" class="settings-btn">CSV 내보내기</button>
+      <button id="fieldClearBtn" class="settings-btn ghost">기록 지우기</button>
+      <button id="fieldCloseBtn" class="settings-btn ghost">돌아가기</button>
+    </div>
+    <p class="field-note">CSV는 조감 모드 '실시간 실험' 탭과 같은 형식입니다. 아두이노 실측값과 같은 표에 놓고 비교해 보세요.</p>
+  </div>
+</div>
+
+<!-- E키로 여는 설정창. 열려 있는 동안은 마우스 커서가 돌아온다. -->
+<div id="settingsPanel" class="hidden">
+  <div class="settings-box">
+    <h3>설정 <span class="hint-key">E</span> 로 닫기</h3>
+    <label class="row">
+      <span class="lbl">밝기</span>
+      <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.15">
+    </label>
+    <label class="row">
+      <span class="lbl">CO₂ 농도</span>
+      <input type="range" id="co2Slider" min="280" max="1000" step="1" value="418">
+      <span class="val"><span id="co2Out">418</span> ppm</span>
+    </label>
+    <p class="note">CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <div class="row">
+      <span class="lbl">바다</span>
+      <span class="sea-eq" id="seaEqState">-</span>
+      <div class="btn-row" style="flex:0 0 auto"><button id="seaEqBtn">즉시 평형</button></div>
+    </div>
+    <p class="note">바다는 대기 CO₂를 <b>천천히</b> 따라갑니다(약 2게임일 ≈ 실시간 10분에 63 %).
+      CO₂를 바꾼 직후 pH를 재면 아직 옛 값에 가깝습니다 — 시간을 두고 반복 측정해 보세요.
+      수업 시간이 부족하면 <b>즉시 평형</b>을 누르면 해수가 지금 해양 대기와 바로 평형이 됩니다.</p>
+    <label class="row">
+      <span class="lbl">시각</span>
+      <input type="range" id="timeSlider" min="0" max="23.99" step="0.05" value="12">
+      <span class="val"><span id="timeOut">낮 12:00</span></span>
+    </label>
+    <div class="row">
+      <span class="lbl">계절</span>
+      <div class="btn-row" id="seasonBtns">
+        <button data-season="spring">봄</button><button data-season="summer">여름</button
+        ><button data-season="autumn">가을</button><button data-season="winter">겨울</button>
+      </div>
+    </div>
+    <p class="note">계절은 기온(여름 +8 / 겨울 −10°C)·일출일몰·경관을 함께 바꿉니다.
+      <b>CO₂도 계절을 탑니다</b> — 북반구 식생 때문에 봄에 높고 가을에 낮습니다(킬링 곡선).
+      슬라이더 값은 연평균이고, 센서로 재는 값은 그 위에서 흔들립니다.</p>
+    <div class="row">
+      <span class="lbl">날씨</span>
+      <div class="btn-row wrap" id="weatherBtns">
+        <button data-w="clear">맑음</button><button data-w="rain">비</button
+        ><button data-w="storm">폭풍</button><button data-w="snow">눈</button
+        ><button data-w="squall">스콜</button><button data-w="fog">안개</button>
+      </div>
+    </div>
+    <label class="row check">
+      <input type="checkbox" id="weatherRandomChk"><span class="lbl">무작위 날씨 (5분마다 바뀜)</span>
+    </label>
+    <p class="note">날씨는 <b>측정값도 바꿉니다.</b> 비는 지면을 2.5°C 낮추고,
+      <b>안개는 일교차를 0.4배로 죽입니다</b> — 복사냉각과 복사가열을 둘 다 막기 때문입니다.
+      안개 낀 날 밤낮 온도를 재서 맑은 날과 비교해 보세요. 스콜은 2~3분 뒤 저절로 갭니다.</p>
+    <label class="row check">
+      <input type="checkbox" id="soundChk" checked><span class="lbl">환경음 (파도·바람·풀벌레·차량)</span>
+    </label>
+    <label class="row check">
+      <input type="checkbox" id="timeFlowChk"><span class="lbl">시간 흐르게 하기 (5분에 하루) — <span class="hint-key">T</span></span>
+    </label>
+    <p class="note">기본은 정오에 멈춰 있습니다. 조사 중에 시간이 흐르면 같은 지점을 다시 재도 값이 달라져 자료를 못 씁니다.<br>
+      <b>밤에 재 보세요.</b> 도시–녹지 기온차(열섬)는 낮보다 밤에 커지고, 나무 밑 CO₂는 광합성이 멎어 낮과 반대로 높아집니다.</p>
+    <div class="settings-actions">
+      <button id="settingsCloseBtn" class="settings-btn">돌아가기</button>
+      <a class="settings-btn ghost" href="/">전체 조감 모드로</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="/js/earth-model.js"></script>
+<script src="fp-world.js"></script>
+<script src="fp-weather.js"></script>
+<script src="fp-audio.js"></script>
+<script src="fp-minimap.js"></script>
+<script src="fp-field.js"></script>
+<script src="fp-tools.js"></script>
+<script src="fp-player.js"></script>
+<script src="fp-main.js"></script>
+</body>
+</html>

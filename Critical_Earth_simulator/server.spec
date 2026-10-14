@@ -8,10 +8,17 @@ a = Analysis(
     binaries=[],
     datas=[
         ('index.html', '.'),
+        # 시작 화면. server.py 가 "/" 에서 이 파일을 돌려준다.
+        ('select.html', '.'),
         ('style.css', '.'),
         ('js', 'js'),
         ('texture_image', 'texture_image'),
+        # three.js·Chart.js (server.py가 /vendor 로 준다). 빠지면 StaticFiles가 시작하자마자 죽는다
+        ('vendor', 'vendor'),
         ('basic_experiments', 'basic_experiments'),
+        # 1인칭 탐험 모드. StaticFiles(directory=...) 는 폴더가 없으면 import 시점에
+        # RuntimeError 를 내므로, 빠뜨리면 exe 가 첫 화면도 못 띄우고 죽는다.
+        ('firstperson', 'firstperson'),
     ],
     hiddenimports=[
         'uvicorn.logging',
@@ -25,6 +32,10 @@ a = Analysis(
         'uvicorn.lifespan',
         'uvicorn.lifespan.on',
         'bleak.backends.winrt',
+        # server.py가 함수 안에서 import하는 모듈들 (내장 MQTT 브로커 / Mosquitto 연결용).
+        # PyInstaller가 대개 알아서 찾지만, 빠지면 exe에서 WiFi(MQTT)만 조용히 안 되므로 명시한다.
+        'mqtt_broker',
+        'paho.mqtt.client',
     ],
     hookspath=[],
     runtime_hooks=[],

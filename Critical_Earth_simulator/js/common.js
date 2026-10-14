@@ -761,7 +761,10 @@ return {
 
 // 3D 씬(자동차·건물·연기·습지 등)은 그대로 유지하되, 정책 슬라이더가 없어졌으므로
 // 아래 고정값으로 대체. CO2 값만 미래예측 탭 슬라이더/실시간 실험 탭 값으로 실시간 갱신됨.
-const CO2_MIN = 280, CO2_MAX = 600;
+// CO2_MIN / CO2_MAX 는 js/earth-model.js 에서 온다 (1인칭 모드와 공유, 280~1000).
+// 예전엔 여기서 280~600으로 따로 잡고 있었다. 그래서 (1) 1인칭 모드와 축이 달랐고,
+// (2) 실시간 실험 탭이 센서값을 600으로 잘라내고 있었다 - 교실 실내 CO2는 800~1500이
+// 예사라서 실측을 하면 계속 상한에 붙어 있었다.
 // 실시간 실험 탭에서만 쓰이는 실측 매핑 범위 (센서 실측값 → 3D 시각효과)
 const PH_MIN = 7.6, PH_MAX = 8.2;   // 해양 산성화 정상역
 const TMP_MIN = 15, TMP_MAX = 35;   // 기온(°C)
@@ -780,13 +783,14 @@ const lineOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, an
   plugins: { legend: { display: false } } });
 const scatterOpts = (yLabel) => ({ responsive: true, maintainAspectRatio: false, animation: false,
   scales: {
-    x: { min: 280, max: 600, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
+    x: { min: CO2_MIN, max: CO2_MAX, ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } },
     y: { title: { display: true, text: yLabel, color: textColor, font: { size: 9 } },
          ticks: { color: textColor, font: { size: 9 } }, grid: { color: gridColor } }
   },
   plugins: { legend: { display: false } } });
 
 function applyState(S) {
+  if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   S.lidMat.opacity = 0.12 + intensity * 0.35;
@@ -953,4 +957,23 @@ function animate() {
   sp.needsUpdate = true;
 
   renderer.render(S.scene, camera);
+}
+
+// ================= 화면별 아크릴은 필요할 때만 만들기 =================
+// 대시보드(index.html)에는 현재 실태·미래 예측·직접 실험 세 화면이 들어 있지만, 시작 화면에서 하나를
+// 골라 들어오므로 한 번에 하나만 보인다. 예전처럼 세 화면 아크릴을 다 만들면 둘은 만들기만 하고 안 쓰는
+// 셈이라(나무·물·건물 한 세트씩), 지금 연 화면 것만 만든다. 나머지는 state만 가진 빈 껍데기로 두고,
+// 그 화면을 실제로 열 때 ensureSceneBuilt()가 같은 객체를 채운다 - 탭 코드가 들고 있는 sceneFuture 같은
+// 변수가 그대로 같은 객체를 가리키므로 탭 코드는 고칠 필요가 없다.
+const DASHBOARD_TAB = new URLSearchParams(location.search).get('tab') || 'current';
+function sceneFor(tab) {
+  return tab === DASHBOARD_TAB ? buildAcrylicScene() : { dormant: true, state: {} };
+}
+function ensureSceneBuilt(S) {
+  if (!S || !S.dormant) return S;
+  const kept = S.state;            // 껍데기일 때 탭 코드가 넣어 둔 값(예: 슬라이더 CO2)은 살린다
+  Object.assign(S, buildAcrylicScene());
+  Object.assign(S.state, kept);
+  S.dormant = false;
+  return S;
 }
