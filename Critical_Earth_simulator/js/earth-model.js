@@ -92,6 +92,55 @@ function seawaterState(ppm, tC = T_REF, TA = OCEAN_TA) {
 function seawaterPH(ppm, tC = T_REF) { return seawaterState(ppm, tC).pH; }
 function aragoniteOmega(ppm, tC = T_REF) { return seawaterState(ppm, tC).omega; }
 
+// ── 역방향: DIC가 주어졌을 때 표층 해수의 pCO2 ────────────────────────────────
+// seawaterState()는 "대기 CO2가 이만큼이면 바다가 평형일 때 어떤가"를 푼다.
+// 지구 시스템 엔진(js/earth-system.js)은 반대로, 바다가 실제로 품고 있는 탄소(DIC)를
+// 적분하면서 "그 바다가 내뿜으려는 CO2 분압"을 알아야 대기와의 교환량을 계산할 수 있다.
+// 같은 가정(TA = [HCO3-] + 2[CO3^2-], 붕산염 없음)에서 DIC를 고정하면
+//     TA·h² + (TA−DIC)·K1·h + (TA−2·DIC)·K1·K2 = 0
+// 이 되어 역시 근의 공식으로 풀린다 (tools/earth_system_ref/engine.py의 pco2_from_dic과 같은 식).
+// seawaterState(p, t).dic을 넣으면 p가 그대로 되돌아온다 (상대오차 1e-9 이내).
+function pco2FromDic(dic, tC, TA = OCEAN_TA) {
+  const c = carbonateConstants(tC);
+  const a = TA, b = (TA - dic) * c.K1, cc = (TA - 2 * dic) * c.K1 * c.K2;
+  const h = (-b + Math.sqrt(b * b - 4 * a * cc)) / (2 * a);
+  const den = h * h + c.K1 * h + c.K1 * c.K2;
+  const co2aq = dic * h * h / den;
+  const hco3 = dic * c.K1 * h / den;
+  const co3 = dic * c.K1 * c.K2 / den;
+  return {
+    pco2: co2aq / c.K0 * 1e6,                          // atm -> ppm
+    pH: -Math.log10(h),
+    omega: OCEAN_CA * co3 / c.KspAr,
+    co2aq, hco3, co3,
+  };
+}
+
+// 복사강제력 [W/m²] - CO2가 기준 농도 c0 대비 얼마나 열을 더 가두는가.
+// 농도가 아니라 농도의 로그에 비례한다 (Myhre et al. 1998의 단순식).
+function radiativeForcing(ppm, c0) {
+  return 5.35 * Math.log(ppm / c0);
+}
+
+// Revelle 계수 = (ΔpCO2/pCO2) / (ΔDIC/DIC). "바다의 완충 능력"의 역수 같은 값이다.
+// 이 값이 클수록 대기 CO2가 늘어도 바다가 그만큼 덜 받아 준다.
+// engine.py의 revelle()과 같은 수치미분(1 ppm 차분).
+function revelleFactor(ppm, tC) {
+  const d = 1.0;
+  const a = seawaterState(ppm, tC).dic;
+  const b = seawaterState(ppm + d, tC).dic;
+  return (d / ppm) / ((b - a) / a);
+}
+
+// 바다의 완충 능력 - 기준 시점(보통 1750년) 대비 상대값 (1 = 그때와 같음).
+// 화면에는 이 상대값(%)만 쓴다. 이 모형은 붕산염 알칼리도를 빼서 TA를 탄산염만으로
+// 두기 때문에 Revelle 계수 절댓값이 12~20으로 실제 바다(약 10)보다 높게 나온다.
+// 절댓값은 틀리지만 "얼마나 나빠졌나"라는 변화 비율은 붕산염 유무에 덜 민감하므로
+// 비율로만 보여 준다.
+function bufferCapacityRel(ppm, tC, refPpm, refTC) {
+  return revelleFactor(refPpm, refTC) / revelleFactor(ppm, tC);
+}
+
 // ============================================================================
 // 2) 기온 편차 - 관측치를 '로그 형태'로 회귀
 // ----------------------------------------------------------------------------
@@ -111,10 +160,14 @@ const CLIMATE_LAMBDA = 4.2580;    // °C per CO2 doubling
 const CLIMATE_OFFSET = -1.8579;   // 1991-2020 평년 기준으로 맞춘 절편
 const IPCC_LAMBDA_RANGE = [2.5, 4.0];
 
+// 1인칭 모드 전용으로 남겨 둔 회귀식. 조감 모드는 js/earth-system.js의 2층 에너지 균형 모델을 쓴다.
+// 3단계(1인칭 연동)에서 교체 예정.
 // 1991-2020 평년 대비 기온 편차 [°C]
 function climateAnomaly(ppm) {
   return CLIMATE_LAMBDA * Math.log2(Math.max(1, ppm) / 280) + CLIMATE_OFFSET;
 }
+// 1인칭 모드 전용으로 남겨 둔 회귀식. 조감 모드는 js/earth-system.js의 2층 에너지 균형 모델을 쓴다.
+// 3단계(1인칭 연동)에서 교체 예정.
 // 산업화 이전(280ppm) 대비 승온 - 1인칭 지면·대기 온도가 이 값을 기준으로 오른다
 function warmingSince280(ppm) {
   return climateAnomaly(ppm) - climateAnomaly(280);
