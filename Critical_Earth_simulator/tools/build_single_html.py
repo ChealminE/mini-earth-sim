@@ -96,7 +96,7 @@ CSS = {
 }
 BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
-AERIAL_JS = ["js/earth-model.js", "js/common.js", "js/tab-current.js",
+AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
              "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
@@ -174,7 +174,7 @@ CARDS = [
     ("current", "\U0001F30D", "현재 실태",
      "1988~2023년 CO₂ 농도·기온편차·해양 pH·화석연료 배출 실측 데이터 그래프", ""),
     ("future", "\U0001F52E", "미래 예측",
-     "CO₂ 농도를 슬라이더로 바꿔가며 미래의 기온·해양 산성화를 예측", ""),
+     "1750~2200년 타임라인 · 자연 지구와 인간활동 지구를 나란히, 배출 시나리오·레버로 미래의 기온·해양 산성화를 예측", ""),
     ("live", "\U0001F52C", "직접 실험",
      "센서 실시간 측정 — 이 단일 파일 버전에서는 쓸 수 없습니다 (server.py 필요)", "off"),
     ("fp", "\U0001F9ED", "탐험",

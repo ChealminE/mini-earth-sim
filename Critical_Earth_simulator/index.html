@@ -92,6 +92,9 @@
   <div id="gl-container">
     <canvas id="gl"></canvas>
     <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
+    <!-- 미래 예측 탭에서만 보임: 좌우 두 지구의 이름표 (js/tab-future.js) -->
+    <div class="earth-label left"><b>자연만 있는 지구</b> <span class="sub">배출 0</span><span class="val" id="earthValL"></span></div>
+    <div class="earth-label right"><b>인간활동 지구</b> <span class="sub" id="earthSubR">현재 추세</span><span class="val" id="earthValR"></span></div>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
       <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
@@ -102,6 +105,68 @@
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
     <div class="sub" id="tabHeaderDesc">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+
+    <!-- 미래 예측 탭에서만 보임: 오른쪽(인간활동) 지구의 배출 조작 (js/tab-future.js) -->
+    <div class="future-only fc" id="futureControls">
+      <div class="fc-mode" id="fcMode">
+        <button data-mode="scenario" class="on">시나리오</button><button data-mode="fixed">농도 고정</button>
+      </div>
+
+      <div id="fcFixed" hidden>
+        <div class="fc-title">2024년부터 오른쪽 지구의 CO₂를 고정 <span>(대기만 고정, 바다·토양·기온은 계속 계산)</span></div>
+        <div class="fc-btns" id="fcFixedBtns">
+          <button class="mini-btn" data-ppm="280">280 ppm</button>
+          <button class="mini-btn" data-ppm="418">418 ppm</button>
+          <button class="mini-btn" data-ppm="560">560 ppm</button>
+          <button class="mini-btn" data-ppm="800">800 ppm</button>
+          <button class="mini-btn" data-ppm="1000">1000 ppm</button>
+        </div>
+        <p class="fc-note">pH는 바로 바뀌지만, 바다가 데워지는 데는 수백 년이 걸려서 기온은 천천히 따라간다.</p>
+        <p class="fc-desc" id="fcFixedDesc"></p>
+      </div>
+
+      <div id="fcScenario">
+      <div class="fc-title">인간활동 지구의 배출 <span>(오른쪽 지구)</span></div>
+      <div class="fc-btns" id="fcPresets">
+        <button class="mini-btn" data-preset="bau">현재 추세</button>
+        <button class="mini-btn" data-preset="paris">파리협약</button>
+        <button class="mini-btn" data-preset="nz2050">2050 탄소중립</button>
+        <button class="mini-btn" data-preset="custom">직접 설계</button>
+      </div>
+      <p class="fc-desc" id="fcPresetDesc"></p>
+
+      <div class="fc-levers" id="fcLevers" hidden>
+        <p class="fc-note">레버 값은 <b>2050년 목표</b>입니다. <b>2024년부터</b> 지금 값에서 목표까지 차츰 바뀌고, 2050년 뒤로는 목표를 유지합니다. 2023년까지는 실제 배출량 그대로입니다.</p>
+        <div class="lv">
+          <div class="lv-head">전력 구성 <span class="lv-val" id="lvMixVal"></span></div>
+          <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
+          <label class="lv-sub">화석 연료 발전 비중 <input type="range" id="lvFossil" min="0" max="100" step="1"></label>
+          <label class="lv-sub">나머지(무탄소) 중 원자력 몫 <input type="range" id="lvNucShare" min="0" max="100" step="1"></label>
+          <div class="lv-help">세 비중의 합은 항상 100 %. 원자력과 재생에너지는 <b>CO₂ 배출만 보면 같습니다</b>(둘 다 0).</div>
+        </div>
+        <div class="lv">
+          <div class="lv-head">전기차 비율 (보유 차량 중) <span class="lv-val" id="lvEvVal"></span></div>
+          <input type="range" id="lvEv" min="0" max="100" step="1">
+          <div class="lv-help">전기차도 충전하는 전기만큼 배출합니다. 화석 발전을 같이 줄여야 효과가 커집니다.</div>
+        </div>
+        <div class="lv">
+          <div class="lv-head">탄소 포집 <span class="lv-val" id="lvCcsVal"></span></div>
+          <input type="range" id="lvCcs" min="0" max="3" step="0.1">
+        </div>
+        <div class="lv">
+          <div class="lv-head">기타 부문 감축 (산업·건물·항공·해운 등) <span class="lv-val" id="lvOtherVal"></span></div>
+          <input type="range" id="lvOther" min="0" max="100" step="1">
+        </div>
+        <div class="lv">
+          <div class="lv-head">산림 (토지이용 배출) <span class="lv-val" id="lvForestVal"></span></div>
+          <input type="range" id="lvForest" step="any">
+          <div class="lv-scale"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
+        </div>
+        <div class="fc-result" id="lvResult"></div>
+        <button class="mini-btn" id="lvReset">지금 값으로 되돌리기</button>
+      </div>
+      </div>
+    </div>
   </div>
 
   <div id="graph-panel">
@@ -122,43 +187,89 @@
     </div>
 
     <div class="tab-panel" id="tab-future">
-      <div class="co2-row">
-        <span class="name">CO₂ 농도 (ppm)</span>
-        <input type="range" min="280" max="1000" step="1" value="418" id="co2slider">
-        <span class="value" id="co2out">418</span>
+      <!-- 1750~2200 타임라인. 궤적은 js/earth-system.js가 미리 계산하고 여기서는 배열을 읽기만 한다 (js/tab-future.js) -->
+      <div class="tl-bar">
+        <button class="tl-play" id="tlPlay" title="재생 / 일시정지">▶</button>
+        <span class="tl-year"><b id="tlYear">2023</b>년</span>
+        <input type="range" id="tlScrub" min="1750" max="2200" step="1" value="2023" title="연도 이동">
+        <select class="modal-input tl-speed" id="tlSpeed" title="재생 속도">
+          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="25">25년/초</option>
+        </select>
       </div>
-      <p class="hint">실측 범위: 350~418ppm (1988~2023). 해양 pH는 회귀가 아니라 <b>탄산 평형식</b>을 직접 풀어 구합니다(관측 35점을 RMSE 0.008로 재현). 기온편차는 복사강제력이 농도의 로그에 비례하는 점을 반영해 <b>log₂ 형태로 회귀</b>했습니다. 그래도 실측 범위 밖은 추정치이고, 기후 시스템은 임계점을 지나면 관계가 깨질 수 있어 극단값은 참고용으로만 보세요. 이 슬라이더 값은 왼쪽 3D 씬과 <b>1인칭 탐험 모드</b>에도 똑같이 반영됩니다.</p>
+      <div class="tl-jumps" id="tlJumps">
+        <button class="mini-btn" data-year="1750">1750 산업혁명 이전</button>
+        <button class="mini-btn" data-year="1850">1850</button>
+        <button class="mini-btn" data-year="1950">1950</button>
+        <button class="mini-btn" data-year="2023">2023 현재</button>
+        <button class="mini-btn" data-year="2100">2100</button>
+        <button class="mini-btn" data-year="2200">2200</button>
+        <span class="tl-season">관측 계절
+          <span class="fc-btns" id="seasonBtns"><button class="mini-btn" data-season="spring">봄</button><button class="mini-btn" data-season="summer">여름</button><button class="mini-btn" data-season="autumn">가을</button><button class="mini-btn" data-season="winter">겨울</button></span>
+        </span>
+      </div>
+      <p class="hint season-hint">엔진은 <b>연평균</b>으로 계산하고, 계절은 그 위에 얹는 <b>관측 시점의 차이</b>입니다. 계절을 바꾸면 측정값(CO₂ 계절 진동·기온·해수온)과 빙하·나뭇잎만 달라지고 궤적은 그대로입니다. 재생 중에도 계절은 저절로 바뀌지 않습니다.</p>
 
-      <div class="stat-grid">
-        <div class="stat-box"><div class="label">예측 기온편차 (1991-2020 대비)</div><div class="value temp" id="tempval">+0.60°C</div></div>
-        <div class="stat-box"><div class="label">예측 해양 pH</div><div class="value ph" id="phval">8.042</div></div>
-        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="omegaval">3.51</div></div>
+      <p class="hint" id="futureHint">CO₂는 슬라이더로 넣는 값이 아니라 <b>배출을 쌓아 계산한 결과</b>입니다. 사람이 내보낸 탄소는 대기·바다·토양(식생)으로 나뉘어 들어가고, 대기에 남은 만큼 기온이 오르고, 바다에 녹은 만큼 pH가 내려갑니다. 2023년까지는 실제 배출량, 2024년부터는 고른 시나리오를 따릅니다.</p>
+
+      <div class="fut-cards-title">연평균 (엔진 계산) · <b id="cardsYear">2023</b>년</div>
+      <div class="stat-grid fut-cards">
+        <div class="stat-box"><div class="label">대기 CO₂</div><div class="value" id="cardCo2">-</div></div>
+        <div class="stat-box"><div class="label">기온 편차 (산업화 이전 대비)</div><div class="value temp" id="cardT">-</div></div>
+        <div class="stat-box"><div class="label">표층 해수온</div><div class="value temp" id="cardSst">-</div></div>
+        <div class="stat-box"><div class="label">해수 pH</div><div class="value ph" id="cardPh">-</div></div>
+        <div class="stat-box omega-box"><div class="label">아라고나이트 포화도 Ω <span style="font-weight:400">(1 미만이면 골격 용해)</span></div><div class="value ph" id="cardOmega">-</div></div>
+        <div class="stat-box"><div class="label">바다의 완충 능력 (1750 대비)</div><div class="value" id="cardBuffer">-</div></div>
+      </div>
+
+      <!-- 측정 패널: 프로그램 공통 측정 요소 4개 (co2_ppm, air_temp, water_temp, ph) - 재생 연도 + 관측 계절 -->
+      <div class="chart-block meas-block">
+        <div class="chart-title">측정 — <b id="measWhen">2023년 봄</b>에 두 지구를 재면</div>
+        <div class="meas-grid" id="measGrid">
+          <div class="meas-h"></div><div class="meas-h">자연만 있는 지구</div><div class="meas-h">인간활동 지구</div>
+        </div>
+        <div class="meas-actions">
+          <span></span>
+          <button class="mini-btn" data-rec="nature">이 지구 기록</button>
+          <button class="mini-btn" data-rec="human">이 지구 기록</button>
+        </div>
+        <div class="meas-log-head">
+          <span>기록 <b id="measCount">0</b>줄</span>
+          <button class="mini-btn" id="measCsv">CSV 내보내기</button>
+          <button class="mini-btn" id="measClear">기록 지우기</button>
+        </div>
+        <div class="meas-log-wrap"><table class="spec-table meas-log">
+          <thead><tr><th>연도</th><th>계절</th><th>시나리오/고정값</th><th>지구</th><th>co2_ppm</th><th>air_temp</th><th>water_temp</th><th>ph</th></tr></thead>
+          <tbody id="measLog"></tbody>
+        </table></div>
       </div>
 
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">CO₂ vs 기온편차 (관측 r=0.924)</div><div class="chart-wrap"><canvas id="chart1"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">CO₂ vs 해양pH (관측 r=-0.972 · 곡선=탄산평형)</div><div class="chart-wrap"><canvas id="chart2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)</div><div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)</div><div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해수 pH · 아라고나이트 포화도 Ω</div><div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title" id="sinkTitle"><span id="sinkLead">배출된 탄소는 어디로 갔나</span> (<b id="sinkYear">2023</b>년까지 누적, GtC)</div><div class="chart-wrap sink-wrap"><canvas id="futChartSink"></canvas></div>
+          <div class="sink-note" id="sinkNote"></div></div>
       </div>
 
-      <!-- 화학종 분포: seawaterState()가 이미 계산하는 [CO2(aq)]·[HCO3-]·[CO3^2-]를 그대로 보여준다 -->
+      <!-- 화학종 분포: 재생 연도의 엔진 값(co2aq/hco3/co3)을 1750년과 비교한다 -->
       <div class="chart-block speciation-block">
-        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 수온 25 °C)</div>
+        <div class="chart-title">바닷물 속 탄소는 어떤 모습으로 있을까 — 탄산 화학종 분포 (DIC = 100 %, 표층 해수)</div>
         <div class="spec-bar-row">
-          <span class="spec-bar-label">산업화 이전<br>280 ppm</span>
+          <span class="spec-bar-label">1750년<br><span id="specRefPpm">278</span> ppm</span>
           <div class="spec-bar" id="specBarRef"></div>
         </div>
         <div class="spec-bar-row">
-          <span class="spec-bar-label">현재 설정<br><b id="specBarCo2">418</b> ppm</span>
+          <span class="spec-bar-label"><b id="specBarYear">2023</b>년<br><b id="specBarCo2">418</b> ppm</span>
           <div class="spec-bar" id="specBarNow"></div>
         </div>
         <table class="spec-table">
-          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>280 ppm 대비</th></tr></thead>
+          <thead><tr><th>화학종</th><th>비율</th><th>농도 (µmol/kg)</th><th>1750년 대비</th></tr></thead>
           <tbody id="specTableBody"></tbody>
         </table>
       </div>
-      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b>(280 → 1000 ppm에서 약 60 % 감소) <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다.</p>
+      <p class="buffer-note"><b>완충 반응 &nbsp;CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b><br>바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 H⁺ 증가를 막아 pH가 생각보다 덜 떨어지지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄어들고</b> <b>아라고나이트 포화도 Ω가 함께 떨어집니다.</b> 산호·조개 껍데기가 위험한 진짜 이유는 pH 자체보다 이 CO₃²⁻ 감소입니다. CO₃²⁻가 줄수록 바다가 CO₂를 더 받아 줄 여유도 줄어드는데, 이것이 <b>바다의 완충 능력</b> 감소입니다(용어: Revelle 계수).</p>
 
-      <p class="reg-note">기온편차 = 4.258 × log₂(CO₂/280) − 1.858 (r=0.924) · 여기서 4.258°C/배증이 이 관측 기록에서 읽어낸 기후민감도입니다 (IPCC 최적추정 3.0, 범위 2.5~4.0).<br>해양 pH는 회귀식이 아니라 탄산 평형(K₀·K₁·K₂ + 총알칼리도 일정)을 풀어 계산합니다 — 관측 35점 RMSE 0.008.</p>
+      <p class="reg-note" id="modelNote">이 계산은 <b>4상자 탄소순환</b>(대기 · 표층 바다 · 심층 바다 · 토양과 식생)과 <b>2층 에너지 균형</b>(표층·심층 바다의 열) 모형입니다. 기온은 CO₂가 가두는 열(복사강제력 5.35 × ln(CO₂/278) W/m²)로 데워지는데, 열의 상당 부분이 깊은 바다로 스며들어 <b>기온은 수백 년에 걸쳐 천천히</b> 따라갑니다. 반면 pH는 표층 바다가 대기와 몇 년 만에 맞춰지므로 <b>CO₂를 바로</b> 따라갑니다. 피드백: 기온이 오르면 바닷물의 CO₂ 용해도가 줄고(헨리 상수 K₀) 토양 호흡이 빨라져(Q10 = 2) 대기에 CO₂가 더 남습니다. 지구 평균 CO₂(1988~2023)를 RMSE 2.8 ppm으로 재현합니다.</p>
     </div>
 
     <div class="tab-panel" id="tab-live">
@@ -472,16 +583,18 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
-<script src="js/earth-model.js?v=3"></script>
-<script src="js/common.js?v=3"></script>
-<script src="js/tab-current.js?v=3"></script>
-<script src="js/tab-future.js?v=3"></script>
+<script src="js/earth-model.js?v=4"></script>
+<script src="js/earth-data.js?v=1"></script>
+<script src="js/earth-system.js?v=1"></script>
+<script src="js/common.js?v=4"></script>
+<script src="js/tab-current.js?v=4"></script>
+<script src="js/tab-future.js?v=4"></script>
 <script src="js/live-fit.js?v=4"></script>
 <script src="js/xlsx-lite.js?v=4"></script>
 <script src="js/tab-live.js?v=4"></script>
 <script src="js/live-analysis.js?v=4"></script>
 <script src="js/live-setup.js?v=4"></script>
 <script src="js/live-file.js?v=4"></script>
-<script src="js/main.js?v=4"></script>
+<script src="js/main.js?v=5"></script>
 </body>
 </html>

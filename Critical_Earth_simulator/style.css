@@ -510,3 +510,83 @@ body.live-file .lr-side-hint { display: none; }
 .lm-dev { color: #85B7EB; flex-shrink: 0; }
 .lm-text { color: #e7e9ec; }
 .lm-foot { margin: 0 !important; padding: 4px 8px; border-top: 1px solid #262a31; font-size: 10.5px; }
+
+/* ── 미래 예측 탭: 타임라인 ── */
+.tl-bar { position: sticky; top: -18px; z-index: 5; display: flex; align-items: center; gap: 10px;
+  background: #1b1e24; padding: 8px 0 6px; margin-top: -6px; }
+.tl-play { width: 34px; height: 30px; border-radius: 8px; border: 1px solid #2f8f7a; background: #10231c; color: #5DCAA5;
+  font-size: 14px; cursor: pointer; flex-shrink: 0; }
+.tl-play.on { background: #5DCAA5; color: #10231c; }
+.tl-year { font-size: 12px; color: #9198a3; white-space: nowrap; min-width: 62px; }
+.tl-year b { font-size: 18px; color: #e7e9ec; font-variant-numeric: tabular-nums; }
+.tl-bar input[type=range] { flex: 1; accent-color: #5DCAA5; }
+.tl-bar .tl-speed { width: auto; flex: 0 0 auto; padding: 4px 6px; font-size: 11px; }
+.tl-jumps { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 10px; }
+.fut-cards-title { font-size: 11px; color: #9198a3; margin: 0 0 6px; }
+.fut-cards-title b { color: #e7e9ec; }
+.stat-grid.fut-cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.sink-wrap { height: 150px; }
+.sink-note { font-size: 10.5px; color: #9198a3; margin-top: 6px; line-height: 1.5; }
+
+/* ── 미래 예측 탭: 두 지구 분할 ──
+   두 아크릴을 좌우로 나란히 그리면 원래 왼쪽 위 칸(가로 1/3~44%)에서는 한 지구가 너무 작아진다.
+   그래서 이 탭에서만 3D 칸을 화면 위쪽 전체 폭으로 펼치고, 아래를 조작(왼쪽) | 결과(오른쪽)로 쓴다. */
+body.tab-future #app { grid-template-columns: minmax(0, 27fr) minmax(0, 73fr); grid-template-rows: minmax(0, 44vh) minmax(0, 1fr); }
+body.tab-future #gl-container { grid-column: 1 / span 2; grid-row: 1; aspect-ratio: auto; max-height: none; border-right: none; }
+body.tab-future #tab-header-panel { grid-column: 1; grid-row: 2; }
+body.tab-future #graph-panel { grid-column: 2; grid-row: 2; }
+.earth-label { display: none; position: absolute; top: 12px; transform: translateX(-50%); pointer-events: none;
+  background: rgba(0,0,0,0.45); color: #e7e9ec; font-size: 12px; padding: 5px 11px; border-radius: 8px; white-space: nowrap; text-align: center; }
+.earth-label .sub { font-size: 10.5px; color: #9198a3; }
+.earth-label .val { display: block; font-size: 11px; color: #cfd3da; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.earth-label.left { left: 25%; }
+.earth-label.right { left: 75%; }
+body.tab-future .earth-label { display: block; }
+body.tab-future #hint { top: auto; left: auto; right: 14px; bottom: 14px; }
+
+/* ── 미래 예측 탭: 조작 패널 (왼쪽 아래 칸) ── */
+.future-only { display: none; }
+body.tab-future .future-only { display: block; }
+.fc { margin-top: 14px; border-top: 1px solid #2a2e35; padding-top: 12px; }
+.fc-title { font-size: 12px; font-weight: 600; color: #cfd3da; margin-bottom: 7px; }
+.fc-title span { font-weight: 400; color: #7d838d; font-size: 10.5px; }
+.fc-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+.fc-btns .mini-btn.on, .tl-jumps .mini-btn.on { background: #10231c; color: #5DCAA5; border-color: #2f8f7a; font-weight: 600; }
+.fc-desc { font-size: 10.5px; color: #9198a3; line-height: 1.55; margin: 7px 0 4px; }
+.fc-note { font-size: 10.5px; color: #cfe9df; background: rgba(93,202,165,0.08); border-radius: 6px; padding: 7px 9px; line-height: 1.55; margin: 8px 0; }
+.lv { margin: 10px 0; }
+.lv-head { font-size: 11px; color: #cfd3da; display: flex; justify-content: space-between; gap: 6px; margin-bottom: 3px; }
+.lv-val { color: #5DCAA5; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lv input[type=range] { width: 100%; accent-color: #5DCAA5; }
+.lv-sub { display: block; font-size: 10px; color: #9198a3; margin-top: 3px; }
+.lv-help { font-size: 10px; color: #7d838d; line-height: 1.5; }
+.lv-scale { display: flex; justify-content: space-between; font-size: 9.5px; color: #7d838d; }
+.mix-bar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: #23272f; margin: 3px 0 2px; }
+.mix-seg { height: 100%; font-size: 9.5px; color: #10231c; font-weight: 600; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.mix-seg.fossil { background: #9a9a96; }
+.mix-seg.nuclear { background: #d9c46c; }
+.mix-seg.renew { background: #5DCAA5; }
+.fc-result { font-size: 11px; color: #e7e9ec; background: #23272f; border-radius: 6px; padding: 7px 9px; margin: 8px 0; line-height: 1.5; }
+.fc-mode { display: inline-flex; border: 1px solid #3a3f47; border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
+.fc-mode button { background: #23272f; color: #9198a3; border: none; font-size: 11.5px; padding: 6px 14px; cursor: pointer; }
+.fc-mode button.on { background: #5DCAA5; color: #10231c; font-weight: 600; }
+.tl-season { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #9198a3; }
+.season-hint { margin: -4px 0 10px; }
+
+/* ── 미래 예측 탭: 측정 패널 ── */
+.meas-block .chart-title b { color: #e7e9ec; }
+.meas-grid, .meas-actions { display: grid; grid-template-columns: minmax(110px, 0.8fr) 1fr 1fr; gap: 6px 14px; align-items: center; }
+.meas-h { font-size: 11px; color: #cfd3da; font-weight: 600; }
+.meas-name { font-size: 11px; color: #cfd3da; }
+.meas-name span { font-size: 9.5px; color: #6b7178; font-family: ui-monospace, monospace; }
+.meas-cell { display: flex; align-items: center; gap: 8px; }
+.meas-gauge { flex: 1; height: 8px; border-radius: 4px; background: #23272f; overflow: hidden; }
+.meas-fill { height: 100%; border-radius: 4px; background: #5DCAA5; }
+.meas-cell.nature .meas-fill { background: #7d838d; }
+.meas-val { font-size: 13px; font-weight: 600; min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; color: #e7e9ec; }
+.meas-actions { margin-top: 8px; }
+.meas-actions .mini-btn { justify-self: start; }
+.meas-log-head { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11px; color: #9198a3; }
+.meas-log-head span { margin-right: auto; }
+.meas-log-wrap { max-height: 150px; overflow-y: auto; }
+.meas-log td, .meas-log th { text-align: right; }

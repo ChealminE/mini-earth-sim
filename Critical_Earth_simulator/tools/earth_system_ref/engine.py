@@ -58,12 +58,25 @@ mlo = {int(r['Year']): float(r['Mean']) for r in csv.DictReader(open(os.path.joi
 PPM2GTC = 2.124
 MOL2GTC = 12e-15
 A_OCEAN = 3.61e14; RHO = 1025
-P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=5.0,    # 해양
-         npp0=60.0, tau_land=50.0, beta=0.32, q10=2.0,             # 토양·식생
+# 보정값: 앱이 2023년을 지구 평균 418.24 ppm으로 보여 주므로 마우나로아가 아니라
+# 지구 평균(js/tab-current.js의 histCo2)에 맞춰 격자 탐색으로 고른 값이다.
+# (예전 MLO 기준값: tau_mix=5.0, beta=0.32, c0=277.0)
+P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=6.0,    # 해양
+         npp0=60.0, tau_land=50.0, beta=0.38, q10=2.0,             # 토양·식생
          lam=1.2, Cs=8.0, Cd=100.0, gamma=0.7,                     # 2층 기온 (W, yr, m2, K)
-         sst0=18.0, c0=277.0)
+         sst0=18.0, c0=278.0)
 
-def run(years, emis_fn, p=P, dt=0.1):
+# 지구 평균 CO2 1988~2023 - js/tab-current.js의 histCo2를 그대로 옮긴 것 (검증용)
+GLOBAL_CO2_START = 1988
+GLOBAL_CO2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24]
+
+# dt는 0.25년으로 고정한다. 결과가 dt에 따라 조금씩 달라지므로(전진 오일러)
+# 보정값과 js/earth-system.js 대조가 모두 이 dt를 전제로 한다.
+DT = 0.25
+
+def run(years, emis_fn, p=P, dt=DT, fixed_ppm=None, fix_from=2024):
+    # fixed_ppm: 농도 고정 모드. fix_from년부터 대기 CO2를 이 값에 묶고(대기는 적분하지 않음)
+    # 해양·토양·기온만 그 농도에서 계속 적분한다. 배출은 쓰지 않는다(0).
     Ms = A_OCEAN*p['h_mix']*RHO; Md = A_OCEAN*p['h_deep']*RHO
     ca = p['c0']*PPM2GTC
     dic_s = state_from_pco2(p['c0'], p['sst0'])['dic']; dic_d0 = dic_s; dic_d = dic_s
@@ -71,7 +84,12 @@ def run(years, emis_fn, p=P, dt=0.1):
     T = 0.0; Td = 0.0
     out = []
     for y in years:
-        E_f, E_l = emis_fn(y)
+        fixed = fixed_ppm is not None and y >= fix_from
+        if fixed:
+            E_f, E_l = 0, 0
+            ca = fixed_ppm*PPM2GTC
+        else:
+            E_f, E_l = emis_fn(y)
         fo = fl = 0
         for _ in range(int(round(1/dt))):
             ppm = ca/PPM2GTC
@@ -81,7 +99,8 @@ def run(years, emis_fn, p=P, dt=0.1):
             npp = p['npp0']*(1 + p['beta']*math.log(ppm/p['c0']))
             resp = cl/p['tau_land']*p['q10']**(T/10)
             F_land = npp - resp                                        # 대기->토양
-            ca += (E_f + E_l - F_ao - F_land)*dt
+            if not fixed:
+                ca += (E_f + E_l - F_ao - F_land)*dt
             cl += (F_land - E_l)*dt
             dic_s += (F_ao - F_sd)/MOL2GTC/Ms*dt
             dic_d += F_sd/MOL2GTC/Md*dt
@@ -96,8 +115,39 @@ def run(years, emis_fn, p=P, dt=0.1):
     return out
 
 hist = lambda y: (em[y][0], em[y][1]) if y in em else (0, 0)
+nature = lambda y: (0, 0)
+
+def run_fixed(ppm, years=range(1750, 2201), p=P):
+    # 2023년까지 역사 배출, 2024년부터 대기 CO2 = ppm 고정
+    return run(years, hist, p, fixed_ppm=ppm)
+
+FIXED_PPMS = [280, 418, 560, 800, 1000]
+
+def dump(path, runs):
+    # js/earth-system.js 대조용 (tools/test_earth_system.js가 읽는다)
+    import json
+    keys = ['y', 'ppm', 'T', 'ph', 'om', 'ocean', 'land', 'E', 'sst', 'rev']
+    data = dict(params=P, dt=DT, runs={k: {kk: [o[kk] for o in r] for kk in keys} for k, r in runs.items()})
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+
+def dump_runs():
+    import scen   # 프리셋 정의는 scen.py가 원본이다
+    years = range(1750, 2201)
+    runs = {'hist': run(years, hist), 'nature': run(years, nature)}
+    for k in ['bau', 'paris', 'nz2050']:
+        runs[k] = run(years, scen.mk(k))
+    for c in FIXED_PPMS:
+        runs['fixed%d' % c] = run_fixed(c, years)
+    return runs
 
 if __name__ == '__main__':
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == '--dump':
+        # 사용: python engine.py --dump out.json
+        dump(sys.argv[2], dump_runs())
+        print('dumped ->', sys.argv[2])
+        sys.exit(0)
     print('Revelle(280,18)=%.2f  (418,18)=%.2f  (800,18)=%.2f' % (revelle(280,18), revelle(418,18), revelle(800,18)))
     r = run(range(1750, 2024), hist)
     R = {o['y']: o for o in r}
@@ -109,3 +159,10 @@ if __name__ == '__main__':
     print(f"2014-23 avg: emis {E:.2f} ocean {O:.2f} land {L:.2f} atm {E-O-L:.2f} GtC/yr, airborne {(E-O-L)/E:.2f}")
     rmse = math.sqrt(np.mean([(R[y]['ppm']-mlo[y])**2 for y in range(1959, 2024)]))
     print('RMSE vs Mauna Loa 1959-2023: %.2f ppm' % rmse)
+    for c in [418, 560, 1000]:
+        R = {o['y']: o for o in run_fixed(c)}
+        print('fixed %4d: 2030 T %+.2f pH %.3f | 2100 T %+.2f | 2200 T %+.2f | eq T %.2f' % (
+            c, R[2030]['T'], R[2030]['ph'], R[2100]['T'], R[2200]['T'], 5.35*math.log(c/P['c0'])/P['lam']))
+    R = {o['y']: o for o in r}
+    rmse_g = math.sqrt(np.mean([(R[GLOBAL_CO2_START+i]['ppm']-v)**2 for i, v in enumerate(GLOBAL_CO2)]))
+    print('RMSE vs global mean 1988-2023: %.2f ppm' % rmse_g)

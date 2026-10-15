@@ -742,6 +742,60 @@ towerFan.position.y = 0.3;
 towerFan.rotation.x = Math.PI / 2;
 captureTower.add(towerFan);
 
+// 원자력 발전소 냉각탑 (미래 예측 탭 레버 전용, state.nuclear가 있을 때만 보임)
+// 쌍곡면 모양이라야 냉각탑으로 읽힌다 - 반지름 r(y) = a·√(1 + ((y−허리)/b)²) 를 돌려 만든다.
+const coolingTowers = [];
+{
+  const H = 0.26, waist = H * 0.68, a = 0.045, b = 0.11;
+  const prof = [];
+  for (let i = 0; i <= 12; i++) {
+    const y = H * i / 12;
+    prof.push(new THREE.Vector2(a * Math.sqrt(1 + ((y - waist) / b) ** 2), y));
+  }
+  const towerGeo = new THREE.LatheGeometry(prof, 24);
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0xc9c6bf, roughness: 0.85, side: THREE.DoubleSide });
+  const steamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, roughness: 1, depthWrite: false });
+  [[0.66, 0.95], [0.86, 1.24]].forEach(([x, z]) => {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(towerGeo, towerMat);
+    body.castShadow = true;
+    g.add(body);
+    const steam = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), steamMat);
+    steam.scale.set(1, 0.7, 1);
+    steam.position.y = H + 0.03;
+    g.add(steam);
+    g.position.set(x, CITY_BASE, z);
+    g.visible = false;
+    cityGroup.add(g);
+    coolingTowers.push(g);
+  });
+}
+
+// 태양광 패널 (미래 예측 탭 레버 전용, state.renew 비중만큼 개수가 늘어남)
+// 패널은 수십 장이라 InstancedMesh 하나로 그려 드로우콜을 1번으로 묶는다.
+// 자리는 건물·도로·냉각탑이 없는 도시 구역 앞쪽 빈 땅 (z 0.8~1.35, 세로 도로 x≈0.09는 비움)
+const SOLAR_SPOTS = [];
+for (const z of [0.82, 0.95, 1.08, 1.21, 1.34]) {
+  for (let x = -0.85; x <= 0.40; x += 0.11) if (Math.abs(x - CROSS_ROAD_X) > 0.09) SOLAR_SPOTS.push([x, z]);
+}
+const solarPanels = new THREE.InstancedMesh(
+  new THREE.BoxGeometry(0.08, 0.004, 0.055),
+  new THREE.MeshStandardMaterial({ color: 0x1d3b6e, roughness: 0.3, metalness: 0.6, emissive: 0x0a1a33, emissiveIntensity: 0.3 }),
+  SOLAR_SPOTS.length);
+{
+  const d = new THREE.Object3D();
+  SOLAR_SPOTS.forEach(([x, z], i) => {
+    d.position.set(x, CITY_BASE + 0.022, z);
+    d.rotation.set(-0.5, 0, 0);       // 해(앞쪽 위)를 향해 기울임
+    d.updateMatrix();
+    solarPanels.setMatrixAt(i, d.matrix);
+  });
+  solarPanels.instanceMatrix.needsUpdate = true;
+}
+solarPanels.count = 0;
+solarPanels.visible = false;
+cityGroup.add(solarPanels);
+
 return {
   scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
@@ -750,8 +804,9 @@ return {
   bubbleGeo, bubbleCount, bubbleSeed, bubbleBaseArr, bubbleMat,
   waterBody, waterNominalH, WATER_CLEAR, WATER_MURKY, waveMat, WAVE_CLEAR, WAVE_MURKY,
   carMeshes, evCarMat, gasCarMat,
-  smokeMat, smokeGeo, smokeCount, smokeLife, factory,
-  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh,
+  smokeMat, smokeGeo, smokeCount, smokeLife, factory, smoke, roads: [mainRoad, crossRoad],
+  buildingMeshes, captureTower, towerFan, wetlandPatch, treeMeshes, grassMesh, leafMat,
+  coolingTowers, solarPanels,
   CLEAR_SKY, HAZY_SKY, TERRAIN_TOP, BOX_H, CITY_BASE, OCEAN_BASE,
   condensationSpeed: 1,
   bubbleSpeed: 1,
@@ -811,9 +866,11 @@ function applyState(S) {
 
   // 실측 온도 → 빙하 축소 (CO2 강도와 실측 온도 중 더 강한 쪽을 반영, 시나리오 탭은 co2만 있어 기존과 동일하게 동작)
   const tempIntensity = Math.min(1, Math.max(0, (S.state.tmp - TMP_MIN) / (TMP_MAX - TMP_MIN)));
-  const iceIntensity = Math.max(intensity, tempIntensity);
+  // 미래 예측 탭은 엔진 기온 편차로 직접 정한 iceMelt(0~1)를 넣는다 (CO2 강도로 대신하지 않음)
+  const iceIntensity = S.state.iceMelt != null ? S.state.iceMelt : Math.max(intensity, tempIntensity);
+  const iceK = S.state.iceScale != null ? S.state.iceScale : 1;   // 계절 배수 (미래 예측 탭 관측 계절)
   S.iceMeshes.forEach(o => {
-    const shrink = 1 - iceIntensity * 0.5;
+    const shrink = (1 - iceIntensity * 0.5) * iceK;
     o.mesh.scale.setScalar(shrink);
     // 실제 y좌표는 매 프레임 animate()에서 shrinkY + 파도 높이를 합쳐 계산하므로 여기선 오프셋만 저장
     o.shrinkY = -(1 - shrink) * 0.1;
@@ -833,8 +890,10 @@ function applyState(S) {
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
   const evCount = Math.round(carCount * (S.state.ev / 100));
+  // 미래 예측 탭의 "자연만 있는 지구"(state.nature)는 도시 구역의 인공물을 숨긴다 (지면은 그대로)
+  const nat = !!S.state.nature;
   S.carMeshes.forEach((c, i) => {
-    c.visible = i < carCount;
+    c.visible = !nat && i < carCount;
     const mat = i < evCount ? S.evCarMat : S.gasCarMat;
     c.userData.bodyParts.forEach(p => { p.material = mat; });
   });
@@ -845,22 +904,42 @@ function applyState(S) {
 
   // 도시화 지수 → 표시되는 건물 수
   const bCount = Math.max(1, Math.round((S.state.cityRatio / 100) * S.buildingMeshes.length));
-  S.buildingMeshes.forEach((bld, i) => { bld.visible = i < bCount; });
+  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && i < bCount; });
+  S.factory.visible = !nat;
+  S.smoke.visible = !nat;
+  S.roads.forEach(r => { r.visible = !nat; });
 
   // 탄소제거기술 도입률 → 포집 타워 등장/크기
   const crScale = S.state.carbonRemoval / 100;
-  S.captureTower.visible = crScale > 0.02;
+  S.captureTower.visible = !nat && crScale > 0.02;
   S.captureTower.scale.setScalar(0.3 + crScale * 0.7);
+
+  // 원자력·재생 비중 → 냉각탑·태양광 패널 (미래 예측 탭만 이 값을 넣는다. 다른 탭은 숨김)
+  const nuc = S.state.nuclear, ren = S.state.renew;
+  S.coolingTowers.forEach((g, i) => {
+    g.visible = !nat && nuc != null && nuc > (i === 0 ? 0.01 : 0.25);
+    if (nuc != null) g.scale.setScalar(0.7 + 0.9 * Math.min(1, nuc / 0.5));
+  });
+  S.solarPanels.visible = !nat && ren != null && ren > 0.005;
+  if (ren != null) S.solarPanels.count = Math.round(Math.min(1, ren) * S.solarPanels.instanceMatrix.count);
 
   // 습지 비율 → 습지 패치 크기, 겹치는 나무는 숨김
   const wetRadius = 0.15 + (S.state.wetlandRatio / 100) * 0.85;
   S.wetlandPatch.scale.setScalar(wetRadius / 0.1);
-  S.treeMeshes.forEach(t => {
+  // treeFrac(0~1)이 있으면 그 비율만큼만 나무를 보인다 (미래 예측 탭 산림 레버: 벌채면 줄고 조림이면 늘어남)
+  const treeShown = S.state.treeFrac != null ? Math.round(S.state.treeFrac * S.treeMeshes.length) : S.treeMeshes.length;
+  S.treeMeshes.forEach((t, i) => {
     const dx = t.baseX - S.wetlandPatch.position.x;
     const dz = t.baseZ - S.wetlandPatch.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    t.group.visible = dist > wetRadius * 0.9;
+    t.group.visible = dist > wetRadius * 0.9 && i < treeShown;
   });
+
+  // 계절 → 나뭇잎 색 (leafColor가 null이면 잎이 진 겨울나무). undefined면 다른 탭이라 그대로 둔다.
+  if (S.state.leafColor !== undefined) {
+    S.leafMat.visible = S.state.leafColor !== null;
+    if (S.state.leafColor !== null) S.leafMat.color.setHex(S.state.leafColor);
+  }
 
   // 습지 비율/실측 습도 중 더 강한 쪽 → 풀 인스턴싱 밀도
   const grassIntensity = Math.max(S.state.wetlandRatio / 100, humIntensity);
@@ -868,16 +947,49 @@ function applyState(S) {
 }
 
 // ================= 애니메이션 =================
+// 미래 예측 탭은 같은 렌더러로 두 지구(자연 | 인간활동)를 좌우에 그린다. tab-future.js가
+// splitView = { tab, left, right } 를 정해 두면 그 탭에서만 화면을 반으로 나눠 두 씬을 그리고,
+// 카메라 하나를 같이 써서 회전·줌이 두 지구에 똑같이 걸린다. 다른 탭은 지금처럼 하나만 그린다.
+let splitView = null;
+// 성능 확인용: 한 프레임에 실제로 나간 드로우콜 수 (두 씬을 그리면 두 번의 render 합계)
+renderer.info.autoReset = false;
+let lastFrameDrawCalls = 0;
 let t = 0;
+function setCameraAspect(a) {
+  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.updateProjectionMatrix(); }
+}
 function animate() {
   requestAnimationFrame(animate);
   t += 0.016;
-  const S = bundles[activeTab];
+  renderer.info.reset();
 
   // 수면 노멀맵을 서서히 흘려서 잔물결이 흐르는 느낌을 줌 (3개 씬이 텍스처를 공유해서 한 번만 갱신하면 됨)
   waterNormalTex.offset.x = (t * 0.015) % 1;
   waterNormalTex.offset.y = (t * 0.008) % 1;
 
+  const w = glContainer.clientWidth, h = glContainer.clientHeight;
+  if (splitView && activeTab === splitView.tab && !splitView.left.dormant && !splitView.right.dormant) {
+    const half = Math.floor(w / 2);
+    stepScene(splitView.left); stepScene(splitView.right);
+    setCameraAspect(half / h);
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, half, h); renderer.setScissor(0, 0, half, h);
+    renderer.render(splitView.left.scene, camera);
+    renderer.setViewport(half, 0, w - half, h); renderer.setScissor(half, 0, w - half, h);
+    renderer.render(splitView.right.scene, camera);
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, w, h);
+  } else {
+    const S = bundles[activeTab];
+    stepScene(S);
+    setCameraAspect(w / h);
+    renderer.render(S.scene, camera);
+  }
+  lastFrameDrawCalls = renderer.info.render.calls;
+}
+
+// 씬 하나의 한 프레임 움직임 (파도·입자·연기 등). 그리기는 animate()가 한다.
+function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
 
   // 대기 입자 드리프트
@@ -956,7 +1068,6 @@ function animate() {
   }
   sp.needsUpdate = true;
 
-  renderer.render(S.scene, camera);
 }
 
 // ================= 화면별 아크릴은 필요할 때만 만들기 =================
