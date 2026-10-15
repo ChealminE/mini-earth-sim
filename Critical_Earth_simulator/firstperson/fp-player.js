@@ -207,7 +207,13 @@ FPPlayer.update = function (dt, t) {
   this.pos.x = Math.max(-limX, Math.min(limX, this.pos.x));
   this.pos.z = Math.max(-limZ, Math.min(limZ, this.pos.z));
 
-  if (!this.flying) this.resolveCollisions(this.pos.y);
+  if (!this.flying) {
+    this.resolveCollisions(this.pos.y);
+    // 충돌 밀어내기가 세계 끝 밖으로 내보내면 다음 프레임 위의 경계 처리가 한 번에 끌어당겨서
+    // 위치가 '툭' 되돌아갔다(도로 끝에서 차에 밀릴 때 실제로 생김). 밀어낸 직후에도 경계를 지킨다.
+    this.pos.x = Math.max(-limX, Math.min(limX, this.pos.x));
+    this.pos.z = Math.max(-limZ, Math.min(limZ, this.pos.z));
+  }
 
   // 지형 추종: 새 위치의 바닥 높이를 재서, 오를 수 있는 턱이면 따라 올라가고
   // 못 오르는 절벽이면 이동 자체를 되돌린다
@@ -409,8 +415,24 @@ function bindInput(P, canvas) {
     if (document.pointerLockElement !== canvas && !P.settingsOpen) enterGame();
   });
 
+  // 시점 튐 방지. Windows Chrome은 포인터락 중에 movementX/Y가 가끔 한 번씩 수백 픽셀로
+  // 튀는 값을 보내고(브라우저 버그), 락을 막 잡은 직후 첫 이벤트에도 커서가 화면 중앙으로
+  // 옮겨진 거리가 섞여 들어온다. 그대로 쓰면 시선이 한순간에 반 바퀴씩 돌아갔다.
+  //  - 락을 잡은 직후 잠깐은 이동량을 버린다
+  //  - 직전 이벤트보다 갑자기 몇 배로 커진 큰 값은 한 번 버린다. 실제로 마우스를 휙 돌리면
+  //    이동량이 몇 이벤트에 걸쳐 커지므로 이 조건에 거의 걸리지 않는다.
+  let lockedAt = 0, lastMove = 0;
+  const SETTLE_MS = 120, SPIKE_PX = 150, SPIKE_RATIO = 6;
   window.addEventListener('pointermove', e => {
-    if (document.pointerLockElement === canvas) look(e.movementX, e.movementY);
+    if (document.pointerLockElement !== canvas) return;
+    if (performance.now() - lockedAt < SETTLE_MS) return;
+    const mag = Math.hypot(e.movementX, e.movementY);
+    if (mag > SPIKE_PX && mag > Math.max(lastMove, 10) * SPIKE_RATIO) {
+      lastMove = mag;   // 진짜 빠른 회전이었다면 다음 이벤트는 '직전보다 몇 배'가 아니어서 통과한다
+      return;
+    }
+    lastMove = mag;
+    look(e.movementX, e.movementY);
   });
 
   // 도구를 든 상태에서 좌클릭 = 측정
@@ -424,6 +446,7 @@ function bindInput(P, canvas) {
   // 단, E키로 설정창을 연 경우는 의도된 해제이므로 오버레이를 띄우지 않는다.
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvas;
+    if (locked) { lockedAt = performance.now(); lastMove = 0; }
     if (locked) overlay.classList.add('hidden');
     else if (!P.settingsOpen) overlay.classList.remove('hidden');
     if (!locked) P.keys = Object.create(null);

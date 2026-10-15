@@ -177,7 +177,7 @@ function animate() {
   FPWorld.waterNormal.offset.y = (t * 0.013) % 1;
 
   updateClouds(dt);
-  updateCars(dt);              // 도로 주행 + 앞차 추종 + 교차로 양보
+  updateCars(dt, FPPlayer);    // 도로 주행 + 앞차 추종 + 교차로 양보 + 사람 앞에서 정지
   updateAnimals(dt, t);
   updateOceanLife(dt, t);
   updateExhaust(dt);
