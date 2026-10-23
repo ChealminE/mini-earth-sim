@@ -67,6 +67,18 @@ def inline_styles_of(html):
     return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", head.group(1), re.S | re.I))
 
 
+# ── 0. 출처 등록부 검사 ──────────────────────────────────────────────
+# 화면의 data-src 키가 js/sources.js 에 없거나 원본 버전 표기가 어긋나면 빌드하지 않는다.
+# (node가 없는 PC에서는 건너뛰고 알린다 - 단일 HTML은 node 없이도 만들 수 있어야 한다)
+import shutil, subprocess
+_node = shutil.which("node")
+if _node:
+    _r = subprocess.run([_node, str(ROOT / "tools" / "check_sources.js")], capture_output=True, text=True, encoding="utf-8")
+    if _r.returncode != 0:
+        sys.exit("[실패] 출처 등록부 검사(tools/check_sources.js)\n" + _r.stdout + _r.stderr)
+else:
+    print("[주의] node가 없어 출처 등록부 검사(tools/check_sources.js)를 건너뜁니다")
+
 # ── 1. 공유 라이브러리 ────────────────────────────────────────────────
 vendor = ROOT / "vendor"
 if not (vendor / "three.min.js").exists() or not (vendor / "chart.umd.min.js").exists():
@@ -96,7 +108,7 @@ CSS = {
 }
 BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
-AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
+AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/sources.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
              "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
