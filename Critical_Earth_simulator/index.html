@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>미니 지구 모델 - 통합 시뮬레이션</title>
+<link rel="stylesheet" href="css/theme.css">
 <link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="css/paper.css">
 <script>
   // 이 페이지는 기본으로 '현재 실태' 화면이 켜진 채로 그려지고, 주소(?tab=...)에 맞는 화면으로 바꾸는 코드(main.js)는
   // 3D·그래프 라이브러리를 다 불러온 맨 마지막에 돈다. 그 사이 현재 실태가 잠깐 보이지 않게 준비가 끝날 때까지 가려 둔다.
@@ -89,6 +91,17 @@
 </head>
 <body>
 <div id="app">
+  <!-- 머리줄: 현재 실태·미래 예측(body.paper)에서만 보인다. 직접 실험 탭은 예전 화면 그대로 (css/paper.css) -->
+  <header id="topbar">
+    <a class="btn btn--nav home-link" href="/" title="시작 화면으로"><span data-icon="back"></span>처음으로</a>
+    <span class="brand">미니 지구</span>
+    <nav aria-label="화면">
+      <a class="btn btn--nav" data-tab-go="current" href="/dashboard?tab=current">현재 실태</a>
+      <a class="btn btn--nav" data-tab-go="future" href="/dashboard?tab=future">미래 예측</a>
+      <a class="btn btn--nav" data-tab-go="live" href="/dashboard?tab=live">직접 실험</a>
+    </nav>
+    <p class="tb-desc readout" id="topbarDesc"></p>
+  </header>
   <div id="gl-container">
     <canvas id="gl"></canvas>
     <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
@@ -97,7 +110,7 @@
     <div class="earth-label right"><b>인간활동 지구</b> <span class="sub" id="earthSubR">현재 정책</span><span class="val" id="earthValR"></span></div>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
-      <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
+      <input type="range" class="range range--view" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
     </div>
   </div>
 
@@ -174,16 +187,16 @@
     <div class="tab-panel active" id="tab-current">
       <div class="stat-grid">
         <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다 -->
-        <div class="stat-box"><div class="label" id="statCo2Label">CO₂ 농도</div><div class="value" id="statCo2">-</div><div class="delta" id="statCo2Delta"></div></div>
-        <div class="stat-box"><div class="label" id="statTempLabel">기온편차</div><div class="value temp" id="statTemp">-</div><div class="delta" id="statTempDelta"></div></div>
-        <div class="stat-box"><div class="label" id="statPhLabel">해양 pH</div><div class="value ph" id="statPh">-</div><div class="delta" id="statPhDelta"></div></div>
-        <div class="stat-box"><div class="label" id="statFossilLabel">화석연료배출</div><div class="value" id="statFossil">-</div><div class="delta" id="statFossilDelta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statCo2Label">CO₂ 농도</span><button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="value co2" id="statCo2">-</div><div class="delta" id="statCo2Delta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statTempLabel">기온편차</span><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="value temp" id="statTemp">-</div><div class="delta" id="statTempDelta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statPhLabel">해양 pH</span><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="value ph" id="statPh">-</div><div class="delta" id="statPhDelta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statFossilLabel">화석연료배출</span><button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="value" id="statFossil">-</div><div class="delta" id="statFossilDelta"></div></div>
       </div>
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">대기 CO₂ 농도 (지구 평균)</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비)</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해양 pH (하와이 Station ALOHA)</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">화석연료 배출량</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">대기 CO₂ 농도 (지구 평균)<button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비)<button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해양 pH (하와이 Station ALOHA)<button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">화석연료 배출량<button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
       </div>
     </div>
 
@@ -587,6 +600,9 @@
 <script src="js/earth-model.js?v=4"></script>
 <script src="js/earth-data.js?v=2"></script>
 <script src="js/sources.js?v=1"></script>
+<script src="js/theme.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/source-tip.js"></script>
 <script src="js/earth-system.js?v=2"></script>
 <script src="js/common.js?v=4"></script>
 <script src="js/tab-current.js?v=5"></script>

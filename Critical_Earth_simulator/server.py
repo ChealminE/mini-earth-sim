@@ -567,6 +567,8 @@ async def basic_experiments_index():
 # style.css, js/*.js 등 정적 파일 서빙 (반드시 위의 라우트들 뒤에 등록해야
 # "/", "/data", "/ws"가 이 마운트에 가로채이지 않음)
 app.mount("/js", StaticFiles(directory=RESOURCE_DIR / "js"), name="js")
+# 디자인 토큰·종이 테마 배치 (2차 개편 B: css/theme.css, css/paper.css). server.spec 에도 들어 있어야 exe가 뜬다
+app.mount("/css", StaticFiles(directory=RESOURCE_DIR / "css"), name="css")
 # three.js·Chart.js를 인터넷(CDN) 대신 여기서 준다 - 인터넷이 없거나 느린 교실에서도 3D·그래프가 뜨게
 app.mount("/vendor", StaticFiles(directory=RESOURCE_DIR / "vendor"), name="vendor")
 app.mount("/texture_image", StaticFiles(directory=RESOURCE_DIR / "texture_image"), name="textures")

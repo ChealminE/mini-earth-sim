@@ -8,12 +8,29 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
+// 3D 바탕색: 탭마다 다르다. 현재 실태·미래 예측은 종이색(css/theme.css --paper), 직접 실험 탭은 예전 그대로
+// 검정(렌더러 기본값)을 넘긴다 - 직접 실험 탭은 동료가 테마를 옮길 때까지 바꾸지 않는다.
+const LIVE_BACKDROP = 0x000000;
+function setSceneBackdrop(hex) { renderer.setClearColor(hex, 1); }
+
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+// 화각은 세로 기준 38°다. 3D 칸이 세로로 길면 같은 세로 화각에서 모형 양옆이 잘린다.
+// setCameraFit(a)를 부른 화면(현재 실태·미래 예측)에서만, 칸의 종횡비가 a보다 좁을 때 세로 화각을 넓혀
+// 가로로 보이는 폭을 종횡비 a일 때와 같게 둔다. 부르지 않은 화면(직접 실험 탭·시작 화면)은 예전과 똑같다.
+const CAM_FOV = 38;
+let camFitAspect = null;
+function fovForAspect(a) {
+  if (!camFitAspect || a >= camFitAspect) return CAM_FOV;
+  const halfW = Math.tan(THREE.MathUtils.degToRad(CAM_FOV / 2)) * camFitAspect;
+  return THREE.MathUtils.radToDeg(2 * Math.atan(halfW / a));
+}
+function setCameraFit(a) { camFitAspect = a; }
 function fitRenderer() {
   const w = glContainer.clientWidth, h = glContainer.clientHeight;
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   camera.aspect = w / h;
+  camera.fov = fovForAspect(camera.aspect);
   camera.updateProjectionMatrix();
 }
 
@@ -956,7 +973,7 @@ renderer.info.autoReset = false;
 let lastFrameDrawCalls = 0;
 let t = 0;
 function setCameraAspect(a) {
-  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.updateProjectionMatrix(); }
+  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.fov = fovForAspect(a); camera.updateProjectionMatrix(); }
 }
 function animate() {
   requestAnimationFrame(animate);

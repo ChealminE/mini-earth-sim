@@ -102,13 +102,20 @@ for p in sorted((ROOT / "texture_image").iterdir()):
 aerial_html = read("index.html")
 fp_html = read("firstperson/index.html")
 
+# index.html 의 <link rel=stylesheet> 순서와 같아야 한다(토큰 → 기존 → 종이 테마 배치). 어긋나면 멈춘다.
+AERIAL_CSS = ["css/theme.css", "style.css", "css/paper.css"]
+_links = [h.split("?")[0].lstrip("/") for h in re.findall(r'<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"', aerial_html)]
+if _links != AERIAL_CSS:
+    sys.exit("[실패] index.html 의 스타일시트 순서가 빌더 목록과 다릅니다.\n  HTML : %s\n  빌더 : %s" % (_links, AERIAL_CSS))
+
 CSS = {
-    "aerial": read("style.css") + "\n" + inline_styles_of(aerial_html),
+    "aerial": "\n".join(read(f) for f in AERIAL_CSS) + "\n" + inline_styles_of(aerial_html),
     "fp": read("firstperson/style.css") + "\n" + inline_styles_of(fp_html),
 }
 BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
-AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/sources.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
+AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/sources.js", "js/theme.js", "js/icons.js",
+             "js/source-tip.js", "js/earth-system.js", "js/common.js", "js/tab-current.js",
              "js/tab-future.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
              "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
 FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
@@ -141,65 +148,61 @@ for label, html, expected, prefix in (
 JS = {"aerial": [read(f) for f in AERIAL_JS], "fp": [read(f) for f in FP_JS]}
 
 # ── 4. 시작 화면(껍데기) ─────────────────────────────────────────────
-SHELL_CSS = """
+# 시작 화면은 select.html 과 같은 종이(라이트) 테마다. 토큰은 css/theme.css 를 그대로 앞에 붙여 쓴다.
+SHELL_CSS = read("css/theme.css") + """
 * { box-sizing: border-box; }
 html, body { margin:0; height:100%; }
-body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: radial-gradient(ellipse at 50% 20%, #1c2129 0%, #14171c 60%);
-  color:#e7e9ec; }
+body { background: var(--paper); color: var(--ink); }
 #home { min-height:100vh; display:flex; flex-direction:column; align-items:center;
-  justify-content:center; padding:40px 20px; }
-.header { text-align:center; margin-bottom:36px; }
-.header h1 { font-size:22px; font-weight:700; margin:0 0 8px; }
-.header p { font-size:13px; color:#9198a3; margin:0; line-height:1.6; }
-.grid { display:grid; grid-template-columns:repeat(2, minmax(220px,320px)); gap:18px;
-  width:100%; max-width:700px; }
+  justify-content:center; padding: var(--sp-5) var(--sp-4); }
+.header { text-align:center; margin-bottom: var(--sp-5); }
+.header h1 { font-family: var(--font-title); font-size: var(--fs-6); font-weight:700; margin:0 0 var(--sp-2); }
+.header p { font-size: var(--fs-3); color: var(--ink-2); margin:0; line-height:1.6; }
+.grid { display:grid; grid-template-columns:repeat(2, minmax(240px,340px)); gap: var(--sp-4);
+  width:100%; max-width:720px; }
 @media (max-width:560px){ .grid { grid-template-columns:1fr; } }
-.card { display:flex; flex-direction:column; gap:8px; background:#1b1e24;
-  border:1px solid #2a2e35; border-radius:14px; padding:22px 20px; cursor:pointer;
-  color:inherit; text-align:left; font:inherit;
-  transition:border-color .15s, transform .15s, background .15s; }
-.card:hover { border-color:#5DCAA5; background:#20242b; transform:translateY(-2px); }
-.card .icon { font-size:28px; }
-.card .title { font-size:15.5px; font-weight:600; }
-.card .desc { font-size:12px; color:#9198a3; line-height:1.6; }
-.card .badge { align-self:flex-start; font-size:10px; margin-top:2px; padding:2px 8px;
-  border-radius:10px; background:#10231c; color:#5DCAA5; border:1px solid #2f8f7a; }
-.card.off { opacity:.55; cursor:not-allowed; }
-.card.off:hover { border-color:#2a2e35; background:#1b1e24; transform:none; }
-.footer-hint { margin-top:28px; font-size:11px; color:#565b62; text-align:center; line-height:1.7; }
-#viewer { display:none; position:fixed; inset:0; background:#101216; }
+/* 모드 카드 = 이동(nav) 영역 버튼 (.btn 규칙은 css/theme.css) */
+.card.btn { flex-direction:column; align-items:flex-start; justify-content:flex-start; gap: var(--sp-1);
+  padding: var(--sp-4); white-space:normal; text-align:left; background: var(--paper-2); font-weight:400; }
+.card.btn:hover { background: color-mix(in srgb, var(--ctl-nav) 10%, var(--paper-2)); }
+.card .icon { display:inline-flex; color: var(--ctl-nav); }
+.card .icon svg { width:30px; height:30px; }
+.card .title { font-size: var(--fs-4); font-weight:700; color: var(--ink); }
+.card .desc { font-size: var(--fs-2); color: var(--ink-2); line-height:1.55; }
+.card .badge { align-self:flex-start; font-size: var(--fs-1); font-weight:600; margin-top:2px; padding:0 var(--sp-2);
+  border-radius:999px; background: var(--paper); color: var(--ink-2); border:1px solid var(--rule); }
+.footer-hint { margin-top: var(--sp-5); font-size: var(--fs-1); color: var(--ink-2); text-align:center; line-height:1.7; }
+#viewer { display:none; position:fixed; inset:0; background: var(--paper); }
 #viewer.on { display:block; }
 #frame { width:100%; height:100%; border:0; display:block; }
 /* 1인칭 화면은 좌하단에 미니맵, 하단 중앙에 도구 단축바가 있다. 우하단만 비어 있다. */
-#back { display:none; position:fixed; right:12px; bottom:12px; z-index:50; font:inherit;
-  font-size:12px; padding:7px 13px; border-radius:9px; cursor:pointer; color:#cfd4da;
-  background:rgba(18,22,27,.82); border:1px solid #39404a; }
-#back.on { display:block; }
-#back:hover { border-color:#5DCAA5; color:#fff; }
+#back { display:none; position:fixed; right:12px; bottom:12px; z-index:50; }
+#back.on { display:inline-flex; }
 #loading { position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-  color:#8b929c; font-size:13px; z-index:40; }
+  color: var(--ink-2); font-size: var(--fs-2); z-index:40; }
 #loading.on { display:flex; }
 """
 
 CARDS = [
-    ("current", "\U0001F30D", "현재 실태",
-     "1988~2023년 CO₂ 농도·기온편차·해양 pH·화석연료 배출 실측 데이터 그래프", ""),
-    ("future", "\U0001F52E", "미래 예측",
-     "1750~2200년 타임라인 · 자연 지구와 인간활동 지구를 나란히, 배출 시나리오·레버로 미래의 기온·해양 산성화를 예측", ""),
-    ("live", "\U0001F52C", "직접 실험",
+    ("current", "lines", "현재 실태",
+     "관측 자료로 본 지구의 지금 — 대기 CO₂·기온·바다 pH·화석연료 배출 (NOAA·HadCRUT5·HOT·GCP)", ""),
+    ("future", "globe", "미래 예측",
+     "1750~2200년 · 사람이 내보낸 탄소가 지구를 어떻게 바꾸는지 재생하고, IPCC 시나리오와 직접 설계로 미래를 예측", ""),
+    ("live", "beaker", "직접 실험",
      "센서 실시간 측정 — 이 단일 파일 버전에서는 쓸 수 없습니다 (server.py 필요)", "off"),
-    ("fp", "\U0001F9ED", "탐험",
+    ("fp", "compass", "탐험",
      "1인칭 시점으로 걸어다니며 환경을 조사하는 탐험 모드", ""),
 ]
 
+# 아이콘은 js/icons.js 를 껍데기에도 넣고 Icons.fill()로 채운다(이모지는 OS마다 모양이 달라 쓰지 않는다)
 cards_html = "\n".join(
-    '    <button class="card {off}" data-go="{key}"{dis}>'
-    '<div class="icon">{icon}</div><div class="title">{title}</div>'
-    '<div class="desc">{desc}</div>{badge}</button>'.format(
-        key=k, icon=i, title=t, desc=d, off=off, dis=" disabled" if off else "",
-        badge='<div class="badge">별도 모드</div>' if k == "fp" else "")
+    '    <button class="card btn btn--nav" data-go="{key}"{dis}>'
+    '<span class="icon" data-icon="{icon}" data-icon-size="30"></span><span class="title">{title}</span>'
+    '<span class="desc">{desc}</span>{badge}</button>'.format(
+        key=k, icon=i, title=t, desc=d, dis=" disabled" if off else "",
+        badge='<span class="badge">별도 모드</span>' if k == "fp" else "")
     for k, i, t, d, off in CARDS)
+ICONS_JS = read("js/icons.js")
 
 # ── 5. 껍데기 로직 + 자식 문서 부팅 ──────────────────────────────────
 BOOT_JS = r"""
@@ -253,12 +256,24 @@ window.__boot__ = function (w, mode, tab) {
   for (var i = 0; i < A.js[mode].length; i++) runIn(w, A.js[mode][i]);
 
   if (mode === 'aerial') {
-    var home = d.querySelector('.home-link');
-    if (home) {
+    // "처음으로"는 머리줄(#topbar)과 예전 제목 칸 두 곳에 있다
+    d.querySelectorAll('.home-link').forEach(function (home) {
       home.removeAttribute('href');
       home.style.cursor = 'pointer';
-      home.addEventListener('click', function () { parent.__home__(); });
-    }
+      home.addEventListener('click', function (e) { e.preventDefault(); parent.__home__(); });
+    });
+    // 머리줄 탭 버튼: 서버에서는 /dashboard?tab=… 로 이동하지만, 파일 하나에서는 같은 문서 안에서 바꾼다
+    d.querySelectorAll('[data-tab-go]').forEach(function (a) {
+      var go = a.getAttribute('data-tab-go');
+      a.removeAttribute('href');
+      if (go === 'live') {   // 센서 탭은 단일 파일에서 쓸 수 없다 (시작 화면 카드도 꺼져 있음)
+        a.setAttribute('aria-disabled', 'true');
+        a.title = '단일 파일 버전에서는 직접 실험을 쓸 수 없습니다';
+        return;
+      }
+      a.style.cursor = 'pointer';
+      a.addEventListener('click', function (e) { e.preventDefault(); w.switchTab(go); });
+    });
     if (tab && typeof w.switchTab === 'function') w.switchTab(tab);
 
     // 센서 탭은 server.py(WebSocket)가 있어야 돈다. 단일 파일에서는 막고 이유를 알린다.
@@ -337,7 +352,7 @@ page = """<!DOCTYPE html>
 <title>미니 지구 모델 시뮬레이션</title>
 <style>%s</style>
 </head>
-<body>
+<body class="paper">
 <div id="home">
   <div class="header">
     <h1>미니 지구 모델 시뮬레이션</h1>
@@ -351,14 +366,16 @@ page = """<!DOCTYPE html>
 </div>
 <div id="viewer"><iframe id="frame" allow="pointer-lock; fullscreen; autoplay"></iframe></div>
 <div id="loading">불러오는 중…</div>
-<button id="back">← 처음으로</button>
+<button id="back" class="btn btn--nav">← 처음으로</button>
 <script>
 %s
 %s
+%s
+Icons.fill();
 </script>
 </body>
 </html>
-""" % (SHELL_CSS, cards_html, assets, BOOT_JS)
+""" % (SHELL_CSS, cards_html, ICONS_JS, assets, BOOT_JS)
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(page, encoding="utf-8")

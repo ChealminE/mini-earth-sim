@@ -51,39 +51,43 @@ const modelTemp = modelHist.filter(o => o.year >= obsTemp[0].x).map(o => ({ x: o
 }
 
 // ── 그래프 ────────────────────────────────────────────────────────────
+// 색은 css/theme.css 토큰에서 읽는다(js/theme.js). 관측 = 먹색 실선, 모형 = 데이터 색 점선 (미래 예측 탭과 같은 약속).
 // x축은 연도(linear)다. 자료마다 시작 해가 달라(CO2 1979, 기온 1850, pH 1989) 범주형 축을 공유할 수 없다.
 // 축 범위는 자료의 첫 해~마지막 해로 맞춘다(Chart.js가 2030·2050처럼 넉넉히 잡아 빈 칸이 생기지 않게).
-const yearAxis = pts => ({ type: 'linear', min: pts[0].x, max: lastOf(pts).x, ticks: { color: textColor, font: { size: 9 }, callback: v => String(v) },
-  grid: { color: gridColor } });
 function histOpts(yLabel, legend, pts) {
-  const o = lineOpts(yLabel);
-  o.parsing = false;
-  o.scales.x = yearAxis(pts);
-  o.plugins.legend = legend
-    ? { display: true, labels: { color: '#9198a3', font: { size: 9.5 }, boxWidth: 14, boxHeight: 2,
-        filter: it => !it.text.startsWith('_') } }   // '_'로 시작하는 계열(불확도 띠 아래 경계)은 범례에서 뺀다
-    : { display: false };
-  return o;
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    scales: {
+      x: Theme.axis({ type: 'linear', min: pts[0].x, max: lastOf(pts).x, ticks: { color: Theme.color('--ink-3'), font: Theme.font(), callback: v => String(v), maxTicksLimit: 7 } }),
+      y: Theme.axis({ title: yLabel }),
+    },
+    plugins: { legend: legend ? Theme.legend() : { display: false } },
+  };
 }
+const OBS = Theme.color('--data-obs');
+const obsLine = (label, data) => ({ label, data, borderColor: OBS, backgroundColor: OBS, borderWidth: 2, pointRadius: 0, tension: 0.15 });
+const modelLine = (label, data, token) => ({ label, data, borderColor: Theme.color(token), backgroundColor: Theme.color(token),
+  borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.15 });
 const chartCo2 = new Chart(document.getElementById('chartCo2'), {
   type: 'line', data: { datasets: [
-    { label: '관측 (NOAA 지구 평균)', data: obsCo2, borderColor: '#85B7EB', backgroundColor: '#85B7EB', pointRadius: 0, tension: 0.15 },
-    { label: '모형', data: modelCo2, borderColor: '#e7e9ec', backgroundColor: '#e7e9ec', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15 },
+    obsLine('관측 (NOAA 지구 평균)', obsCo2),
+    modelLine('모형', modelCo2, '--data-co2'),
   ] },
   options: histOpts('ppm', true, obsCo2) });
 const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
   type: 'line', data: { datasets: [
-    // 95 % 불확도 띠: 아래 경계 → 위 경계를 '-1'(바로 앞 계열)까지 채운다
+    obsLine('관측 (HadCRUT5)', obsTemp),
+    modelLine('모형 (CO₂만)', modelTemp, '--data-temp'),
+    // 95 % 불확도 띠: 위 경계를 아래 경계(3번 계열)까지 채운다. 아래 경계는 범례에서 뺀다('_' 이름).
+    { label: '불확도 95 %', data: obsTempHi, borderWidth: 0, pointRadius: 0, fill: 3,
+      backgroundColor: Theme.color('--data-band'), borderColor: Theme.color('--data-band') },
     { label: '_불확도 하한', data: obsTempLo, borderWidth: 0, pointRadius: 0, fill: false },
-    { label: '불확도 95 %', data: obsTempHi, borderWidth: 0, pointRadius: 0, fill: '-1',
-      backgroundColor: 'rgba(226,75,74,0.18)', borderColor: 'rgba(226,75,74,0.18)' },
-    { label: '관측 (HadCRUT5)', data: obsTemp, borderColor: '#E24B4A', backgroundColor: '#E24B4A', pointRadius: 0, tension: 0.15 },
-    { label: '모형 (CO₂만)', data: modelTemp, borderColor: '#e7e9ec', backgroundColor: '#e7e9ec', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.15 },
   ] },
   options: histOpts('°C (1850~1900 대비)', true, obsTemp) });
 const chartPhHist = new Chart(document.getElementById('chartPhHist'), {
-  type: 'line', data: { datasets: [{ data: obsPh, borderColor: '#5DCAA5', pointRadius: 0, tension: 0.15, spanGaps: true }] },
+  type: 'line', data: { datasets: [{ ...obsLine('관측 (HOT)', obsPh), spanGaps: true }] },
   options: histOpts('pH', false, obsPh) });
 const chartFossil = new Chart(document.getElementById('chartFossil'), {
-  type: 'line', data: { datasets: [{ data: obsFossil, borderColor: '#EF9F27', pointRadius: 0, tension: 0.15 }] },
+  type: 'line', data: { datasets: [obsLine('GCP', obsFossil)] },
   options: histOpts('백만 톤 CO₂', false, obsFossil) });

@@ -11,6 +11,8 @@ a = Analysis(
         # 시작 화면. server.py 가 "/" 에서 이 파일을 돌려준다.
         ('select.html', '.'),
         ('style.css', '.'),
+        # 디자인 토큰·종이 테마 (server.py 가 /css 로 준다). 빠지면 StaticFiles가 시작하자마자 죽는다
+        ('css', 'css'),
         ('js', 'js'),
         ('texture_image', 'texture_image'),
         # three.js·Chart.js (server.py가 /vendor 로 준다). 빠지면 StaticFiles가 시작하자마자 죽는다

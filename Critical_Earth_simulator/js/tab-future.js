@@ -582,7 +582,9 @@ setInterval(() => {
   const now = performance.now();
   const dt = (now - lastTick) / 1000;
   lastTick = now;
-  if (activeTab !== 'future') return;
+  // activeTab은 맨 뒤에 읽히는 main.js가 선언한다. 그 사이 스크립트 로딩이 0.2초를 넘으면 이 틱이 먼저 돌아
+  // "activeTab is not defined"가 났다(헤드리스에서 재현). 아직 선언 전이면 건너뛴다.
+  if (typeof activeTab === 'undefined' || activeTab !== 'future') return;
   if (FUT.playing) {
     setYear(FUT.year + FUT.speed * dt);
     if (FUT.year >= TL_END) setPlaying(false);

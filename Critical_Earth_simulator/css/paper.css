@@ -1,0 +1,80 @@
+/* ============================================================================
+   라이트(종이) 테마 화면 배치 — 현재 실태 · 미래 예측 (2차 개편 B4·C1)
+   ----------------------------------------------------------------------------
+   style.css 뒤에 읽는다. 모든 규칙을 body.paper 아래에 두므로 직접 실험 탭(body.paper 없음)의
+   배치·색은 그대로다. 토큰은 css/theme.css.
+   스크롤 없음이 최우선: 화면 전체를 100dvh 그리드로 잡고, 칸 안에서도 넘치지 않게 그래프 높이를 칸에 맞춘다.
+   ============================================================================ */
+
+/* ── 머리줄 (탭 공통) ─────────────────────────────────────────────────────── */
+#topbar { display: none; }
+body.paper #topbar {
+  grid-column: 1 / -1; grid-row: 1;
+  display: flex; align-items: center; gap: var(--sp-3); min-width: 0;
+  padding: var(--sp-2) var(--sp-4); background: var(--paper); border-bottom: 1px solid var(--rule);
+}
+body.paper #topbar .brand { font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink);
+  white-space: nowrap; margin: 0 var(--sp-2) 0 var(--sp-1); }
+body.paper #topbar nav { display: flex; gap: var(--sp-2); }
+body.paper #topbar .tb-desc { margin: 0 0 0 var(--sp-3); color: var(--ink-2); font-size: var(--fs-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ── 바탕 그리드 ──────────────────────────────────────────────────────────── */
+body.paper #app { height: 100vh; height: 100dvh; background: var(--paper); }
+body.paper #tab-header-panel { display: none; }
+body.paper #graph-panel { background: var(--paper); color: var(--ink); padding: 0; overflow: hidden; min-height: 0; }
+body.paper .tab-panel.active { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+/* 3D 칸: 종이 위에 놓인 모형. 위에 뜬 글자는 종이색 반투명 판 위에 둔다 */
+body.paper #gl-container { background: var(--paper); border: 0; border-right: 1px solid var(--rule);
+  aspect-ratio: auto; max-height: none; min-height: 0; }
+body.paper #hint { top: var(--sp-3); left: var(--sp-3); right: auto; bottom: auto; color: var(--ink-2); font-size: var(--fs-1);
+  background: color-mix(in srgb, var(--paper) 86%, transparent); border: 1px solid var(--rule); line-height: 1.5; }
+body.paper #brightnessControl { left: var(--sp-3); bottom: var(--sp-3); color: var(--ctl-view); font-size: var(--fs-1); font-weight: 600;
+  background: color-mix(in srgb, var(--paper) 90%, transparent); border: 1.5px solid var(--ctl-view); border-radius: var(--radius);
+  padding: var(--sp-1) var(--sp-3); }
+body.paper #brightnessControl input[type="range"] { accent-color: var(--ctl-view); width: 130px; }
+
+/* ── 현재 실태 ───────────────────────────────────────────────────────────
+   왼쪽 열 = 3D 모형 + 그 아래 요약 숫자 2×2, 오른쪽 열 = 그래프 2×2.
+   요약 숫자는 #tab-current 안에 있지만 #graph-panel·#tab-current를 display: contents 로 풀어
+   #app 그리드에 바로 놓는다(마크업을 3D 칸 쪽으로 옮기면 다른 탭의 #gl-container 구조가 바뀐다). */
+body.tab-current.paper #app {
+  display: grid;
+  grid-template-columns: minmax(0, 40fr) minmax(0, 60fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.tab-current.paper #gl-container { grid-column: 1; grid-row: 2; }
+body.tab-current.paper #graph-panel, body.tab-current.paper #tab-current { display: contents; }
+
+/* 요약 숫자 4개: 정보이므로 상자·그림자 없이 평평하게, 구분선만 */
+body.paper #tab-current .stat-grid { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0; margin: 0; border-top: 1px solid var(--rule); border-right: 1px solid var(--rule); background: var(--paper); }
+body.paper #tab-current .stat-box { background: none; border-radius: 0; padding: var(--sp-2) var(--sp-4); min-width: 0; }
+body.paper #tab-current .stat-box:nth-child(even) { border-left: 1px solid var(--rule); }
+body.paper #tab-current .stat-box:nth-child(n+3) { border-top: 1px solid var(--rule); }
+body.paper .stat-box .label { display: flex; align-items: center; font-size: var(--fs-1); color: var(--ink-2); margin: 0 0 2px; white-space: nowrap; }
+body.paper .stat-box .value { font-size: var(--fs-5); font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+body.paper .stat-box .value.co2 { color: var(--data-co2); }
+body.paper .stat-box .value.temp { color: var(--data-temp); }
+body.paper .stat-box .value.ph { color: var(--data-ph); }
+body.paper .stat-box .delta { font-size: var(--fs-1); color: var(--ink-3); margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 그래프 2×2: 칸 높이를 화면에 맞춰 나눈다 (스크롤 없음) */
+body.paper #tab-current .charts-2col { grid-column: 2; grid-row: 2 / span 2; min-height: 0; box-sizing: border-box;
+  padding: var(--sp-3) var(--sp-4); display: grid; gap: var(--sp-3) var(--sp-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+body.paper .chart-block { display: flex; flex-direction: column; min-height: 0; margin: 0; }
+body.paper .chart-block .chart-title { display: flex; align-items: center; gap: var(--sp-1); flex: none;
+  font-size: var(--fs-2); font-weight: 700; color: var(--ink); margin: 0 0 var(--sp-1); }
+body.paper .chart-block .chart-wrap, body.paper .charts-2col .chart-wrap { flex: 1 1 auto; height: auto; min-height: 0; position: relative; }
+
+/* 낮은 화면(1280×720 등)에서는 요약 숫자를 한 단계 작게 */
+@media (max-height: 760px) {
+  body.paper #tab-current .stat-box { padding: var(--sp-1) var(--sp-3); }
+  body.paper .stat-box .value { font-size: var(--fs-4); }
+}
+
+/* style.css 의 예전 .home-link(11 px 글자 링크)가 버튼 모양을 덮지 않게 */
+body.paper #topbar .home-link { display: inline-flex; font-size: var(--fs-2); margin: 0; color: var(--ctl-nav); }
+body.paper #topbar .home-link:hover { color: var(--ctl-nav); }
