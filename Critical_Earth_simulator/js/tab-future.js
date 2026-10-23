@@ -231,6 +231,15 @@ const valueLabelPlugin = {
   },
 };
 
+// 4) 탐구 모드 층 (2차 개편 E): 겹친 자료·사건 표지·학생이 고른 점을 그리고, 그래프 클릭(pickPoint)을 받는다.
+//    내용은 js/inquiry.js 가 정한다. 이 파일보다 뒤에 읽히므로 그릴 때 있는지 확인만 한다.
+const inquiryLayerPlugin = {
+  id: 'inquiryLayer',
+  beforeDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined') Inquiry.drawUnder(chart); },
+  afterDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined') Inquiry.drawOver(chart); },
+  afterEvent(chart, args) { if (typeof Inquiry !== 'undefined') Inquiry.chartEvent(chart, args.event); },
+};
+
 const lineDs = (label, color, extra = {}) => ({ label, data: [], borderColor: color, backgroundColor: color,
   borderWidth: 2.2, pointRadius: 0, tension: 0, ...extra });
 const Y_AXIS_W = 46, Y1_AXIS_W = 40;
@@ -268,10 +277,10 @@ const charts = SERIES.map((spec, i) => {
   const chart = new Chart($(spec.id), {
     type: 'line', data: { datasets: ds },
     options: { responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
-      events: ['mousemove', 'mouseout'],
+      events: ['mousemove', 'mouseout', 'click'],   // click: 탐구 모드에서 학생이 연도를 고를 때 (inquiryLayerPlugin)
       layout: { padding: { right: Y1_AXIS_W + 4 } },   // Ω 축 자리를 모든 그래프가 비워 둔다(x축 정렬)
       scales, plugins: { legend: { display: false }, tooltip: { enabled: false } } },
-    plugins: [predZonePlugin, frontierClipPlugin, valueLabelPlugin],
+    plugins: [predZonePlugin, frontierClipPlugin, inquiryLayerPlugin, valueLabelPlugin],
   });
   chart.$spec = spec;
   chart.$first = i === 0;
@@ -360,21 +369,24 @@ function updateLegend() {
   $('futPrevName').textContent = PREV.label;
 }
 function setViewToggle(btn, on) { btn.setAttribute('aria-pressed', String(on)); }
-$('futValidateBtn').addEventListener('click', e => {
-  VIEW.validate = !VIEW.validate;
-  setViewToggle(e.currentTarget, VIEW.validate);
-  for (const ch of charts) ch.data.datasets[DS.past].hidden = !VIEW.validate;
+// 보기 토글은 함수로 둔다 - 탐구 모드(js/inquiry.js)가 단계에서 켜고, 끝나면 원래대로 되돌린다
+function setValidateView(on) {
+  VIEW.validate = on;
+  setViewToggle($('futValidateBtn'), on);
+  for (const ch of charts) ch.data.datasets[DS.past].hidden = !on;
   charts.forEach(c => c.update('none'));
-});
-$('futOmegaBtn').addEventListener('click', e => {
-  VIEW.omega = !VIEW.omega;
-  setViewToggle(e.currentTarget, VIEW.omega);
+}
+$('futValidateBtn').addEventListener('click', () => setValidateView(!VIEW.validate));
+$('futOmegaBtn').addEventListener('click', () => setOmegaView(!VIEW.omega));
+function setOmegaView(on) {
+  VIEW.omega = on;
+  setViewToggle($('futOmegaBtn'), on);
   const d = futChartPh.data.datasets;
   d[d.length - 2].hidden = d[d.length - 1].hidden = !VIEW.omega;
   futChartPh.options.scales.y1.display = VIEW.omega;
   futChartPh.options.layout.padding.right = VIEW.omega ? 4 : Y1_AXIS_W + 4;   // Ω 축이 비워 둔 자리를 쓴다
   futChartPh.update('none');
-});
+}
 
 // ── 탄산 화학종 분포 (팝오버 "바다 속 탄소") ──────────────────────────────
 // pH 숫자 하나로는 "평형이 어느 쪽으로 이동했는지"가 안 보이므로 화학종 비율을 그대로 그린다.
@@ -827,6 +839,43 @@ setInterval(() => {
   apply3D(sceneFuture, h);
   apply3D(sceneNature, sampleAt(FUT.nature, FUT.year));
 }, FUT_TICK_MS);
+
+// ── 자유 조작 상태 저장·복원 (2차 개편 E) ─────────────────────────────
+// 탐구 모드를 켜면 지금 상태를 저장해 두고, 끄면 그대로 되돌린다(시나리오·레버·재생 위치·전선·토글·팝오버).
+// setPreset을 거치지 않고 직접 넣는다 - setPreset은 '이전 선택' 선을 바꾸기 때문이다.
+function futSnapshot() {
+  const open = [...document.querySelectorAll('#futCharts .fut-pop')].find(p => !p.hidden);
+  return {
+    preset: FUT.preset, levers: { ...FUT.levers }, year: FUT.year, frontier: FUT.frontier, speed: FUT.speed,
+    showNature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, popover: open ? open.id : null,
+    prev: { run: PREV.run, label: PREV.label }, leverPanel: !$('fcLevers').hidden,
+  };
+}
+function futRestore(s) {
+  setPlaying(false);
+  FUT.preset = s.preset;
+  FUT.levers = { ...s.levers };
+  leversToInputs(FUT.levers);
+  showLeverValues();
+  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
+  $('fcPresetDesc').textContent = PRESET_DESC[s.preset];
+  showLeverPanel(s.leverPanel);
+  PREV.run = s.prev.run; PREV.label = s.prev.label;
+  computeHuman();
+  refreshCharts();
+  cancelAnimationFrame(redrawAnim);
+  FUT.frontier = s.frontier;
+  VIEW.drawFrontier = s.frontier;
+  FUT.speed = s.speed;
+  $('tlSpeed').value = String(s.speed);
+  setYear(s.year);
+  if (FUT.showNature !== s.showNature) setNatureView(s.showNature);
+  if (VIEW.omega !== s.omega) setOmegaView(s.omega);
+  if (VIEW.validate !== s.validate) setValidateView(s.validate);
+  setPopover(s.popover);
+  updateBadge();
+  renderFuture();
+}
 
 // 탭을 열 때 main.js가 부른다
 function activateFutureTab() {

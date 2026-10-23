@@ -162,6 +162,13 @@
     <!-- 미래 예측 탭에서만 보임: 인간활동 지구의 배출 조작 (js/tab-future.js).
          2024년부터의 배출을 정한다. 시나리오 목록 ↔ 직접 설계(레버) 패널을 바꿔 가며 보여 준다 -->
     <div class="future-only fc" id="futureControls">
+      <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
+      <div class="inq-mode" role="group" aria-label="조작 방식">
+        <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
+        <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
+      </div>
+      <div class="inq-panel" id="inqPanel" hidden></div>
+      <div id="fcFree">
       <div id="fcScenarioView">
         <h3 class="fc-h">시나리오 <span>2024년부터의 배출</span></h3>
         <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
@@ -222,6 +229,7 @@
           <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
         </div>
         <div class="fc-result readout" id="lvResult"></div>
+      </div>
       </div>
     </div>
   </div>
@@ -650,7 +658,9 @@
 <script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
 <script src="js/tab-current.js?v=5"></script>
-<script src="js/tab-future.js?v=5"></script>
+<script src="js/tab-future.js?v=6"></script>
+<script src="js/inquiry-steps.js?v=1"></script>
+<script src="js/inquiry.js?v=1"></script>
 <script src="js/live-fit.js?v=4"></script>
 <script src="js/xlsx-lite.js?v=4"></script>
 <script src="js/tab-live.js?v=4"></script>
