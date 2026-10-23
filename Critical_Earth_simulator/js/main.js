@@ -83,6 +83,7 @@ function bindView3D(id, key) {
   });
 }
 bindView3D('view3dCo2', 'co2');
+bindView3D('view3dIndicator', 'indicator');
 
 // ── 밝기 슬라이더 ──────────────────────────────────
 // 같은 씬이라도 화면 밝기·명암비에 따라 톤매핑 결과가 다르게 보여서(어두운 패널일수록

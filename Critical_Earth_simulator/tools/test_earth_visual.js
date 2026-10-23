@@ -83,5 +83,14 @@ check('산호: 2 °C 1 % (99 % 넘게 손실), 그 위는 유지', Math.abs(V.co
   console.log(`      현재 정책 껍데기 옅어짐 2023 ${V.shellState(at(RUNS.ssp245, 2023).omega).fade.toFixed(2)} · 2100 ${V.shellState(at(RUNS.ssp245, 2100).omega).fade.toFixed(2)} · 2200 ${V.shellState(at(RUNS.ssp245, 2200).omega).fade.toFixed(2)}`);
 }
 
+// ── D5 지시약 ──
+check('지시약: 7.6·8.2 끝 색, 범위 밖은 끝 색', String(V.phIndicatorRgb(7.6)) === String(V.phIndicatorRgb(7.0)) && String(V.phIndicatorRgb(8.2)) === String(V.phIndicatorRgb(8.5)));
+{
+  const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  let mono = true;
+  for (let p = 7.6; p < 8.19; p += 0.01) if (lum(V.phIndicatorRgb(p + 0.01)) > lum(V.phIndicatorRgb(p)) + 1) mono = false;   // 1 = 8비트 반올림 여유
+  check('지시약: pH가 낮을수록 밝아짐(색 순서가 밝기로도 읽힘)', mono);
+}
+
 console.log(fails ? `\n${fails}개 실패` : '\n전부 통과');
 process.exit(fails ? 1 : 0);

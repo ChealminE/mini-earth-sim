@@ -104,7 +104,24 @@ const EarthVisual = (() => {
     };
   }
 
-  return { CO2_DOTS, co2DotCount, GLACIER, glacierFrac, CORAL, coralHealthy, SHELL, shellState, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
+  // ── [지시약으로 보기] (D5) ─ 등록부 ph_indicator ───────────────────────────────
+  // 실제 바다 색이 아니다. 지시약처럼 pH를 색으로 칠한다. 바다 pH는 1750~2200년에 8.2 → 7.7 정도라
+  // 0~14 전체 범위로 칠하면 색 차이가 안 보인다 → 7.6~8.2로 확대한다(범위 밖은 끝 색). 범례 색 막대도 이 정지점으로 그린다.
+  // 색은 순서가 읽히도록 파랑(염기성 쪽) → 청록 → 연두 → 노랑(산성 쪽)으로, 밝기도 함께 바뀌게 골랐다.
+  const PH_IND = { MIN: 7.6, MAX: 8.2, STOPS: [[7.6, '#e0ac1a'], [7.8, '#9cb83a'], [8.0, '#2e9a7a'], [8.2, '#3554ad']] };
+  const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  function phIndicatorRgb(pH) {
+    const st = PH_IND.STOPS, p = Math.min(PH_IND.MAX, Math.max(PH_IND.MIN, pH));
+    for (let i = 1; i < st.length; i++) {
+      if (p <= st[i][0]) {
+        const w = (p - st[i - 1][0]) / (st[i][0] - st[i - 1][0]), a = hexRgb(st[i - 1][1]), b = hexRgb(st[i][1]);
+        return a.map((v, k) => Math.round(v + (b[k] - v) * w));
+      }
+    }
+    return hexRgb(st[st.length - 1][1]);
+  }
+
+  return { CO2_DOTS, co2DotCount, GLACIER, glacierFrac, CORAL, coralHealthy, SHELL, shellState, PH_IND, phIndicatorRgb, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
 })();
 
 if (typeof module !== 'undefined') module.exports = { EarthVisual };

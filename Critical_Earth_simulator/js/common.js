@@ -373,9 +373,20 @@ function applyOceanPaper(S) {
   S.waterBody.material.color.copy(SEA_BODY);
   S.waterBody.material.opacity = 0.24;         // 바닥의 산호·조개가 비쳐 보이게 예전(0.82~0.98)보다 투명하게
   S.waterBody.material.roughness = 0.15;
-  S.waveMat.color.copy(SEA_SURFACE);
-  S.waveMat.opacity = 0.36;
-  S.waveMat.transmission = 0.15;
+  if (VIEW3D.indicator) {
+    // [지시약으로 보기]: 수면만 pH 색으로 칠한다 (실제 바다 색이 아님, 범위 7.6~8.2 확대 - 범례 색 막대)
+    // 물 몸통(waterBody)이 깊이를 쓰며 파도 면 대부분을 덮고 있어서 수면만 칠하면 앞쪽 띠만 물들었다 → 몸통 윗부분도 같은 색
+    const [r, g, b] = EarthVisual.phIndicatorRgb(st.ph);
+    S.waveMat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+    S.waveMat.opacity = 0.9;
+    S.waveMat.transmission = 0;
+    S.waterBody.material.color.copy(S.waveMat.color);
+    S.waterBody.material.opacity = 0.62;
+  } else {
+    S.waveMat.color.copy(SEA_SURFACE);
+    S.waveMat.opacity = 0.36;
+    S.waveMat.transmission = 0.15;
+  }
   S.waveMat.roughness = 0.1;
   S.waveMat.clearcoat = 0.9;
 
