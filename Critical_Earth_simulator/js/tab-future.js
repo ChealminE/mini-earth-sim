@@ -9,7 +9,7 @@
 const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 // 자연만 있는 지구: 같은 엔진을 배출 0으로 돌린 지구. 예전처럼 화면을 반으로 나누지 않고(피드백: "변하는 게 없는
 // 죽은 공간") 토글로 바꿔 본다. 씬은 토글을 처음 켤 때 만든다(ensureSceneBuilt) - 대부분은 켜 보지 않는다.
-const sceneNature = { dormant: true, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
+const sceneNature = { dormant: true, opts: { paper: true, nature: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {

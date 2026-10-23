@@ -137,7 +137,11 @@ function waveHeightAt(lx, ly, t, intensity, halfD) {
 }
 
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
-function buildAcrylicScene() {
+// opts.paper: 종이(라이트) 테마 탭(현재 실태·미래 예측)의 씬. 2차 개편 D의 3D 시각 언어(밝은 바탕 맞춤,
+//   CO₂ 보기, 도시 성장, 산호·조개 등)는 이 씬에서만 켠다 - 직접 실험 탭은 같은 함수를 쓰지만 예전 모습 그대로 둔다.
+// opts.nature: 미래 예측 탭의 '자연만 있는 지구' 씬 (도시 구역 대신 자연 식생, D6)
+function buildAcrylicScene(opts = {}) {
+const PAPER = !!opts.paper;
 const scene = new THREE.Scene();
 scene.environment = sharedEnvMap;
 // r160부터 물리기반(광도 단위) 조명만 지원해서 SpotLight 밝기 스케일이 달라짐(약 4π배 보정 필요)
@@ -151,11 +155,13 @@ scene.add(sun, sun.target);
 // 텍스처(특히 도시 바닥·건물 창문 패턴)의 명암 대비가 너무 밝아 안 보였어서
 // 색공간 보정용으로 올렸던 값을 다시 낮춤 - 실내가 살짝 어두워 보이는 것보다
 // 텍스처가 실제로 보이는 쪽이 우선
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+// 종이 바탕(D1): 바탕이 이미 밝아 모형이 바탕에 묻혔다. 환경광을 줄이고 키라이트 그림자로 입체감을 살린다.
+scene.add(new THREE.AmbientLight(0xffffff, PAPER ? 0.4 : 0.55));
 const rim = new THREE.DirectionalLight(0xdfe8f5, 0.35);
 rim.position.set(-5, 3, -4);
 scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.4));
+// 종이 바탕에서는 땅쪽 반사광을 종이색 계열로 맞춰 아랫면이 푸르게 뜨지 않게 한다
+scene.add(PAPER ? new THREE.HemisphereLight(0xfffaf0, 0xb8ad96, 0.45) : new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.4));
 
 // 집게형 조명 스탠드: 기둥 끝점 → 갓 위치를 잇는 벡터로 팔을 정렬해서
 // 기둥·팔·갓·전구가 서로 끊어져 보이지 않고 실제로 이어지게 배치
@@ -199,13 +205,21 @@ const lampBulb = new THREE.Mesh(
 lampBulb.position.set(armEnd.x, armEnd.y - LAMP_SHADE_H * 0.8, armEnd.z); // 갓 안쪽, 입구 근처
 lampGroup.add(lampBulb);
 
+// 회전판: 어두운 바탕에서는 흰 판이 또렷했지만 종이 바탕(#f8f5ee)에서는 차가운 회색 타원으로 번져 보였다(D1).
+// 종이보다 한 단계 짙은 따뜻한 회갈색으로 두고, 가장자리에 먹색 가는 선을 둘러 판의 윤곽을 잡는다.
 const table = new THREE.Mesh(
   new THREE.CylinderGeometry(3.6, 3.8, 0.15, 64),
-  new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.9 })
+  // envMapIntensity: 공유 환경맵의 하늘색 패널이 판에 비쳐 푸르게 보였다 - 종이 탭에서는 반사를 줄인다
+  new THREE.MeshStandardMaterial({ color: PAPER ? 0xd6cbb4 : 0xf2f2ef, roughness: PAPER ? 1 : 0.9, envMapIntensity: PAPER ? 0.35 : 1 })
 );
 table.position.y = -0.08;
 table.receiveShadow = true;
 scene.add(table);
+if (PAPER) {
+  const rimPts = [];
+  for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; rimPts.push(new THREE.Vector3(Math.cos(a) * 3.6, 0.002, Math.sin(a) * 3.6)); }   // 판 윗면(y −0.005) 바로 위
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rimPts), new THREE.LineBasicMaterial({ color: 0x575d65, transparent: true, opacity: 0.6 })));
+}
 
 const BOX_W = 6, BOX_D = 3, BOX_H = 2.3;
 const TERRAIN_TOP = BOX_H * 0.2; // 지형은 박스 높이의 1/5까지만
@@ -262,7 +276,10 @@ const acrylicMat = new THREE.MeshPhysicalMaterial({
   // 유리는 뒤에 있는 걸 가리면 안 되므로 depthWrite를 꺼서 순수 오버레이로만 동작하게 함
   depthWrite: false
 });
-const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+// 아크릴 모서리: 어두운 바탕용 흰 선(불투명도 0.3)은 종이 바탕에서 사라졌다. 종이 탭은 먹색(--ink-2 계열) 가는 선으로.
+const edgeMat = PAPER
+  ? new THREE.LineBasicMaterial({ color: 0x3d434b, transparent: true, opacity: 0.75 })
+  : new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
 function addPanel(w, h, pos, rot) {
   const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), acrylicMat);
   p.position.copy(pos);
@@ -814,7 +831,7 @@ solarPanels.visible = false;
 cityGroup.add(solarPanels);
 
 return {
-  scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -1097,13 +1114,15 @@ function stepScene(S) {
 // 그 화면을 실제로 열 때 ensureSceneBuilt()가 같은 객체를 채운다 - 탭 코드가 들고 있는 sceneFuture 같은
 // 변수가 그대로 같은 객체를 가리키므로 탭 코드는 고칠 필요가 없다.
 const DASHBOARD_TAB = new URLSearchParams(location.search).get('tab') || 'current';
+// paper: 종이 테마 탭(현재 실태·미래 예측)의 씬인가 - 2차 개편 D의 새 3D 표현은 이 씬에서만 만든다
 function sceneFor(tab) {
-  return tab === DASHBOARD_TAB ? buildAcrylicScene() : { dormant: true, state: {} };
+  const opts = { paper: tab !== 'live' };
+  return tab === DASHBOARD_TAB ? Object.assign(buildAcrylicScene(opts), { opts }) : { dormant: true, opts, state: {} };
 }
 function ensureSceneBuilt(S) {
   if (!S || !S.dormant) return S;
   const kept = S.state;            // 껍데기일 때 탭 코드가 넣어 둔 값(예: 슬라이더 CO2)은 살린다
-  Object.assign(S, buildAcrylicScene());
+  Object.assign(S, buildAcrylicScene(S.opts || {}));
   Object.assign(S.state, kept);
   S.dormant = false;
   return S;
