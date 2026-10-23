@@ -125,10 +125,20 @@
     <div class="future-only fc" id="futureControls">
       <div id="fcScenarioView">
         <h3 class="fc-h">시나리오 <span>2024년부터의 배출</span></h3>
+        <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
         <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
-          <div class="fc-row"><button class="btn btn--scen fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span class="fc-name">현재 정책</span><span class="fc-ssp">SSP2-4.5</span></button><button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button></div>
-          <div class="fc-row"><button class="btn btn--scen fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span class="fc-name">파리협약 2 °C</span><span class="fc-ssp">SSP1-2.6</span></button><button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button></div>
-          <div class="fc-row"><button class="btn btn--scen fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span class="fc-name">1.5 °C 탄소중립</span><span class="fc-ssp">SSP1-1.9</span></button><button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button></div>
+          <div class="fc-card">
+            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span data-icon="globe" data-icon-size="28"></span><span class="fc-name">현재 정책</span><span class="btn-sub">SSP2-4.5</span></button>
+            <button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button>
+          </div>
+          <div class="fc-card">
+            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span data-icon="accord" data-icon-size="28"></span><span class="fc-name">파리협약 2&nbsp;°C</span><span class="btn-sub">SSP1-2.6</span></button>
+            <button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button>
+          </div>
+          <div class="fc-card">
+            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span data-icon="target" data-icon-size="28"></span><span class="fc-name">1.5&nbsp;°C 탄소중립</span><span class="btn-sub">SSP1-1.9</span></button>
+            <button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button>
+          </div>
         </div>
         <p class="fc-desc readout" id="fcPresetDesc"></p>
         <hr class="fc-rule">
@@ -141,28 +151,35 @@
           <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
         </div>
         <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
+        <!-- 전력 구성: 화석 | 원자력 | 재생 세 구간이 한 막대. 경계 손잡이 두 개를 끌어 합 100 %를 유지한다 -->
         <div class="lv">
-          <div class="lv-head">전력 구성 <button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></div>
-          <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
-          <div class="lv-val readout" id="lvMixVal"></div>
-          <label class="lv-sub">화석 연료 발전 비중 <input type="range" class="range range--scen" id="lvFossil" min="0" max="100" step="1"></label>
-          <label class="lv-sub">나머지(무탄소) 중 원자력 몫 <input type="range" class="range range--scen" id="lvNucShare" min="0" max="100" step="1"></label>
+          <div class="lv-head"><span class="lv-icon" data-icon="factory"></span><span class="lv-name">전력 구성</span><span class="lv-val readout">합 100 %</span></div>
+          <div class="mix-ctl" id="mixCtl">
+            <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
+            <div class="mix-handle" id="mixH1" role="slider" tabindex="0" aria-label="화석 | 원자력 경계 (화석 발전 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="mix-handle" id="mixH2" role="slider" tabindex="0" aria-label="원자력 | 재생 경계 (화석+원자력 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <div class="mix-legend">
+            <span class="mix-key fossil"><span class="mix-key-name"><span data-icon="factory" data-icon-size="18"></span>화석</span><span class="mix-key-val"><b class="readout" id="mixFossilVal"></b><button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button></span></span>
+            <span class="mix-key nuclear"><span class="mix-key-name"><span data-icon="atom" data-icon-size="18"></span>원자력</span><span class="mix-key-val"><b class="readout" id="mixNuclearVal"></b><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button></span></span>
+            <span class="mix-key renew"><span class="mix-key-name"><span data-icon="sun" data-icon-size="18"></span>재생</span><span class="mix-key-val"><b class="readout" id="mixRenewVal"></b><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></span></span>
+          </div>
         </div>
         <div class="lv">
-          <div class="lv-head">전기차 비율 <button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
+          <div class="lv-head"><span class="lv-icon" data-icon="car"></span><span class="lv-name">전기차 비율</span><button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
           <input type="range" class="range range--scen" id="lvEv" min="0" max="100" step="1" aria-label="전기차 비율">
         </div>
         <div class="lv">
-          <div class="lv-head">탄소 포집 <button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
+          <div class="lv-head"><span class="lv-icon" data-icon="capture"></span><span class="lv-name">탄소 포집</span><button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
           <input type="range" class="range range--scen" id="lvCcs" min="0" max="3" step="0.1" aria-label="탄소 포집">
         </div>
         <div class="lv">
-          <div class="lv-head">산림 <button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
+          <div class="lv-head"><span class="lv-icon" data-icon="tree"></span><span class="lv-name">산림</span><button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
           <input type="range" class="range range--scen" id="lvForest" step="any" aria-label="산림 (토지이용 배출)">
           <div class="lv-scale readout"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
         </div>
         <div class="lv">
-          <div class="lv-head">기타 배출 감축 <button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
+          <div class="lv-head"><span class="lv-icon" data-icon="building"></span><span class="lv-name">기타 배출 감축</span><button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
           <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
         </div>
         <div class="fc-result readout" id="lvResult"></div>

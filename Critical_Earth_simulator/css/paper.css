@@ -102,13 +102,17 @@ body.paper .fc { margin: 0; padding: 0; border: 0; }
 body.paper .fc-h { display: flex; align-items: baseline; gap: var(--sp-2); margin: 0 0 var(--sp-2);
   font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink); }
 body.paper .fc-h span { font-family: var(--font-body); font-size: var(--fs-1); font-weight: 500; color: var(--ink-3); }
-body.paper .fc-presets { display: flex; flex-direction: column; gap: var(--sp-2); }
-body.paper .fc-row { display: flex; align-items: center; gap: var(--sp-1); }
-body.paper .fc-preset, body.paper .fc-custom { flex: 1; justify-content: flex-start; text-align: left; white-space: normal;
-  padding: var(--sp-1) var(--sp-3); min-height: 44px; }
-body.paper .fc-preset { flex-direction: column; align-items: flex-start; gap: 0; }
+/* 시나리오 아이콘 카드 3개 (C3): 한 덩어리 3칸. ⓘ는 카드 오른쪽 위 모서리(카드 밖 형제 요소) */
+body.paper .fc-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-1); }
+body.paper .fc-card { position: relative; display: flex; }
+body.paper .fc-card .fc-preset { flex: 1; min-height: 92px; padding: var(--sp-2) var(--sp-1) var(--sp-1); justify-content: flex-start;
+  text-align: center; white-space: normal; line-height: 1.2; }
+body.paper .fc-card .fc-preset svg { width: 28px; height: 28px; }
+body.paper .fc-card .fc-name { font-size: var(--fs-1); word-break: keep-all; }
+body.paper .fc-card > .src-i { position: absolute; top: -6px; right: -6px; z-index: 1; margin: 0; }
+body.paper .fc-custom { flex: 1; justify-content: flex-start; text-align: left; white-space: normal; padding: var(--sp-1) var(--sp-3); }
 body.paper .fc-name { display: block; font-size: var(--fs-2); font-weight: 700; }
-body.paper .fc-ssp { display: block; font-size: var(--fs-1); font-weight: 500; opacity: .9; }
+body.paper .fc-ssp { display: block; font-size: var(--fs-1); font-weight: 500; }
 body.paper .fc-custom { width: 100%; min-height: 56px; gap: var(--sp-2); }
 body.paper .fc-custom svg { width: 26px; height: 26px; }
 body.paper .fc-desc { margin: var(--sp-2) 0 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5; }
@@ -206,7 +210,7 @@ body.paper .rec-table th { position: sticky; top: 0; background: var(--paper); }
 @media (max-height: 760px) {
   body.tab-future.paper #tab-header-panel { padding: var(--sp-2) var(--sp-3); }
   body.paper .tl-bar { padding: var(--sp-1) var(--sp-3); }
-  body.paper .fc-preset { min-height: 40px; }
+  body.paper .fc-card .fc-preset { min-height: 84px; }
 }
 
 /* style.css 의 예전 미래 예측 규칙(.tl-play 초록, .tl-speed 11 px, 슬라이더 초록)이 버튼 체계를 덮지 않게 */
@@ -233,3 +237,25 @@ body.tab-future.paper #hint { display: none; }
 body.paper .fc-lever-top { display: flex; gap: var(--sp-2); justify-content: space-between; margin-bottom: var(--sp-2); }
 body.paper .fc-lever-top .fc-back { margin: 0; }
 @media (max-height: 760px) { body.paper .fc-lever-top { margin-bottom: var(--sp-1); } body.paper .fc-lever-top .btn { min-height: 32px; } }
+
+/* 레버 줄 (C3): 아이콘 · 이름 · ⓘ · 값 / 아래에 조작 */
+body.paper .lv-icon { display: inline-flex; color: var(--ctl-scen); margin-right: var(--sp-1); }
+body.paper .lv-icon svg { width: 20px; height: 20px; }
+body.paper .lv-name { white-space: nowrap; }
+/* 전력 구성: 세 구간 막대 + 경계 손잡이 2개 (끌기·키보드). 손잡이는 조작이므로 시나리오 영역색 */
+body.paper .mix-ctl { position: relative; height: 30px; margin: 2px 9px; touch-action: none; }
+body.paper .mix-ctl .mix-bar { position: absolute; left: 0; right: 0; top: 4px; height: 22px; margin: 0; }
+body.paper .mix-handle { position: absolute; top: 0; width: 18px; height: 30px; margin-left: -9px; box-sizing: border-box;
+  background: var(--paper); border: 2px solid var(--ctl-scen); border-radius: 6px; cursor: ew-resize; touch-action: none; }
+body.paper .mix-handle::after { content: ""; position: absolute; left: 6px; top: 7px; width: 2px; height: 12px;
+  border-left: 1.5px solid var(--ctl-scen); border-right: 1.5px solid var(--ctl-scen); }
+body.paper .mix-handle:hover, body.paper .mix-handle:active { background: var(--ctl-scen-bg); }
+body.paper .mix-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+body.paper .mix-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-1); font-size: var(--fs-1); color: var(--ink-2); }
+body.paper .mix-key { display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
+body.paper .mix-key-name, body.paper .mix-key-val { display: inline-flex; align-items: center; gap: 2px; }
+body.paper .mix-key b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+body.paper .mix-key .src-i { margin-left: 1px; }
+body.paper .mix-key.fossil svg { color: var(--data-co2); }
+body.paper .mix-key.nuclear svg { color: var(--data-omega); }
+body.paper .mix-key.renew svg { color: var(--data-ph); }

@@ -398,31 +398,59 @@ $('futureControls').addEventListener('click', e => {
 });
 $('fcBack').addEventListener('click', () => { showLeverPanel(false); $('fcCustomBtn').focus(); });
 
-// 레버. 전력 구성은 "화석 비중" + "나머지 중 원자력 몫" 두 손잡이로 한 덩어리로 다뤄서
-// 화석/원자력/재생의 합이 언제나 100 %가 되게 한다.
-const lvFossil = $('lvFossil'), lvNucShare = $('lvNucShare'), lvEv = $('lvEv'), lvCcs = $('lvCcs'),
-      lvOther = $('lvOther'), lvForest = $('lvForest');
+// 레버. 전력 구성은 화석 | 원자력 | 재생 세 구간이 한 막대이고, 경계 손잡이 두 개(mixB1 = 화석, mixB2 = 화석 + 원자력,
+// 단위 %)를 끌어 바꾼다. 경계 두 개로 나누므로 세 비중의 합은 언제나 100 %다.
+const lvEv = $('lvEv'), lvCcs = $('lvCcs'), lvOther = $('lvOther'), lvForest = $('lvForest');
 // 산림은 step="any"로 둔다. 눈금 간격이 있으면 지금 값(L2023 = 1.2952)이 1.30으로 끌려가서,
 // 다른 레버만 만져도 '벌채 지속' 배출이 슬그머니 바뀐다.
 lvForest.min = ES.LEVER_RANGE.forest[0];
 lvForest.max = ES.LEVER_RANGE.forest[1];
 const pct = v => (100 * v).toFixed(0) + ' %';
+const mix = { b1: 61, b2: 70 };
 function leversToInputs(L) {
-  lvFossil.value = Math.round(100 * L.fossilShare);
-  const clean = 1 - L.fossilShare;
-  lvNucShare.value = clean > 1e-9 ? Math.round(100 * L.nuclearShare / clean) : 23;
+  mix.b1 = Math.round(100 * L.fossilShare);
+  mix.b2 = Math.round(100 * (L.fossilShare + L.nuclearShare));
   lvEv.value = Math.round(100 * L.ev);
   lvCcs.value = L.ccs;
   lvOther.value = Math.round(100 * L.otherCut);
   lvForest.value = L.forest;
 }
 function inputsToLevers() {
-  const f = Number(lvFossil.value) / 100, k = Number(lvNucShare.value) / 100;
   FUT.levers = {
-    fossilShare: f, nuclearShare: (1 - f) * k, renewShare: (1 - f) * (1 - k),
+    // 정수 %에서 나눠야 0.70 − 0.61 = 0.08999… 같은 부동소수 찌꺼기가 생기지 않는다
+    fossilShare: mix.b1 / 100, nuclearShare: (mix.b2 - mix.b1) / 100, renewShare: (100 - mix.b2) / 100,
     ev: Number(lvEv.value) / 100, ccs: Number(lvCcs.value),
     otherCut: Number(lvOther.value) / 100, forest: Number(lvForest.value),
   };
+}
+// 경계 손잡이: 끌기(마우스·터치·펜) + 키보드(←→ 1 %, PageUp/PageDown 10 %, Home/End). 두 경계는 서로 넘지 못한다.
+function setMixBoundary(which, v) {
+  v = Math.round(Math.max(0, Math.min(100, v)));
+  if (which === 1) mix.b1 = Math.min(v, mix.b2); else mix.b2 = Math.max(v, mix.b1);
+  onLeverInput();
+}
+for (const [id, which] of [['mixH1', 1], ['mixH2', 2]]) {
+  const h = $(id);
+  h.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    h.setPointerCapture(e.pointerId);
+    h.focus();
+    const bar = $('mixCtl').querySelector('.mix-bar').getBoundingClientRect();
+    const move = ev => setMixBoundary(which, 100 * (ev.clientX - bar.left) / bar.width);
+    const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
+    h.addEventListener('pointermove', move);
+    h.addEventListener('pointerup', up);
+    h.addEventListener('pointercancel', up);
+  });
+  h.addEventListener('keydown', e => {
+    const cur = which === 1 ? mix.b1 : mix.b2;
+    const step = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10 }[e.key];
+    if (step != null) setMixBoundary(which, cur + step);
+    else if (e.key === 'Home') setMixBoundary(which, 0);
+    else if (e.key === 'End') setMixBoundary(which, 100);
+    else return;
+    e.preventDefault();
+  });
 }
 function forestLabel(v) {
   if (v > ES.L2023 - 0.03) return `${v.toFixed(2)} GtC/년 (벌채 지속)`;
@@ -431,13 +459,16 @@ function forestLabel(v) {
 }
 function showLeverValues() {
   const L = FUT.levers, N = ES.LEVER_NOW;
-  const segs = [['mixFossil', L.fossilShare, '화석'], ['mixNuclear', L.nuclearShare, '원자력'], ['mixRenew', L.renewShare, '재생']];
-  // 막대는 비율만 보여 주고 숫자는 아래 한 줄(lvMixVal)에만 쓴다 (같은 값을 두 번 쓰지 않는다)
-  for (const [id, v, name] of segs) {
+  // 막대는 비율만 보여 주고 숫자는 아래 범례(아이콘 · 이름 · 값)에만 쓴다 (같은 값을 두 번 쓰지 않는다)
+  for (const [id, v] of [['mixFossil', L.fossilShare], ['mixNuclear', L.nuclearShare], ['mixRenew', L.renewShare]]) {
     $(id).style.width = (100 * v) + '%';
-    $(id).title = `${name} ${pct(v)}`;
+    $(id + 'Val').textContent = pct(v);
   }
-  $('lvMixVal').innerHTML = `화석 <b>${pct(L.fossilShare)}</b> · 원자력 <b>${pct(L.nuclearShare)}</b> · 재생 <b>${pct(L.renewShare)}</b>`;
+  for (const [id, v, txt] of [['mixH1', mix.b1, `화석 ${mix.b1} %`], ['mixH2', mix.b2, `화석+원자력 ${mix.b2} % (재생 ${100 - mix.b2} %)`]]) {
+    $(id).style.left = v + '%';
+    $(id).setAttribute('aria-valuenow', v);
+    $(id).setAttribute('aria-valuetext', txt);
+  }
   $('lvEvVal').innerHTML = `<b>${pct(L.ev)}</b> (지금 ${pct(N.ev)})`;
   $('lvCcsVal').innerHTML = `<b>${L.ccs.toFixed(1)}</b> GtC/년`;
   $('lvOtherVal').innerHTML = `<b>${pct(L.otherCut)}</b>`;
@@ -456,7 +487,7 @@ function onLeverInput() {
   leverPending = true;
   requestAnimationFrame(() => { leverPending = false; recomputeFuture(); });
 }
-[lvFossil, lvNucShare, lvEv, lvCcs, lvOther, lvForest].forEach(el => el.addEventListener('input', onLeverInput));
+[lvEv, lvCcs, lvOther, lvForest].forEach(el => el.addEventListener('input', onLeverInput));
 $('lvReset').addEventListener('click', () => {
   FUT.levers = { ...ES.LEVER_NOW };
   leversToInputs(FUT.levers);
