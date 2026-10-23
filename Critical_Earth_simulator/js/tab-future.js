@@ -318,9 +318,11 @@ function refreshCharts() {
     d[DS.prev].data = PREV.run ? toXY(PREV.run, sp.key, LAST_OBS_YEAR) : [];
     d[DS.prev].hidden = !PREV.run;
     d[DS.prev].label = PREV.run ? `이전 선택: ${PREV.label}` : '이전 선택';
-    const vals = [...H.map(o => o[sp.key]), ...N.map(o => o[sp.key])];
-    if (PREV.run) vals.push(...PREV.run.map(o => o[sp.key]));
-    if (sp.obs) vals.push(...OBS_PTS[sp.obs].map(p => p.y));
+    // y축 범위는 보이는 연도(LIMIT, 평소 1750~2200)의 값으로만 — 탐구에서 1750~2023만 볼 때 2200년 예측값에 눌리지 않게
+    const vis = o => o.year >= LIMIT.from && o.year <= LIMIT.to;
+    const vals = [...H.filter(vis).map(o => o[sp.key]), ...N.filter(vis).map(o => o[sp.key])];
+    if (PREV.run) vals.push(...PREV.run.filter(vis).map(o => o[sp.key]));
+    if (sp.obs) vals.push(...OBS_PTS[sp.obs].filter(p => p.x >= LIMIT.from && p.x <= LIMIT.to).map(p => p.y));
     Object.assign(ch.options.scales.y, niceRange(vals, 0.06, sp.minSpan));
     if (sp.key === 'pH') {
       d[d.length - 2].data = toXY(H, 'omega', LAST_OBS_YEAR);
@@ -741,7 +743,8 @@ function setYear(y) {
 function setTimeLimit(from = TL_START, to = TL_END) {
   LIMIT.from = from; LIMIT.to = to;
   tlScrub.min = from; tlScrub.max = to;
-  for (const ch of charts) { ch.options.scales.x.min = from; ch.options.scales.x.max = to; ch.update('none'); }
+  for (const ch of charts) { ch.options.scales.x.min = from; ch.options.scales.x.max = to; }
+  refreshCharts();   // y축 범위도 보이는 연도에 맞춘다 (update 포함)
   setYear(FUT.year);
 }
 function setPlaying(on) {

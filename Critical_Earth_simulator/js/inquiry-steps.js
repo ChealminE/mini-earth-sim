@@ -47,7 +47,71 @@
 //   { do: 'record' }                                       지금 상태를 기록 서랍에 한 줄 저장 (버튼을 보인다)
 // ============================================================================
 
+// 과거만 보는 단계에서 함께 쓰는 동작 (1750~2023 관측, 예측으로 못 감)
+const PAST_ONLY = { do: 'timeRange', from: 1750, to: 2023, lockFuture: true };
+
 const INQUIRY_PATHS = [
+  // ── 경로 A — 왜 CO₂가 증가했을까? (랩미팅 학습 과정 1) ──
+  { id: 'A', title: '왜 CO₂가 증가했을까?', summary: 'CO₂ 그래프에서 증가가 시작된 때를 찾고 원인을 생각해 봅니다',
+    steps: [
+      { id: 'A1', title: 'CO₂는 어떻게 변해 왔을까?',
+        question: 'CO₂는 어떻게 변해 왔나요?',
+        text: '1750년부터 2023년까지 관측한 대기 CO₂ 농도입니다. 선이 어떻게 움직이는지 처음부터 끝까지 따라가 보세요.',
+        hint: '처음 100년쯤과 마지막 70년쯤의 기울기를 비교해 보세요.',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'askText', saveAs: 'A_change', placeholder: '예) 처음에는 … 그러다가 …' },
+        ] },
+      { id: 'A2', title: '증가는 언제 시작됐을까?',
+        question: 'CO₂가 늘어나기 시작한 곳을 그래프에서 눌러 보세요.',
+        hint: '선이 위로 꺾이기 시작하는 곳을 찾아보세요. 다시 누르면 고친 곳으로 바뀝니다.',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'pickPoint', chart: 'co2', saveAs: 'A_turningYear' },
+        ] },
+      { id: 'A3', title: '그때 무슨 일이 있었을까?',
+        question: '내가 고른 해와 두 시기(산업혁명, 1950년 이후 급증)를 비교해 보세요.',
+        text: '숨겨 두었던 표지를 공개했습니다. 내가 고른 해(동그라미)는 어느 시기에 가까운가요?',
+        hint: '산업혁명 때 석탄을 때는 증기기관과 공장이 퍼졌습니다. 1950년 이후에는 석유·자동차·전기 사용이 크게 늘었습니다.',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'revealMarkers', markers: ['industrial_revolution', 'great_acceleration'] },
+          { do: 'askText', saveAs: 'A_compare', prompt: '내가 고른 해는 어느 시기에 가까웠나요?', rows: 1 },
+        ] },
+      { id: 'A4', title: '화석연료 배출과 비교하기',
+        question: '두 그래프는 어떤 관계인가요?',
+        text: 'CO₂ 그래프 위에 해마다 태운 화석연료(석탄·석유·가스)에서 나온 탄소의 양을 겹쳤습니다. 3D의 도시도 그해 배출에 맞춰 자랍니다(연출).',
+        hint: '두 선이 함께 늘어나기 시작하는 때와, 가장 가파르게 늘어나는 때를 비교해 보세요.',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'overlay', chart: 'co2', series: 'fossil' },
+          { do: 'focus3D', target: 'city' },
+          { do: 'askText', saveAs: 'A_relation' },
+        ] },
+      { id: 'A5', title: '사람이 없었다면?',
+        question: '사람이 없었다면 CO₂는 어땠을까요?',
+        text: '3D를 "자연만 있는 지구"로 바꾸고, 그래프의 회색 점선(자연만 있는 지구)을 굵게 했습니다. 같은 모형에 사람의 배출만 0으로 넣은 결과입니다.',
+        hint: '회색 점선과 관측(검은 선)이 언제부터 벌어지나요?',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'toggleNature', on: true },
+          { do: 'askText', saveAs: 'A_nature' },
+        ] },
+      { id: 'A6', title: '정리하기',
+        question: 'CO₂ 증가의 원인은 ____이다.',
+        text: '빈칸을 채워 한 문장으로 정리하고, 지금 상태를 기록 서랍에 남기세요.',
+        actions: [
+          { do: 'showCharts', charts: ['co2'] },
+          PAST_ONLY,
+          { do: 'askText', saveAs: 'A_cause', placeholder: 'CO₂ 증가의 원인은 …이다.' },
+          { do: 'record', value: 'ppm' },
+        ] },
+    ] },
 ];
 
 // 사건 표지 (§4): 처음에는 숨기고 revealMarkers 로만 공개한다(학생이 먼저 판단하게). src = js/sources.js 키
