@@ -9,7 +9,7 @@
 const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 // 자연만 있는 지구: 같은 엔진을 배출 0으로 돌린 지구. 예전처럼 화면을 반으로 나누지 않고(피드백: "변하는 게 없는
 // 죽은 공간") 토글로 바꿔 본다. 씬은 토글을 처음 켤 때 만든다(ensureSceneBuilt) - 대부분은 켜 보지 않는다.
-const sceneNature = { dormant: true, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
+const sceneNature = { dormant: true, opts: { paper: true, nature: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
@@ -25,18 +25,19 @@ const FUT = {
   dirty: true,            // 다음 0.2초 틱에서 화면·3D를 다시 그릴지
 };
 
+// annotateCumFossil: 연도마다 누적 화석 배출의 지금까지 최댓값(cumFossilMax)을 붙인다 - 3D 도시 규모 (js/earth-visual.js)
 function computeNature() {
-  FUT.nature = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.natureEmissions });
+  FUT.nature = EarthVisual.annotateCumFossil(EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.natureEmissions }));
 }
 function humanEmissionsFn() {
   return FUT.preset === 'custom' ? EarthSystem.leverEmissions(FUT.levers) : EarthSystem.presetEmissions(FUT.preset);
 }
 function computeHuman() {
-  FUT.human = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() });
+  FUT.human = EarthVisual.annotateCumFossil(EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() }));
 }
 
 // 연도 사이 선형 보간. 엔진 배열의 year=y 원소는 "y년 한 해를 적분한 뒤"의 상태다.
-const SAMPLE_KEYS = ['ppm', 'T', 'sst', 'pH', 'omega', 'co2aq', 'hco3', 'co3', 'dic', 'bufferRel'];
+const SAMPLE_KEYS = ['ppm', 'T', 'sst', 'pH', 'omega', 'co2aq', 'hco3', 'co3', 'dic', 'bufferRel', 'cumFossilMax'];
 function sampleAt(arr, year) {
   const f = Math.max(0, Math.min(arr.length - 1, year - arr[0].year));
   const i = Math.floor(f), j = Math.min(arr.length - 1, i + 1), w = f - i;
@@ -518,37 +519,31 @@ $('recCsv').addEventListener('click', () => {
 // ── 3D ────────────────────────────────────────────────────────────────
 // 기존 매핑 상수(CO2_MIN/MAX, PH_MIN/MAX)를 그대로 쓴다. CO2_MAX(1000)는 1인칭과 공유하므로
 // 바꾸지 않는다 - 1000 ppm을 넘는 구간은 3D 효과만 포화된다(그래프는 그대로 그린다).
-// 빙하는 기온 편차 T로 줄인다 (T = 5 °C에서 최대 축소).
-// noTint: 뚜껑·안개가 노랗게 물드는 효과를 끈다(피드백 2번 - CO2는 무색이다). 대체 표현은 2차 개편 D 단계.
-const ICE_MELT_T = 5;
+// 빙하·산호·조개·도시는 common.js setEarthVisual → applyState가 엔진 값으로 정한다(2차 개편 D, js/earth-visual.js).
+// CO₂는 무색이라 뚜껑·안개 색에 묶지 않는다(피드백 2번). 종이 탭 씬은 applyState가 [CO₂ 보기] 점 구름으로만 보인다(2차 개편 D2).
 function apply3D(S, s) {
   if (S.dormant) return;
   S.state.co2 = s.ppm;
-  S.state.noTint = true;
-  S.state.ph = s.pH;
-  S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
   if (S === sceneFuture) applyLevers3D(S, s);
-  else S.state.treeFrac = 1;            // 자연 지구: 벌채가 없으니 나무가 다 있다
+  else { setEarthVisual(S, s, null); S.state.treeFrac = 1; }   // 자연 지구: 도시 없음, 벌채가 없으니 나무가 다 있다
   applyState(S);
 }
 
 // 레버 → 3D. 레버 목표값이 아니라 재생 연도의 실제 레버 값(선형 전환 중의 값)을 보여 준다.
-// 직접 설계가 아닌 시나리오는 전력 구성 같은 세부가 정해져 있지 않으므로, 연기는 그해 화석 배출의
-// 2023년 대비 비율로, 나무는 그해 토지이용 배출로 정하고 나머지는 2023년 값으로 둔다.
-// 2023년까지(역사 구간)도 같은 규칙이다.
+// 직접 설계가 아닌 시나리오는 전력 구성 같은 세부가 정해져 있지 않으므로 EarthVisual.presetSociety가
+// 그해 화석 배출로 전기차·재생·포집을 연출하고(2023년까지는 2023년 값, 그 기술이 없던 시대는 0),
+// 나무는 그해 토지이용 배출로 정한다. 도시 규모·굴뚝은 직접 설계든 시나리오든 그해 엔진 배출을 따른다(2차 개편 D3).
 const ES = EarthSystem;
 // 산림: 토지이용 배출 +L2023(벌채 지속) → 나무 60 %, 0(벌채 중단) → 약 83 %, −1(대규모 조림) → 100 %
 const treeFracFromLuc = luc => Math.min(1, Math.max(0.3, 0.6 + 0.4 * (ES.L2023 - luc) / (ES.L2023 + 1)));
 function applyLevers3D(S, s) {
   const custom = FUT.preset === 'custom' && s.year >= ES.LEVER_START;
-  const l = custom ? ES.leversAt(FUT.levers, s.year) : ES.LEVER_NOW;
-  const fossilNow = s.fossil != null ? s.fossil : 0;
-  S.state.fossil = custom ? 100 * l.fossilShare
-    : Math.min(100, 100 * ES.LEVER_NOW.fossilShare * Math.max(0, fossilNow / ES.E2023));
-  S.state.ev = 100 * l.ev;
-  S.state.carbonRemoval = 100 * l.ccs / ES.LEVER_RANGE.ccs[1];
-  S.state.nuclear = l.nuclearShare;
-  S.state.renew = l.renewShare;
+  const fossil = s.fossil != null ? s.fossil : 0;
+  const l = custom ? ES.leversAt(FUT.levers, s.year) : null;
+  const soc = custom
+    ? { ev: l.ev, renew: l.renewShare, nuclear: l.nuclearShare, removal: l.ccs / ES.LEVER_RANGE.ccs[1] }
+    : EarthVisual.presetSociety(fossil, s.year, ES.LEVER_NOW, ES.E2023, ES.LAST_HIST_YEAR);
+  setEarthVisual(S, s, soc);   // 도시·굴뚝·자동차·전기차·태양광·냉각탑·포집 타워 (common.js)
   S.state.treeFrac = treeFracFromLuc(custom ? l.forest : (s.luc != null ? s.luc : ES.L2023));
 }
 
@@ -573,6 +568,7 @@ function updateBadge() {
 function setNatureView(on) {
   FUT.showNature = on;
   $('natureToggle').setAttribute('aria-pressed', String(on));
+  updateLegend3D();   // 자연 지구에는 도시가 없으니 범례의 도시 줄을 숨긴다 (main.js)
   // 같은 정보를 3D와 그래프가 같은 색으로 가리키게: 자연 지구를 보는 동안 그래프의 자연 지구 선을 굵게
   for (const ch of charts) ch.data.datasets[DS.nature].borderWidth = on ? NATURE.widthOn : NATURE.width;
   charts.forEach(c => c.update('none'));

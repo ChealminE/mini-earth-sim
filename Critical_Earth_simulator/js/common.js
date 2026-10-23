@@ -136,8 +136,328 @@ function waveHeightAt(lx, ly, t, intensity, halfD) {
   return swell + chop;
 }
 
+// 둥근 점 스프라이트 (CO₂ 보기 점 구름이 공유) - 처음 쓸 때 한 번만 만든다
+let _dotSprite = null;
+function dotSprite() {
+  if (_dotSprite) return _dotSprite;
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 14, 0, Math.PI * 2); g.fill();
+  _dotSprite = new THREE.CanvasTexture(c);
+  return _dotSprite;
+}
+
+// 같은 시드면 같은 배치 - 도시 배치가 새로 고칠 때마다 바뀌면 연도·시나리오 비교 스크린샷을 맞출 수 없다
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// 여러 지오메트리를 하나로 합친다(위치·법선만). 자동차처럼 부품이 여러 개인 모형을 InstancedMesh 하나로 그리려고
+// 쓴다 - three.js 코어(r160)에는 BufferGeometryUtils.mergeGeometries가 없다(예제 모듈이라 전역 스크립트 구조에서 못 씀).
+// 모든 부품에 uv가 있으면 uv도 합친다(조개 껍데기의 구멍 무늬 alphaMap에 필요).
+function mergeGeos(parts) {
+  const pos = [], nor = [], uv = [];
+  const withUv = parts.every(([g]) => g.attributes.uv);
+  for (const [g, m] of parts) {
+    const ng = g.index ? g.toNonIndexed() : g.clone();
+    if (m) ng.applyMatrix4(m);
+    if (!ng.attributes.normal) ng.computeVertexNormals();
+    pos.push(...ng.attributes.position.array);
+    nor.push(...ng.attributes.normal.array);
+    if (withUv) uv.push(...ng.attributes.uv.array);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  if (withUv) out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return out;
+}
+const mat4 = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(
+  new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
+
+// 도시 구역(로컬 x −1~1, z −1.5~1.5)에 마을집·건물·굴뚝·연기·자동차를 인스턴싱으로 짓는다.
+// 크기·개수는 applyState가 S.state.city(EarthVisual: 누적 배출 → 건물, 그해 배출 → 굴뚝)로 정한다.
+// 드로우콜: 집 2 + 건물 1 + 공장 1 + 굴뚝 1 + 연기 1 + 자동차 3 = 9 (그림자 패스 별도), 개수와 상관없이 일정.
+const CITY_ROAD = { mainZ: -0.01, crossX: 0.09, half: 0.1 };   // 도로 자리 (위 MAIN_ROAD_Z·CROSS_ROAD_X와 같은 값)
+function buildCityGrowth(group, base, stackTex) {
+  const rnd = seededRandom(1750);
+  const onRoad = (x, z, pad = 0) => Math.abs(z - CITY_ROAD.mainZ) < CITY_ROAD.half + pad || Math.abs(x - CITY_ROAD.crossX) < CITY_ROAD.half + pad;
+  // 다른 소품 자리 (공장 지대·포집 타워·냉각탑·태양광 패널 칸)는 비운다
+  const RESERVED = [[0.62, 0.5, 0.26], [-0.65, 0.15, 0.13], [0.76, 1.1, 0.3]];
+  const reserved = (x, z, r) => RESERVED.some(([cx, cz, cr]) => Math.hypot(x - cx, z - cz) < cr + r) || (z > 0.76 && x < 0.47);
+  const d = new THREE.Object3D();
+
+  // 1) 마을집 6채 - 1750년에도 있는 옛 마을. 교차로 가까이, 지붕은 사각뿔
+  const HOUSES = [[-0.12, -0.2], [0.3, -0.18], [-0.1, 0.2], [0.3, 0.22], [-0.3, -0.24], [0.48, 0.17]];
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a8, roughness: 0.9 });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a3b22, roughness: 0.8 });
+  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, 0.05, 0.06), wallMat, HOUSES.length);
+  const roofGeo = new THREE.ConeGeometry(0.06, 0.04, 4); roofGeo.rotateY(Math.PI / 4);
+  const roofs = new THREE.InstancedMesh(roofGeo, roofMat, HOUSES.length);
+  HOUSES.forEach(([x, z], i) => {
+    d.position.set(x, base + 0.025, z); d.rotation.set(0, (i % 2) * 0.3, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    walls.setMatrixAt(i, d.matrix);
+    d.position.y = base + 0.07; d.updateMatrix();
+    roofs.setMatrixAt(i, d.matrix);
+  });
+  walls.castShadow = roofs.castShadow = true;
+  group.add(walls, roofs);
+
+  // 2) 건물 자리: 도로·소품·마을집을 피해 격자로 뽑고, 교차로(옛 마을)에서 가까운 순서로 나타나게 정렬한다.
+  //    → 도시가 마을에서 바깥으로 퍼져 나간다. 가운데일수록 최대 높이가 높다(도심).
+  const slots = [];
+  for (let gx = -0.86; gx <= 0.87; gx += 0.145) {
+    for (let gz = -1.36; gz <= 0.72; gz += 0.15) {
+      const x = gx + (rnd() - 0.5) * 0.03, z = gz + (rnd() - 0.5) * 0.03;
+      if (onRoad(x, z, 0.03) || reserved(x, z, 0.07)) continue;
+      if (HOUSES.some(([hx, hz]) => Math.hypot(x - hx, z - hz) < 0.11)) continue;
+      const dist = Math.hypot(x - CITY_ROAD.crossX, (z - CITY_ROAD.mainZ) * 0.8);
+      slots.push({ x, z, dist: dist + rnd() * 0.15, w: 0.08 + rnd() * 0.05 });
+    }
+  }
+  slots.sort((a, b) => a.dist - b.dist);
+  slots.forEach((sl, i) => { sl.hMax = (0.52 - 0.32 * i / slots.length) * (0.75 + rnd() * 0.5); });
+  const facade = sharedTex.buildingFacade.clone(); facade.needsUpdate = true; facade.repeat.set(1, 4);
+  const bldMat = new THREE.MeshStandardMaterial({ map: facade, color: 0xffffff, roughness: 0.5, metalness: 0.15 });
+  const bldGeo = new THREE.BoxGeometry(1, 1, 1); bldGeo.translate(0, 0.5, 0);   // 바닥 기준으로 늘리게
+  const buildings = new THREE.InstancedMesh(bldGeo, bldMat, slots.length);
+  const BLD_COLORS = [0x9aa0a8, 0x848a92, 0xb0b5bb, 0x7a8088, 0xa39a8e];
+  const col = new THREE.Color();
+  slots.forEach((sl, i) => buildings.setColorAt(i, col.setHex(BLD_COLORS[i % BLD_COLORS.length])));
+  buildings.count = 0;
+  buildings.castShadow = buildings.receiveShadow = true;
+  group.add(buildings);
+
+  // 3) 공장 지대: 굴뚝 6자리(공장 건물 + 원기둥 굴뚝). 그해 배출에 따라 앞에서부터 켠다
+  const STACKS = [[0.55, 0.42], [0.7, 0.4], [0.62, 0.56], [0.78, 0.55], [0.5, 0.6], [0.72, 0.7]];
+  const hallMat = new THREE.MeshStandardMaterial({ color: 0x7d6f60, roughness: 0.85 });
+  const halls = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.06, 0.08), hallMat, STACKS.length);
+  const stackGeo = new THREE.CylinderGeometry(0.018, 0.025, 0.28, 10); stackGeo.translate(0, 0.14, 0);
+  const stacks = new THREE.InstancedMesh(stackGeo, new THREE.MeshStandardMaterial({ map: stackTex, color: 0x5c5852, roughness: 0.85 }), STACKS.length);
+  STACKS.forEach(([x, z], i) => {
+    d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1);
+    d.position.set(x - 0.03, base + 0.03, z); d.updateMatrix(); halls.setMatrixAt(i, d.matrix);
+    d.position.set(x + 0.025, base, z); d.updateMatrix(); stacks.setMatrixAt(i, d.matrix);
+  });
+  halls.count = stacks.count = 0;
+  halls.castShadow = stacks.castShadow = true;
+  group.add(halls, stacks);
+  // 연기: 굴뚝마다 SMOKE_PER개. 입자 j는 굴뚝 floor(j / SMOKE_PER)의 것 → 켜진 굴뚝 수 × SMOKE_PER 만 그린다
+  const SMOKE_PER = 28;
+  const smokeGeo = new THREE.BufferGeometry();
+  smokeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STACKS.length * SMOKE_PER * 3), 3));
+  smokeGeo.setDrawRange(0, 0);
+  const smokeLife = Float32Array.from({ length: STACKS.length * SMOKE_PER }, () => rnd());
+  const smokeMat = new THREE.PointsMaterial({ color: 0x8c8a85, size: 0.06, map: dotSprite(), transparent: true, opacity: 0.5, depthWrite: false });
+  const smokePts = new THREE.Points(smokeGeo, smokeMat);
+  smokePts.frustumCulled = false;
+  group.add(smokePts);
+
+  // 4) 자동차: 차체(몸통·캐빈·펜더)·바퀴·유리를 각각 하나로 합쳐 InstancedMesh 3개. 색은 인스턴스 색(휘발유 회색 / 전기차 청록)
+  const bodyGeo = mergeGeos([
+    [new THREE.BoxGeometry(0.09, 0.028, 0.045), mat4(0, 0.036, 0)],
+    [new THREE.BoxGeometry(0.05, 0.022, 0.038), mat4(-0.006, 0.061, 0)],
+    ...[[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]].map(([x, z]) => [new THREE.BoxGeometry(0.024, 0.01, 0.006), mat4(x, 0.022, z)]),
+  ]);
+  const wheelGeo = mergeGeos([[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]]
+    .map(([x, z]) => [new THREE.CylinderGeometry(0.011, 0.011, 0.008, 10), mat4(x, 0.011, z, Math.PI / 2)]));
+  const glassGeo = mergeGeos([[new THREE.PlaneGeometry(0.03, 0.034), mat4(0.021, 0.061, 0, 0, Math.PI / 2, 0)]]);
+  // 자리: 큰길 두 차로 + 세로길 두 차로, 교차로(가운데 0.16)는 비움
+  const CAR_SLOTS = [];
+  for (let x = -0.85; x <= 0.9; x += 0.12) if (Math.abs(x - CITY_ROAD.crossX) > 0.16) {
+    CAR_SLOTS.push([x, CITY_ROAD.mainZ + 0.03, 0], [x + 0.06, CITY_ROAD.mainZ - 0.03, Math.PI]);
+  }
+  for (let z = -1.35; z <= 0.75; z += 0.14) if (Math.abs(z - CITY_ROAD.mainZ) > 0.16) {
+    CAR_SLOTS.push([CITY_ROAD.crossX - 0.03, z, Math.PI / 2], [CITY_ROAD.crossX + 0.03, z + 0.07, -Math.PI / 2]);
+  }
+  for (let i = CAR_SLOTS.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [CAR_SLOTS[i], CAR_SLOTS[j]] = [CAR_SLOTS[j], CAR_SLOTS[i]]; }
+  const NC = Math.min(28, CAR_SLOTS.length);
+  const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 }), NC);
+  const carWheels = new THREE.InstancedMesh(wheelGeo, new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.8 }), NC);
+  const carGlass = new THREE.InstancedMesh(glassGeo, new THREE.MeshStandardMaterial({ color: 0x9fd0e8, roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide }), NC);
+  for (let i = 0; i < NC; i++) {
+    const [x, z, ry] = CAR_SLOTS[i];
+    d.position.set(x, base + 0.003, z); d.rotation.set(0, ry, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    carBody.setMatrixAt(i, d.matrix); carWheels.setMatrixAt(i, d.matrix); carGlass.setMatrixAt(i, d.matrix);
+    carBody.setColorAt(i, col.setHex(0x5a5650));
+  }
+  carBody.count = carWheels.count = carGlass.count = 0;
+  carBody.castShadow = true;
+  group.add(carBody, carWheels, carGlass);
+
+  return { slots, buildings, STACKS, halls, stacks, smokeGeo, smokeLife, smokeMat, smokePts, SMOKE_PER, carBody, carWheels, carGlass, NC,
+           last: { level: -1, stacks: -1, cars: -1, ev: -1 } };
+}
+
+// 자연 지구의 도시 구역 자리: 나무(줄기·잎 덩어리)·풀을 인스턴싱으로. 드로우콜 3번(그림자 별도)
+function buildWilderness(group, groundY) {
+  const rnd = seededRandom(1492), d = new THREE.Object3D();
+  const spots = [];
+  for (let i = 0; i < 400 && spots.length < 34; i++) {
+    const x = -0.88 + rnd() * 1.76, z = -1.36 + rnd() * 2.72;
+    if (!spots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.16)) spots.push([x, z]);
+  }
+  const trunkGeo = new THREE.CylinderGeometry(0.012, 0.018, 1, 6); trunkGeo.translate(0, 0.5, 0);
+  const crownGeo = mergeGeos([[0, 0, 0, 0.06], [0.035, -0.02, 0.01, 0.045], [-0.03, -0.015, -0.02, 0.045], [0.005, 0.035, -0.01, 0.04]]
+    .map(([x, y, z, r]) => [new THREE.IcosahedronGeometry(r, 1), mat4(x, y, z)]));
+  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ map: sharedTex.treeBark, roughness: 0.9 }), spots.length);
+  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, flatShading: true }), spots.length);
+  const greens = [0x3f7433, 0x4d8a3a, 0x356629, 0x5a9440].map(h => new THREE.Color(h));
+  spots.forEach(([x, z], i) => {
+    const h = 0.12 + rnd() * 0.14, s = 0.9 + rnd() * 0.7, y = groundY(x, z);
+    d.position.set(x, y, z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(1, h, 1); d.updateMatrix();
+    trunks.setMatrixAt(i, d.matrix);
+    d.position.y = y + h; d.scale.set(s, s, s); d.updateMatrix();
+    crowns.setMatrixAt(i, d.matrix);
+    crowns.setColorAt(i, greens[i % greens.length]);
+  });
+  trunks.castShadow = crowns.castShadow = true;
+  const GRASS_N = 260;
+  const grassGeo = new THREE.ConeGeometry(0.006, 0.045, 5); grassGeo.translate(0, 0.0225, 0);
+  const grass = new THREE.InstancedMesh(grassGeo, new THREE.MeshStandardMaterial({ color: 0x5a9c4a, roughness: 0.85 }), GRASS_N);
+  for (let i = 0; i < GRASS_N; i++) {
+    const x = -0.9 + rnd() * 1.8, z = -1.4 + rnd() * 2.8, gs = 0.7 + rnd() * 0.8;
+    d.position.set(x, groundY(x, z), z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(gs, gs, gs); d.updateMatrix();
+    grass.setMatrixAt(i, d.matrix);
+  }
+  group.add(trunks, crowns, grass);
+}
+
+// 도시 상태 반영 (applyState에서, 0.2초 틱). 바뀐 것만 다시 쓴다 - 행렬 수십 개라 가볍지만 매 틱 쓸 이유도 없다.
+//   c = S.state.city = { level 0~1 (누적 배출), stacks 굴뚝 수, stackLevel 0~1 (그해 배출), cars 0~1, ev 0~1 }
+const _cityDummy = new THREE.Object3D();
+const CAR_GAS = new THREE.Color(0x5a5650), CAR_EV = new THREE.Color(0x2f9e8f);
+function applyCity(S, c) {
+  const C = S.city;
+  if (!C || !c) return;
+  const base = S.CITY_BASE, L = c.level, n = C.slots.length;
+  if (Math.abs(L - C.last.level) > 1e-4) {
+    // 건물 i는 도시 규모가 (i+1)/n을 넘으면 나타나고, 그 뒤 규모가 0.25 더 커질 때까지 자란다.
+    // 높이는 도시 전체 규모에도 곱한다 - 일찍 선 건물이 1950년에 벌써 마천루가 되지 않게
+    let shown = 0;
+    C.slots.forEach((sl, i) => {
+      const g = (L - (i + 1) / n) / 0.25;
+      if (g <= 0) return;
+      const h = sl.hMax * (0.25 + 0.75 * Math.min(1, g)) * (0.4 + 0.6 * L);
+      _cityDummy.position.set(sl.x, base, sl.z); _cityDummy.rotation.set(0, 0, 0); _cityDummy.scale.set(sl.w, h, sl.w * 0.9);
+      _cityDummy.updateMatrix();
+      C.buildings.setMatrixAt(i, _cityDummy.matrix);
+      shown = i + 1;
+    });
+    C.buildings.count = shown;
+    C.buildings.instanceMatrix.needsUpdate = true;
+    C.last.level = L;
+  }
+  if (c.stacks !== C.last.stacks) {
+    C.halls.count = C.stacks.count = c.stacks;
+    C.smokeGeo.setDrawRange(0, c.stacks * C.SMOKE_PER);
+    C.last.stacks = c.stacks;
+  }
+  // 연기는 그해 배출이 클수록 짙고 굵게
+  C.smokeMat.opacity = 0.25 + 0.5 * c.stackLevel;
+  C.smokeMat.size = 0.04 + 0.05 * c.stackLevel;
+  const nCar = Math.round(c.cars * C.NC), nEv = Math.round(nCar * c.ev);
+  if (nCar !== C.last.cars || nEv !== C.last.ev) {
+    C.carBody.count = C.carWheels.count = C.carGlass.count = nCar;
+    for (let i = 0; i < C.NC; i++) C.carBody.setColorAt(i, i < nEv ? CAR_EV : CAR_GAS);
+    C.carBody.instanceColor.needsUpdate = true;
+    C.last.cars = nCar; C.last.ev = nEv;
+  }
+}
+
+// 엔진 표본 s(EarthSystem.run 원소, cumFossilMax 붙음) + 그해 사회 모습 soc → 종이 탭 씬의 3D 입력 (2차 개편 D)
+// 현재 실태 탭(마지막 역사 연도)과 미래 예측 탭(재생 연도)이 같이 쓴다. soc = { ev, renew, nuclear, removal } (0~1)
+function setEarthVisual(S, s, soc) {
+  const st = S.state, fossil = s.fossil || 0;
+  st.T = s.T;          // 기온 편차 → 빙하(연출)·산호(SR1.5)
+  st.omega = s.omega;  // 아라고나이트 포화도 → 조개 껍데기 (D5)
+  st.ph = s.pH;        // [지시약으로 보기] (D5)
+  if (!soc) return;    // 자연 지구: 도시가 없다
+  st.ev = 100 * soc.ev;
+  st.renew = soc.renew;
+  st.nuclear = soc.nuclear;
+  st.carbonRemoval = 100 * soc.removal;
+  const level = EarthVisual.cityLevel(s.cumFossilMax || 0);
+  st.city = { level, stacks: EarthVisual.stackCount(fossil), stackLevel: EarthVisual.stackLevel(fossil),
+              cars: EarthVisual.carFrac(level), ev: soc.ev };
+}
+
+// 종이 탭의 바다 (2차 개편 D4·D5). 바다 색은 자연색으로 고정한다 - pH에 따라 물색을 바꾸던 예전 표현은
+// "산성화되면 바다 색이 변한다"는 오개념을 만든다. 기온 → 빙하·산호, Ω → 조개 껍데기, pH → [지시약으로 보기]에서만 색.
+const SEA_BODY = new THREE.Color(0x1f6d8a), SEA_SURFACE = new THREE.Color(0x2f84a8);
+const CORAL_BLEACHED = new THREE.Color(0xf4f1ea);
+const SHELL_INTACT = new THREE.Color(0xd9822b), SHELL_PALE = new THREE.Color(0xf3ece0);
+// 껍데기 구멍 무늬: 흰 바탕에 어두운 얼룩. alphaTest를 올릴수록 어두운 얼룩부터 투명해져 구멍이 커진다
+let _holeTex = null;
+function holeTexture() {
+  if (_holeTex) return _holeTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), rnd = seededRandom(1983);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 40; i++) {
+    const v = Math.floor(40 + rnd() * 150);
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.beginPath(); g.arc(rnd() * 64, rnd() * 64, 2 + rnd() * 6, 0, Math.PI * 2); g.fill();
+  }
+  _holeTex = new THREE.CanvasTexture(c);
+  return _holeTex;
+}
+function applyOceanPaper(S) {
+  const st = S.state;
+  S.waterBody.material.color.copy(SEA_BODY);
+  S.waterBody.material.opacity = 0.24;         // 바닥의 산호·조개가 비쳐 보이게 예전(0.82~0.98)보다 투명하게
+  S.waterBody.material.roughness = 0.15;
+  if (VIEW3D.indicator) {
+    // [지시약으로 보기]: 수면만 pH 색으로 칠한다 (실제 바다 색이 아님, 범위 7.6~8.2 확대 - 범례 색 막대)
+    // 물 몸통(waterBody)이 깊이를 쓰며 파도 면 대부분을 덮고 있어서 수면만 칠하면 앞쪽 띠만 물들었다 → 몸통 윗부분도 같은 색
+    const [r, g, b] = EarthVisual.phIndicatorRgb(st.ph);
+    S.waveMat.color.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+    S.waveMat.opacity = 0.9;
+    S.waveMat.transmission = 0;
+    S.waterBody.material.color.copy(S.waveMat.color);
+    S.waterBody.material.opacity = 0.62;
+  } else {
+    S.waveMat.color.copy(SEA_SURFACE);
+    S.waveMat.opacity = 0.36;
+    S.waveMat.transmission = 0.15;
+  }
+  S.waveMat.roughness = 0.1;
+  S.waveMat.clearcoat = 0.9;
+
+  // 빙하 (연출): 모서리 기준으로 길이 ∝ glacierFrac. 떠 있는 얼음 조각도 같은 비율
+  const f = EarthVisual.glacierFrac(st.T);
+  S.glacier.visible = f > 0.02;
+  S.glacier.scale.set(f, Math.sqrt(f), f);      // 높이는 덜 줄여 마지막까지 '빙하'로 읽히게
+  S.iceMeshes.forEach(o => { o.mesh.scale.setScalar(Math.max(0.01, f)); o.mesh.visible = f > 0.02; o.shrinkY = -(1 - f) * 0.04; });
+
+  // 조개 껍데기 (Ω): Ω > 1 동안 색만 조금씩 옅게(연출), Ω < 1이면 분필처럼 하얗게 바래며 구멍이 커진다(아라고나이트가 녹는 조건).
+  // 반투명(transparent)으로 하면 깊이를 쓰는 바닷물 몸통(waterBody)에 가려 껍데기가 통째로 사라졌다 - 불투명 + alphaTest 구멍으로 한다.
+  const sh = EarthVisual.shellState(st.omega), m = S.shells.mat;
+  m.color.lerpColors(SHELL_INTACT, SHELL_PALE, Math.min(1, 0.7 * sh.fade + 0.3 * sh.dissolve));
+  const dissolving = sh.dissolve > 0;
+  if (dissolving !== S.shells.dissolving) { m.needsUpdate = true; S.shells.dissolving = dissolving; }   // alphaTest 0 ↔ 양수는 셰이더를 다시 만든다
+  m.alphaTest = dissolving ? 0.25 + 0.6 * sh.dissolve : 0;
+
+  // 산호 (IPCC SR1.5 B.4.2): 건강한 군락 수가 바뀔 때만 색을 다시 칠한다
+  const C = S.coral, k = Math.round(EarthVisual.coralHealthy(st.T || 0) * C.colonies.length);
+  if (k !== C.healthy) {
+    C.colonies.forEach((c, i) => c.mesh.setColorAt(c.idx, i < k ? c.color : CORAL_BLEACHED));
+    C.meshes.forEach(m => { m.instanceColor.needsUpdate = true; });
+    C.healthy = k;
+  }
+}
+
+// 3D 보기 토글 (2차 개편 D, 종이 탭 씬에만 적용). 탭·지구(인간활동/자연)를 바꿔도 같은 보기를 유지하도록 전역 하나로 둔다.
+//   co2       : [CO₂ 보기] 공기 중 점 구름
+//   indicator : [지시약으로 보기] 바다 표면에 pH 색 (D5)
+const VIEW3D = { co2: false, indicator: false };
+
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
-function buildAcrylicScene() {
+// opts.paper: 종이(라이트) 테마 탭(현재 실태·미래 예측)의 씬. 2차 개편 D의 3D 시각 언어(밝은 바탕 맞춤,
+//   CO₂ 보기, 도시 성장, 산호·조개 등)는 이 씬에서만 켠다 - 직접 실험 탭은 같은 함수를 쓰지만 예전 모습 그대로 둔다.
+// opts.nature: 미래 예측 탭의 '자연만 있는 지구' 씬 (도시 구역 대신 자연 식생, D6)
+function buildAcrylicScene(opts = {}) {
+const PAPER = !!opts.paper;
 const scene = new THREE.Scene();
 scene.environment = sharedEnvMap;
 // r160부터 물리기반(광도 단위) 조명만 지원해서 SpotLight 밝기 스케일이 달라짐(약 4π배 보정 필요)
@@ -151,11 +471,13 @@ scene.add(sun, sun.target);
 // 텍스처(특히 도시 바닥·건물 창문 패턴)의 명암 대비가 너무 밝아 안 보였어서
 // 색공간 보정용으로 올렸던 값을 다시 낮춤 - 실내가 살짝 어두워 보이는 것보다
 // 텍스처가 실제로 보이는 쪽이 우선
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+// 종이 바탕(D1): 바탕이 이미 밝아 모형이 바탕에 묻혔다. 환경광을 줄이고 키라이트 그림자로 입체감을 살린다.
+scene.add(new THREE.AmbientLight(0xffffff, PAPER ? 0.4 : 0.55));
 const rim = new THREE.DirectionalLight(0xdfe8f5, 0.35);
 rim.position.set(-5, 3, -4);
 scene.add(rim);
-scene.add(new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.4));
+// 종이 바탕에서는 땅쪽 반사광을 종이색 계열로 맞춰 아랫면이 푸르게 뜨지 않게 한다
+scene.add(PAPER ? new THREE.HemisphereLight(0xfffaf0, 0xb8ad96, 0.45) : new THREE.HemisphereLight(0xffffff, 0xc9c9c4, 0.4));
 
 // 집게형 조명 스탠드: 기둥 끝점 → 갓 위치를 잇는 벡터로 팔을 정렬해서
 // 기둥·팔·갓·전구가 서로 끊어져 보이지 않고 실제로 이어지게 배치
@@ -199,13 +521,21 @@ const lampBulb = new THREE.Mesh(
 lampBulb.position.set(armEnd.x, armEnd.y - LAMP_SHADE_H * 0.8, armEnd.z); // 갓 안쪽, 입구 근처
 lampGroup.add(lampBulb);
 
+// 회전판: 어두운 바탕에서는 흰 판이 또렷했지만 종이 바탕(#f8f5ee)에서는 차가운 회색 타원으로 번져 보였다(D1).
+// 종이보다 한 단계 짙은 따뜻한 회갈색으로 두고, 가장자리에 먹색 가는 선을 둘러 판의 윤곽을 잡는다.
 const table = new THREE.Mesh(
   new THREE.CylinderGeometry(3.6, 3.8, 0.15, 64),
-  new THREE.MeshStandardMaterial({ color: 0xf2f2ef, roughness: 0.9 })
+  // envMapIntensity: 공유 환경맵의 하늘색 패널이 판에 비쳐 푸르게 보였다 - 종이 탭에서는 반사를 줄인다
+  new THREE.MeshStandardMaterial({ color: PAPER ? 0xd6cbb4 : 0xf2f2ef, roughness: PAPER ? 1 : 0.9, envMapIntensity: PAPER ? 0.35 : 1 })
 );
 table.position.y = -0.08;
 table.receiveShadow = true;
 scene.add(table);
+if (PAPER) {
+  const rimPts = [];
+  for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; rimPts.push(new THREE.Vector3(Math.cos(a) * 3.6, 0.002, Math.sin(a) * 3.6)); }   // 판 윗면(y −0.005) 바로 위
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rimPts), new THREE.LineBasicMaterial({ color: 0x575d65, transparent: true, opacity: 0.6 })));
+}
 
 const BOX_W = 6, BOX_D = 3, BOX_H = 2.3;
 const TERRAIN_TOP = BOX_H * 0.2; // 지형은 박스 높이의 1/5까지만
@@ -262,7 +592,10 @@ const acrylicMat = new THREE.MeshPhysicalMaterial({
   // 유리는 뒤에 있는 걸 가리면 안 되므로 depthWrite를 꺼서 순수 오버레이로만 동작하게 함
   depthWrite: false
 });
-const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+// 아크릴 모서리: 어두운 바탕용 흰 선(불투명도 0.3)은 종이 바탕에서 사라졌다. 종이 탭은 먹색(--ink-2 계열) 가는 선으로.
+const edgeMat = PAPER
+  ? new THREE.LineBasicMaterial({ color: 0x3d434b, transparent: true, opacity: 0.75 })
+  : new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
 function addPanel(w, h, pos, rot) {
   const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), acrylicMat);
   p.position.copy(pos);
@@ -324,6 +657,34 @@ const hazeMat = new THREE.MeshBasicMaterial({ color: HAZY_SKY.clone(), transpare
 const haze = new THREE.Mesh(new THREE.BoxGeometry(BOX_W - 0.02, BOX_H - TERRAIN_TOP - 0.05, BOX_D - 0.02), hazeMat);
 haze.position.y = TERRAIN_TOP + (BOX_H - TERRAIN_TOP) / 2;
 box.add(haze);
+// 종이 탭(2차 개편 D2): CO₂는 무색이다. 뚜껑 색·안개·노란 입자를 CO₂에 묶으면 스모그로 오해하게 되므로
+// 셋 다 쓰지 않고, [CO₂ 보기]를 켰을 때만 아래 점 구름으로 농도를 보인다.
+if (PAPER) { atmosphere.visible = false; haze.visible = false; }
+
+// [CO₂ 보기] 점 구름: 점 개수 ∝ 농도 (EarthVisual.co2DotCount). 최대 개수만큼 미리 자리를 만들고
+// setDrawRange로 앞에서부터 보일 개수만 그린다 - 점이 몇 개든 드로우콜 1번.
+let co2Dots = null;
+if (PAPER) {
+  const N = EarthVisual.CO2_DOTS.MAX;
+  const pos = new Float32Array(N * 3), base = new Float32Array(N * 3), seed = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    base[i * 3] = (Math.random() - 0.5) * (BOX_W - 0.2);
+    base[i * 3 + 1] = TERRAIN_TOP + 0.08 + Math.random() * (BOX_H - TERRAIN_TOP - 0.18);
+    base[i * 3 + 2] = (Math.random() - 0.5) * (BOX_D - 0.2);
+    seed[i * 2] = Math.random() * Math.PI * 2;
+    seed[i * 2 + 1] = 0.3 + Math.random() * 0.6;
+  }
+  pos.set(base);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setDrawRange(0, 0);
+  // 둥근 점: 기본 Points는 네모라 작은 원 텍스처를 입힌다. 색은 먹색 - 무색 기체를 '표시'한 것이지 색이 있는 것처럼 보이면 안 된다
+  const mat = new THREE.PointsMaterial({ color: 0x3d434b, size: 0.045, map: dotSprite(), transparent: true, opacity: 0.85, alphaTest: 0.3, depthWrite: false });
+  co2Dots = new THREE.Points(geo, mat);
+  co2Dots.visible = false;
+  co2Dots.userData = { base, seed };
+  box.add(co2Dots);
+}
 
 // 4) 박스 위쪽 가장자리에 얹힌 얼음(구름 역할) 덩어리 클러스터
 const cloudIceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
@@ -370,11 +731,15 @@ zoneFloor(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, 0xa89f83);
 zoneFloor(0, WETLAND_BASE, sharedTex.forestGrass, 0x2c331c);
 // 도시 바닥 텍스처가 씬 조명 아래 너무 밝아 안 보여서 씬 전체 조명을 건드리는 대신
 // 이 재질에만 어두운 틴트를 곱해 노출을 낮춘 효과를 줌
-zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832, 0x9a9a9a);
+// 자연 지구(2차 개편 D6)는 도시 구역 자리도 포장도로가 아닌 풀밭이다
+const WILD = PAPER && !!opts.nature;
+if (WILD) zoneFloor(ZONE_W, CITY_BASE, sharedTex.forestGrass, 0x2c331c);
+else zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832, 0x9a9a9a);
 // 해저·습지 바닥에만 절차적 지형 기복 적용. 도시는 실제로도 평평하게 포장된 땅이라
 // (건물·차 등 고정 좌표 소품도 많아 굴곡을 주면 오히려 붕 뜬 것처럼 보임) 그대로 둔다.
 createTerrainCap(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
 createTerrainCap(0, WETLAND_BASE, sharedTex.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
+if (WILD) createTerrainCap(ZONE_W, CITY_BASE, sharedTex.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED + 2.3);
 // 세 블록이 높이가 달라서 경계면(옆면)이 자연스럽게 계단 절벽처럼 드러남 - 별도 리저 불필요
 
 
@@ -473,6 +838,88 @@ const iceMeshes = [];
   oceanGroup.add(ice);
   iceMeshes.push({ mesh: ice, baseY: ice.position.y, shrinkY: 0 });
 });
+
+// ── 종이 탭(2차 개편 D4): 빙하 · 산호 ──
+// 빙하: 예전 얼음 조각 4개(지름 0.1 남짓)는 줄어드는 게 거의 안 보였다. 바다 구역 뒤쪽 왼편 모서리에 빙하 덩어리를 두고
+// 그 모서리를 기준으로 줄인다(EarthVisual.glacierFrac, 연출). 덩어리 여러 개를 한 지오메트리로 합쳐 드로우콜 1번.
+let glacier = null, coral = null, shells = null;
+if (PAPER) {
+  const rnd = seededRandom(1850);
+  const parts = [];
+  for (let i = 0; i < 11; i++) {
+    const u = rnd(), v = rnd();
+    const x = u * 0.75, z = v * 0.65;
+    const near = 1 - Math.min(1, Math.hypot(u, v) / 1.2);          // 모서리에 가까울수록 두껍다
+    const r = 0.1 + 0.1 * near + rnd() * 0.04;
+    const g = rnd() < 0.5 ? new THREE.DodecahedronGeometry(r, 0) : new THREE.IcosahedronGeometry(r, 0);
+    parts.push([g, new THREE.Matrix4().compose(new THREE.Vector3(x, 0.06 + 0.22 * near, z),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd(), rnd() * 3, rnd())), new THREE.Vector3(1.3, 0.8 + near * 0.6, 1.1))]);
+  }
+  glacier = new THREE.Mesh(mergeGeos(parts), new THREE.MeshStandardMaterial({ color: 0xe6f2f8, roughness: 0.35, flatShading: true }));
+  glacier.position.set(-waveW / 2 + 0.03, OCEAN_BASE, -waveD / 2 + 0.03);   // 뒤쪽 왼편 모서리 = 줄어드는 기준점
+  glacier.castShadow = true;
+  oceanGroup.add(glacier);
+
+  // 산호: 바다 바닥 앞쪽에 가지 산호·둥근(뇌) 산호 군락. 인스턴스 색으로 건강(분홍·주황·보라·노랑) / 백화(흰색)를 나눈다.
+  // 건강한 군락 수 = 전체 × EarthVisual.coralHealthy(T) (IPCC SR1.5 B.4.2). 순서를 섞어 두어 백화가 한쪽에 몰리지 않는다.
+  const floorY = (x, z) => OCEAN_BASE + 0.001 + terrainNoise(x, -z, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
+  const branch = [];
+  for (let k = 0; k < 6; k++) {
+    const a = k / 6 * Math.PI * 2, tilt = 0.25 + rnd() * 0.35, len = 0.085 + rnd() * 0.04;
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * 0.012, len / 2 * Math.cos(tilt), Math.sin(a) * 0.012),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(a) * tilt, 0, -Math.cos(a) * tilt)), new THREE.Vector3(1, 1, 1));
+    branch.push([new THREE.CylinderGeometry(0.008, 0.013, len, 5), m]);
+  }
+  const branchGeo = mergeGeos(branch);
+  const brainGeo = new THREE.SphereGeometry(0.05, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  const spots = [];
+  for (let i = 0; i < 40 && spots.length < 30; i++) {
+    const x = -0.8 + rnd() * 1.65, z = 0.1 + rnd() * 1.2;
+    if (spots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.12)) continue;
+    spots.push([x, z]);
+  }
+  const nBranch = Math.ceil(spots.length * 0.6);
+  const coralMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const branches = new THREE.InstancedMesh(branchGeo, coralMat, nBranch);
+  const brains = new THREE.InstancedMesh(brainGeo, coralMat, spots.length - nBranch);
+  const d = new THREE.Object3D();
+  spots.forEach(([x, z], i) => {
+    const s = 0.8 + rnd() * 0.6;
+    d.position.set(x, floorY(x, z), z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(s, s * (i < nBranch ? 1 : 0.7), s); d.updateMatrix();
+    if (i < nBranch) branches.setMatrixAt(i, d.matrix); else brains.setMatrixAt(i - nBranch, d.matrix);
+  });
+  const HEALTHY = [0xe0705a, 0xef9a3c, 0xa65aa8, 0xe2bd45, 0xd9566e].map(h => new THREE.Color(h));
+  // 군락 하나 = (메시, 번호, 건강할 때 색). 순서를 섞어 '앞에서부터 k개 건강'이 공간적으로 고르게 퍼지게
+  const colonies = spots.map((_, i) => ({ mesh: i < nBranch ? branches : brains, idx: i < nBranch ? i : i - nBranch, color: HEALTHY[i % HEALTHY.length] }));
+  for (let i = colonies.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [colonies[i], colonies[j]] = [colonies[j], colonies[i]]; }
+  oceanGroup.add(branches, brains);
+  coral = { colonies, meshes: [branches, brains], healthy: -1 };
+
+  // 조개(바닥)·익족류(물속에 떠 있는 작은 껍데기 생물): 껍데기 상태를 Ω에 묶는다 (EarthVisual.shellState, D5).
+  // 모든 개체가 같은 Ω(전 지구 평균)를 받으므로 재질 하나를 바꾼다. 구멍은 alphaMap(얼룩 무늬) + alphaTest로 낸다.
+  const shellMat = new THREE.MeshStandardMaterial({ color: SHELL_INTACT.clone(), roughness: 0.55, alphaMap: holeTexture(), side: THREE.DoubleSide });
+  // 조개: 경첩(x축)에서 V자로 벌어진 껍데기 두 장 - 둥근 뇌 산호와 모양으로 구별되게
+  const clamGeo = mergeGeos([0.45, -0.45].map(a => [new THREE.CircleGeometry(0.05, 12, 0, Math.PI), mat4(0, 0, 0, Math.PI / 2 - a, 0, 0)]));
+  const pteroGeo = new THREE.ConeGeometry(0.018, 0.05, 8, 1, true);
+  const clamSpots = [], pteroSpots = [];
+  while (clamSpots.length < 16) {
+    const x = -0.35 + rnd() * 1.2, z = -0.85 + rnd() * 0.9;
+    if (!clamSpots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.1)) clamSpots.push([x, z]);
+  }
+  for (let i = 0; i < 14; i++) pteroSpots.push([-0.7 + rnd() * 1.5, -0.6 + rnd() * 1.6]);
+  const clams = new THREE.InstancedMesh(clamGeo, shellMat, clamSpots.length);
+  const pteros = new THREE.InstancedMesh(pteroGeo, shellMat, pteroSpots.length);
+  clamSpots.forEach(([x, z], i) => {
+    d.position.set(x, floorY(x, z) + 0.004, z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    clams.setMatrixAt(i, d.matrix);
+  });
+  pteroSpots.forEach(([x, z], i) => {
+    d.position.set(x, OCEAN_BASE + 0.03 + rnd() * 0.06, z); d.rotation.set(rnd() * 2, rnd() * 6.28, rnd() * 2); d.scale.set(1, 1, 1); d.updateMatrix();
+    pteros.setMatrixAt(i, d.matrix);
+  });
+  oceanGroup.add(clams, pteros);
+  shells = { mat: shellMat, dissolving: false };
+}
 
 // --- 습지·숲 ---
 const forestGroup = new THREE.Group();
@@ -813,8 +1260,21 @@ solarPanels.count = 0;
 solarPanels.visible = false;
 cityGroup.add(solarPanels);
 
+// ── 도시가 역사를 따라 자란다 (2차 개편 D3, 종이 탭 인간활동 지구만) ──
+// 예전 도시(건물 8채·공장 1개·자동차 12대, 자동차 한 대가 메시 10개)는 고정 모양이라 1750년에도 빌딩이 서 있었다.
+// 종이 탭은 아래 인스턴싱 도시로 바꾸고 예전 것은 숨긴다(직접 실험 탭은 예전 그대로).
+const city = PAPER && !opts.nature ? buildCityGrowth(cityGroup, CITY_BASE, stackTex) : null;
+// 자연 지구: 도시 구역 자리에 나무·풀 (인스턴싱). 1750~2200 내내 그대로다 - 그것이 보여 줄 내용이다(D6)
+if (WILD) buildWilderness(cityGroup, (x, z) => CITY_BASE + terrainNoise(x, -z, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED + 2.3));
+if (city) {
+  buildingMeshes.forEach(b => { b.visible = false; });
+  carMeshes.forEach(c => { c.visible = false; });
+  factory.visible = false;
+  smoke.visible = false;
+}
+
 return {
-  scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -865,15 +1325,25 @@ function applyState(S) {
   if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
-  // state.noTint(미래 예측 탭): 뚜껑·입자·안개가 갈황색으로 물드는 효과만 끈다. CO2는 무색이라
-  // "공기만 노래지는 효과"가 오해를 준다는 피드백(2차 개편 C2). 다른 탭은 noTint가 없어 예전과 같다.
-  const tint = S.state.noTint ? 0 : intensity;
-  S.lidMat.opacity = 0.12 + intensity * 0.35;
-  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, tint);
-  S.atmoMat.opacity = 0.35 + intensity * 0.45;
-  S.atmoMat.color.setHSL(0.55 - tint * 0.46, 0.55, 0.75 - tint * 0.15);
-  S.hazeMat.opacity = 0.04 + tint * 0.18;
+  if (S.paper) {
+    // 종이 탭(2차 개편 D2): CO₂는 무색 - 뚜껑은 늘 맑게, 안개·노란 입자는 만들 때 숨겼다.
+    // 농도는 [CO₂ 보기]를 켰을 때만 점 개수로 보인다 ("공기만 노래지는 효과" 피드백, 노란 안개 = 스모그 오개념)
+    S.lidMat.opacity = 0.12;
+    S.lidMat.color.copy(S.CLEAR_SKY);
+    S.co2Dots.visible = VIEW3D.co2;
+    S.co2Dots.geometry.setDrawRange(0, EarthVisual.co2DotCount(S.state.co2));
+  } else {
+    // 직접 실험 탭: 예전 그대로 (실측 CO₂ → 뚜껑·입자·안개 색)
+    S.lidMat.opacity = 0.12 + intensity * 0.35;
+    S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, intensity);
+    S.atmoMat.opacity = 0.35 + intensity * 0.45;
+    S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
+    S.hazeMat.opacity = 0.04 + intensity * 0.18;
+  }
 
+  if (S.paper) {
+    applyOceanPaper(S);
+  } else {
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
   S.waterBody.material.color.lerpColors(S.WATER_CLEAR, S.WATER_MURKY, phIntensity);
@@ -895,10 +1365,12 @@ function applyState(S) {
     // 실제 y좌표는 매 프레임 animate()에서 shrinkY + 파도 높이를 합쳐 계산하므로 여기선 오프셋만 저장
     o.shrinkY = -(1 - shrink) * 0.1;
   });
+  }   // 직접 실험 탭 바다·빙하 끝
 
   // 실측 습도 → 응결 물방울 농도·낙하 속도 (역시 co2 강도와 더 강한 쪽 반영)
   const humIntensity = Math.min(1, Math.max(0, (S.state.hum - HUM_MIN) / (HUM_MAX - HUM_MIN)));
-  const dropIntensity = Math.max(intensity, humIntensity);
+  // 종이 탭은 습도 센서가 없고, CO₂로 물방울을 늘리던 대응은 근거가 없어 쓰지 않는다(D 원칙 3)
+  const dropIntensity = S.paper ? 0.3 : Math.max(intensity, humIntensity);
   S.dropMat.opacity = 0.45 + dropIntensity * 0.4;
   S.condensationSpeed = 1 + dropIntensity * 1.5;
 
@@ -907,13 +1379,15 @@ function applyState(S) {
   S.bubbleMat.opacity = ch4Intensity > 0.02 ? 0.35 + ch4Intensity * 0.5 : 0;
   S.bubbleSpeed = 0.6 + ch4Intensity * 1.8;
 
+  // 종이 탭 인간활동 지구(2차 개편 D3): 도시가 배출 역사를 따라 자란다 (예전 건물·공장·자동차는 만들 때 숨겼다)
+  if (S.city) applyCity(S, S.state.city);
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
   const evCount = Math.round(carCount * (S.state.ev / 100));
   // 미래 예측 탭의 "자연만 있는 지구"(state.nature)는 도시 구역의 인공물을 숨긴다 (지면은 그대로)
   const nat = !!S.state.nature;
   S.carMeshes.forEach((c, i) => {
-    c.visible = !nat && i < carCount;
+    c.visible = !nat && !S.city && i < carCount;
     const mat = i < evCount ? S.evCarMat : S.gasCarMat;
     c.userData.bodyParts.forEach(p => { p.material = mat; });
   });
@@ -924,9 +1398,9 @@ function applyState(S) {
 
   // 도시화 지수 → 표시되는 건물 수
   const bCount = Math.max(1, Math.round((S.state.cityRatio / 100) * S.buildingMeshes.length));
-  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && i < bCount; });
-  S.factory.visible = !nat;
-  S.smoke.visible = !nat;
+  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && !S.city && i < bCount; });
+  S.factory.visible = !nat && !S.city;
+  S.smoke.visible = !nat && !S.city;
   S.roads.forEach(r => { r.visible = !nat; });
 
   // 탄소제거기술 도입률 → 포집 타워 등장/크기
@@ -1012,9 +1486,22 @@ function animate() {
 function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
 
-  // 대기 입자 드리프트
+  // [CO₂ 보기] 점 구름: 보일 때만, 보이는 개수만 천천히 떠다니게
+  if (S.co2Dots && S.co2Dots.visible) {
+    const cp = S.co2Dots.geometry.attributes.position, { base, seed } = S.co2Dots.userData;
+    const n = S.co2Dots.geometry.drawRange.count;
+    for (let i = 0; i < n; i++) {
+      const ph = seed[i * 2], sp = seed[i * 2 + 1];
+      cp.array[i * 3] = base[i * 3] + Math.sin(t * sp + ph) * 0.05;
+      cp.array[i * 3 + 1] = base[i * 3 + 1] + Math.sin(t * sp * 0.7 + ph * 1.3) * 0.03;
+      cp.array[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * sp + ph) * 0.05;
+    }
+    cp.needsUpdate = true;
+  }
+
+  // 대기 입자 드리프트 (종이 탭은 숨겨 둔 입자라 계산하지 않는다)
   const ap = S.atmoGeo.attributes.position;
-  for (let i = 0; i < S.atmoCount; i++) {
+  if (!S.paper) for (let i = 0; i < S.atmoCount; i++) {
     const phase = S.atmoSeed[i * 3], speed = S.atmoSeed[i * 3 + 1], radius = 0.06 + S.atmoSeed[i * 3 + 2] * 0.05;
     ap.setX(i, S.atmoBase[i * 3] + Math.sin(t * speed + phase) * radius);
     ap.setY(i, S.atmoBase[i * 3 + 1] + Math.sin(t * speed * 0.6 + phase * 1.7) * radius * 0.6);
@@ -1023,7 +1510,8 @@ function stepScene(S) {
   ap.needsUpdate = true;
 
   // 비대칭 브레이킹 웨이브: 정면(카메라 쪽)으로 갈수록 크게 말려 부서지는 느낌
-  const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  // 종이 탭은 파도 세기를 CO₂에 묶지 않는다(근거 없는 대응, D 원칙 1·3) - 잔잔한 고정값
+  const intensity = S.paper ? 0.2 : Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   const halfD = S.waveD / 2;
   for (let i = 0; i < S.wavePosAttr.count; i++) {
     const lx = S.waveBase[i * 3];
@@ -1076,9 +1564,24 @@ function stepScene(S) {
   }
   bp.needsUpdate = true;
 
-  // 연기 파티클
+  // 종이 탭 도시의 굴뚝 연기: 켜진 굴뚝의 입자만, 그해 배출이 클수록 빨리 오른다
+  if (S.city && S.city.smokeGeo.drawRange.count > 0) {
+    const C = S.city, arr = C.smokeGeo.attributes.position.array, base = S.CITY_BASE;
+    const lvl = S.state.city ? S.state.city.stackLevel : 0;
+    for (let j = 0; j < C.smokeGeo.drawRange.count; j++) {
+      C.smokeLife[j] += 0.006 + lvl * 0.01;
+      if (C.smokeLife[j] > 1) C.smokeLife[j] -= 1;
+      const life = C.smokeLife[j], [x, z] = C.STACKS[Math.floor(j / C.SMOKE_PER)];
+      arr[j * 3] = x + 0.025 + Math.sin(j * 12.9) * 0.05 * life + life * 0.08;   // 바람에 살짝 기울게
+      arr[j * 3 + 1] = base + 0.29 + life * 0.7;
+      arr[j * 3 + 2] = z + Math.cos(j * 7.3) * 0.05 * life;
+    }
+    C.smokeGeo.attributes.position.needsUpdate = true;
+  }
+
+  // 연기 파티클 (예전 공장 - 종이 탭 인간활동 지구는 숨겨 둠)
   const sp = S.smokeGeo.attributes.position;
-  for (let i = 0; i < S.smokeCount; i++) {
+  if (S.smoke.visible) for (let i = 0; i < S.smokeCount; i++) {
     S.smokeLife[i] += 0.01 + (S.state.fossil / 100) * 0.015;
     if (S.smokeLife[i] > 1) S.smokeLife[i] = 0;
     const life = S.smokeLife[i];
@@ -1097,13 +1600,15 @@ function stepScene(S) {
 // 그 화면을 실제로 열 때 ensureSceneBuilt()가 같은 객체를 채운다 - 탭 코드가 들고 있는 sceneFuture 같은
 // 변수가 그대로 같은 객체를 가리키므로 탭 코드는 고칠 필요가 없다.
 const DASHBOARD_TAB = new URLSearchParams(location.search).get('tab') || 'current';
+// paper: 종이 테마 탭(현재 실태·미래 예측)의 씬인가 - 2차 개편 D의 새 3D 표현은 이 씬에서만 만든다
 function sceneFor(tab) {
-  return tab === DASHBOARD_TAB ? buildAcrylicScene() : { dormant: true, state: {} };
+  const opts = { paper: tab !== 'live' };
+  return tab === DASHBOARD_TAB ? Object.assign(buildAcrylicScene(opts), { opts }) : { dormant: true, opts, state: {} };
 }
 function ensureSceneBuilt(S) {
   if (!S || !S.dormant) return S;
   const kept = S.state;            // 껍데기일 때 탭 코드가 넣어 둔 값(예: 슬라이더 CO2)은 살린다
-  Object.assign(S, buildAcrylicScene());
+  Object.assign(S, buildAcrylicScene(S.opts || {}));
   Object.assign(S.state, kept);
   S.dormant = false;
   return S;

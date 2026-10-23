@@ -28,6 +28,13 @@ const modelHist = EarthSystem.run({ fromYear: 1750, toYear: LAST_EMIS_YEAR });
 const modelCo2 = modelHist.filter(o => o.year >= obsCo2[0].x).map(o => ({ x: o.year, y: o.ppm }));
 const modelTemp = modelHist.filter(o => o.year >= obsTemp[0].x).map(o => ({ x: o.year, y: o.T }));
 
+// 3D (2차 개편 D): 지금 지구 = 엔진이 실제 배출로 계산한 마지막 해. 도시 규모·굴뚝은 그해까지의 배출 역사를 따른다
+// (js/earth-visual.js). 대기 CO₂만은 관측값(main.js switchTab)을 넣는다.
+EarthVisual.annotateCumFossil(modelHist);
+const modelNow = lastOf(modelHist);
+setEarthVisual(sceneCurrent, modelNow,
+  EarthVisual.presetSociety(modelNow.fossil, modelNow.year, EarthSystem.LEVER_NOW, EarthSystem.E2023, EarthSystem.LAST_HIST_YEAR));
+
 // ── 요약 숫자: 마지막 완전한 해와 첫 해의 차이 ────────────────────────────
 {
   const set = (id, txt) => { document.getElementById(id).textContent = txt; };
