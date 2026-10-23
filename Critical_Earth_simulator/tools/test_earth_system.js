@@ -114,25 +114,11 @@ compare('자연(배출 0)', natRun, REF.runs.nature);
 }
 
 // ═══════════════════════════ 게이트 B ═══════════════════════════════════════
-// ── 4a) 프리셋 3개: 파이썬(scen.py 정의) 대조 + 기대값 표 ─────────────────────
+// ── 4a) SSP 프리셋 3개: 파이썬(scen.py 정의) 대조 ────────────────────────────
 {
-  const exp = {
-    bau:    { 2050: [495, 1.73], 2100: [702, 2.89, { pH: 7.857 }], 2200: [1269, 5.16, { omega: 1.41 }] },
-    paris:  { 2050: [451, 1.52], 2100: [415, 1.44], 2200: [399, 1.42] },
-    nz2050: { 2050: [422, 1.38], 2100: [383, 1.17], 2200: [375, 1.19] },
-  };
-  for (const k of Object.keys(exp)) {
+  for (const k of Object.keys(ES.PRESETS)) {
     const js = ES.run({ fromYear: 1750, toYear: 2200, emissionsFn: ES.presetEmissions(k) });
-    compare(`프리셋 ${ES.PRESETS[k].ko}`, js, REF.runs[k]);
-    const R = byYear(js);
-    for (const [y, [ppm, T, extra]] of Object.entries(exp[k])) {
-      const o = R[y];
-      let ok = Math.round(o.ppm) === ppm && r1(o.T, 2) === T;
-      let msg = `${o.ppm.toFixed(1)} ppm, T +${o.T.toFixed(3)}`;
-      if (extra && extra.pH != null) { ok = ok && r1(o.pH, 3) === extra.pH; msg += `, pH ${o.pH.toFixed(4)}`; }
-      if (extra && extra.omega != null) { ok = ok && r1(o.omega, 2) === extra.omega; msg += `, Ω ${o.omega.toFixed(3)}`; }
-      check(`  ${ES.PRESETS[k].ko} ${y} = ${ppm} ppm, +${T} °C`, ok, msg);
-    }
+    compare(`프리셋 ${ES.PRESETS[k].ko} (${ES.PRESETS[k].ssp})`, js, REF.runs[k]);
   }
 }
 

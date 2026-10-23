@@ -50,31 +50,40 @@ const EarthSystem = (() => {
   }
   const natureEmissions = () => ({ fossil: 0, luc: 0 });
 
-  // 2023년 배출 - 프리셋·레버가 모두 이 값에서 출발한다
+  // 2023년 배출 - 프리셋(조화)·레버가 모두 이 값에서 출발한다
   const E2023 = historicalEmissions(2023).fossil;   // 화석·산업 [GtC/yr]
   const L2023 = historicalEmissions(2023).luc;      // 토지이용 변화 [GtC/yr]
   const LAST_HIST_YEAR = 2023;                      // 이 해까지는 항상 역사 배출
 
-  // ── 프리셋 시나리오 ───────────────────────────────────────────────────────
+  // ── 프리셋 시나리오 = IPCC SSP 경로 ──────────────────────────────────────
+  // 예전 세 경로(현재 추세·파리협약·2050 탄소중립)는 근거 없이 만든 직선이었다. 이제 IPCC가 쓰는
+  // SSP 배출 경로(RCMIP v5.1.0, js/earth-data.js의 ssp)를 그대로 쓰고, 이음매만 조화(harmonization)한다.
+  //
+  // 조화: 2023년까지는 GCP 역사 배출, 2024년부터 SSP. SSP는 2015년에 갈라진 예측이라 2023년 값이
+  // 실제(GCP)와 다르다. 그 차이를 2050년까지 선형으로 줄여 0으로 만든다 (화석·토지이용 각각).
+  //   E(y) = SSP(y) + [E_GCP(2023) − SSP(2023)] × max(0, 1 − (y − 2023) / (2050 − 2023))
+  // 이렇게 해야 2024년에 배출이 계단처럼 튀지 않고, 2050년 이후는 SSP 원래 경로와 같아진다.
+  // 2100년 이후: RCMIP 원자료에 연장 경로(extension, ~2500)가 있어 그대로 쓴다(10년 간격 → 선형 보간은 변환기에서).
   // tools/earth_system_ref/scen.py 의 mk()와 같은 정의다 (대조 테스트로 확인).
+  const HARMONIZE_END = 2050;
   const PRESETS = {
-    bau: {
-      ko: '현재 추세',
-      // 화석: 해마다 2023년 값의 1%씩 늘다가 2100년 이후 1.77배로 고정
-      // 토지이용: 2023년 값에서 80년에 걸쳐 0으로
-      fn: y => ({
-        fossil: y < 2100 ? E2023 * (1 + 0.01 * (y - 2023)) : E2023 * 1.77,
-        luc: L2023 * Math.max(0, 1 - (y - 2023) / 80),
-      }),
-    },
-    paris: { ko: '파리협약', end: 2075 },       // 2075년 순배출 0까지 선형 감소
-    nz2050: { ko: '2050 탄소중립', end: 2050 }, // 2050년 순배출 0까지 선형 감소
+    ssp245: { ko: '현재 정책', ssp: 'SSP2-4.5' },
+    ssp126: { ko: '파리협약 2 °C', ssp: 'SSP1-2.6' },
+    ssp119: { ko: '1.5 °C 탄소중립', ssp: 'SSP1-1.9' },
   };
-  for (const k of ['paris', 'nz2050']) {
-    const end = PRESETS[k].end;
+  function sspRaw(key, y) {
+    const d = EARTH_DATA.ssp, i = y - d.startYear, s = d[key];
+    if (i < 0 || i >= s.fossil.length) throw new Error(`SSP 자료 범위 밖: ${key} ${y}`);
+    return { fossil: s.fossil[i], luc: s.luc[i] };
+  }
+  for (const k of Object.keys(PRESETS)) {
+    const s23 = sspRaw(k, LAST_HIST_YEAR);
+    const dF = E2023 - s23.fossil, dL = L2023 - s23.luc;      // 조화로 메울 2023년 차이
+    PRESETS[k].offset2023 = { fossil: dF, luc: dL };
     PRESETS[k].fn = y => {
-      const f = Math.max(0, 1 - (y - 2023) / (end - 2023));
-      return { fossil: E2023 * f, luc: L2023 * f };
+      const w = Math.max(0, 1 - (y - LAST_HIST_YEAR) / (HARMONIZE_END - LAST_HIST_YEAR));
+      const r = sspRaw(k, y);
+      return { fossil: r.fossil + dF * w, luc: r.luc + dL * w };
     };
   }
   // 2023년까지는 역사 배출, 2024년부터 프리셋 경로
@@ -228,7 +237,7 @@ const EarthSystem = (() => {
   return {
     DT, PARAMS, PPM2GTC, E2023, L2023, LAST_HIST_YEAR,
     historicalEmissions, natureEmissions,
-    PRESETS, presetEmissions,
+    PRESETS, presetEmissions, HARMONIZE_END,
     LEVER_K, LEVER_NOW, LEVER_RANGE, LEVER_START, LEVER_TARGET, leversAt, leverEmissions,
     FIXED_PPMS,
     run,

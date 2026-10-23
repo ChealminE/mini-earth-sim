@@ -94,7 +94,7 @@
     <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
     <!-- 미래 예측 탭에서만 보임: 좌우 두 지구의 이름표 (js/tab-future.js) -->
     <div class="earth-label left"><b>자연만 있는 지구</b> <span class="sub">배출 0</span><span class="val" id="earthValL"></span></div>
-    <div class="earth-label right"><b>인간활동 지구</b> <span class="sub" id="earthSubR">현재 추세</span><span class="val" id="earthValR"></span></div>
+    <div class="earth-label right"><b>인간활동 지구</b> <span class="sub" id="earthSubR">현재 정책</span><span class="val" id="earthValR"></span></div>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
       <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
@@ -128,9 +128,9 @@
       <div id="fcScenario">
       <div class="fc-title">인간활동 지구의 배출 <span>(오른쪽 지구)</span></div>
       <div class="fc-btns" id="fcPresets">
-        <button class="mini-btn" data-preset="bau">현재 추세</button>
-        <button class="mini-btn" data-preset="paris">파리협약</button>
-        <button class="mini-btn" data-preset="nz2050">2050 탄소중립</button>
+        <button class="mini-btn" data-preset="ssp245">현재 정책</button>
+        <button class="mini-btn" data-preset="ssp126">파리협약 2 °C</button>
+        <button class="mini-btn" data-preset="ssp119">1.5 °C 탄소중립</button>
         <button class="mini-btn" data-preset="custom">직접 설계</button>
       </div>
       <p class="fc-desc" id="fcPresetDesc"></p>

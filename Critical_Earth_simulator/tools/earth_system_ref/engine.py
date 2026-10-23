@@ -140,7 +140,7 @@ def dump_runs():
     import scen   # 프리셋 정의는 scen.py가 원본이다
     years = range(1750, 2201)
     runs = {'hist': run(years, hist), 'nature': run(years, nature)}
-    for k in ['bau', 'paris', 'nz2050']:
+    for k in scen.SSP_KEYS:
         runs[k] = run(years, scen.mk(k))
     for c in FIXED_PPMS:
         runs['fixed%d' % c] = run_fixed(c, years)

@@ -14,7 +14,7 @@ splitView = { tab: 'future', left: sceneNature, right: sceneFuture };
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
-  preset: 'bau',          // 인간활동 지구의 배출 시나리오 (bau | paris | nz2050 | custom)
+  preset: 'ssp245',       // 인간활동 지구의 배출 시나리오 (ssp245 | ssp126 | ssp119 | custom)
   levers: { ...EarthSystem.LEVER_NOW },   // 직접 설계의 2050년 목표값
   mode: 'scenario',       // scenario = 배출 시나리오 | fixed = 2024년부터 대기 CO2 고정
   fixedPpm: 560,
@@ -55,7 +55,7 @@ function sampleAt(arr, year) {
 
 // ── 그래프 ────────────────────────────────────────────────────────────
 // y축은 하드코딩하지 않는다. 예전에 max: 600을 박아 곡선이 그래프 밖으로 나간 적이 있고,
-// 현재 추세는 2200년 1269 ppm까지 간다. 범위는 매번 데이터에서 계산한다.
+// 시나리오마다 2200년 값이 크게 다르다. 범위는 매번 데이터에서 계산한다.
 function niceRange(vals, padFrac = 0.06, minSpan = 0) {
   let lo = Infinity, hi = -Infinity;
   for (const v of vals) if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
@@ -397,9 +397,9 @@ function applyLevers3D(S, s) {
 
 // ── 시나리오 (오른쪽 지구) ─────────────────────────────────────────────
 const PRESET_DESC = {
-  bau: '현재 추세: 화석 배출이 해마다 2023년 값의 1 %씩 늘어 2100년에 1.77배가 되고 그 뒤로 그대로. 숲 벌채(토지이용 배출)는 80년에 걸쳐 멈춥니다.',
-  paris: '파리협약: 화석·토지이용 배출을 2023년 값에서 매년 같은 양씩 줄여 2075년에 0으로.',
-  nz2050: '2050 탄소중립: 화석·토지이용 배출을 2023년 값에서 매년 같은 양씩 줄여 2050년에 0으로.',
+  ssp245: 'SSP2-4.5 (현재 정책이 유지될 때의 경로에 가장 가까운 SSP). 2023년까지는 실제 배출, 2024년부터 IPCC SSP 배출을 따릅니다(2050년까지 실제 값과 부드럽게 잇기).',
+  ssp126: 'SSP1-2.6 (기온 상승을 2 °C 아래로 억제하는 경로). 화석 배출이 빠르게 줄고 2070년대부터 순배출이 음수가 됩니다.',
+  ssp119: 'SSP1-1.9 (1.5 °C 억제, 세기 중반 탄소중립 경로). 2050년 무렵 순배출 0, 그 뒤로는 대기에서 탄소를 거둬들입니다.',
   custom: '직접 설계: 아래 레버로 2050년의 사회를 정해 보세요.',
 };
 const PRESET_KO = { ...Object.fromEntries(Object.entries(ES.PRESETS).map(([k, v]) => [k, v.ko])), custom: '직접 설계' };

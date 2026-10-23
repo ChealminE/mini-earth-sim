@@ -1,23 +1,36 @@
 # 프리셋 시나리오 정의 (js/earth-system.js의 PRESETS가 이것과 같아야 한다)
+# 2차 개편: 근거 없이 만든 직선 경로(bau/paris/nz2050)를 IPCC SSP 배출 경로로 바꿨다.
+# SSP 원값은 tools/gen_earth_data.py 가 RCMIP 원본에서 만든 data/ssp_emissions.csv (GtC/yr, 연 단위 보간)이고,
+# JS는 같은 CSV에서 만든 js/earth-data.js 를 읽으므로 두 쪽의 입력이 같다.
+# 조화: 2024년부터 SSP를 잇되, 2023년의 GCP 값과 SSP 값의 차이를 2050년까지 선형으로 줄여 0으로 만든다.
 import engine as E, math, numpy as np
-p=dict(E.P); p.update(c0=278.0,tau_mix=6.0,h_deep=2000.0,beta=0.38,tau_land=50.0,k_gas=0.25)
-e23=E.em[2023][0]+E.em[2023][1]
+SSP_KEYS = ['ssp245', 'ssp126', 'ssp119']
+HARMONIZE_END = 2050
+LAST_HIST = 2023
+ssp = {k: {} for k in SSP_KEYS}
+for r in E.read_clean('ssp_emissions.csv'):
+    for k in SSP_KEYS:
+        ssp[k][int(r['year'])] = (float(r[k + '_fossil']), float(r[k + '_luc']))
+
 def mk(kind):
+    if kind == 'nature':
+        return lambda y: (0, 0)
+    s23 = ssp[kind][LAST_HIST]
+    dF, dL = E.em[LAST_HIST][0] - s23[0], E.em[LAST_HIST][1] - s23[1]
     def f(y):
-        if kind=='nature': return (0,0)
-        if y<=2023: return E.hist(y)
-        if kind=='bau': return (E.em[2023][0]*(1+0.01*(y-2023)) if y<2100 else E.em[2023][0]*1.77, E.em[2023][1]*max(0,1-(y-2023)/80))
-        end={'nz2050':2050,'paris':2075}[kind]
-        k=max(0,1-(y-2023)/(end-2023)); return (E.em[2023][0]*k, E.em[2023][1]*k)
+        if y <= LAST_HIST: return E.hist(y)
+        w = max(0, 1 - (y - LAST_HIST) / (HARMONIZE_END - LAST_HIST))
+        sf, sl = ssp[kind][y]
+        return (sf + dF * w, sl + dL * w)
     return f
+
 if __name__=='__main__':
-    r=E.run(range(1750,2024),E.hist,p,dt=0.25); R={o['y']:o for o in r}
-    print('hist RMSE', round(math.sqrt(np.mean([(R[y]['ppm']-E.mlo[y])**2 for y in range(1959,2024)])),2))
-    for y in [1850,1900,1950,2000,2023]: print(y, round(R[y]['ppm'],1), round(R[y]['T'],2), round(R[y]['ph'],3))
-    dec=[R[y] for y in range(2014,2024)]
-    print('sinks ocean %.2f land %.2f'%(np.mean([o['ocean'] for o in dec]),np.mean([o['land'] for o in dec])))
-    for k in ['nature','bau','paris','nz2050']:
-        r=E.run(range(1750,2201),mk(k),p,dt=0.25); R={o['y']:o for o in r}
+    for k in SSP_KEYS:
+        s23 = ssp[k][LAST_HIST]
+        print('%s 2023 SSP fossil %.4f luc %.4f / GCP %.4f %.4f -> 조화 차이 %+.4f %+.4f GtC/yr' % (
+            k, s23[0], s23[1], E.em[LAST_HIST][0], E.em[LAST_HIST][1], E.em[LAST_HIST][0]-s23[0], E.em[LAST_HIST][1]-s23[1]))
+    for k in ['nature'] + SSP_KEYS:
+        r=E.run(range(1750,2201),mk(k)); R={o['y']:o for o in r}
         print(f'--- {k}')
         for y in [2023,2050,2100,2150,2200]:
-            o=R[y]; print(f"  {y}: {o['ppm']:.0f}ppm T{o['T']:+.2f} SST{o['sst']:.1f} pH{o['ph']:.3f} Ω{o['om']:.2f} Rev{o['rev']:.1f}")
+            o=R[y]; print(f"  {y}: E {o['E']:.2f} {o['ppm']:.0f}ppm T{o['T']:+.2f} SST{o['sst']:.1f} pH{o['ph']:.3f} Ω{o['om']:.2f} Rev{o['rev']:.1f}")
