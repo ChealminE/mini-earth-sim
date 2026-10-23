@@ -16,14 +16,58 @@ const EarthVisual = (() => {
   const clamp01 = v => Math.min(1, Math.max(0, v));
 
   // ── CO₂ 보기 (D2) ─ 등록부 co2_dots ────────────────────────────────────
-  // 점 개수는 농도에 정비례: 280 ppm일 때 N280개. 상한 MAX는 1269 ppm(현재 정책 2200년 근처까지
-  // 가는 직접 설계 최대)보다 여유 있게 잡았다 - 점 700개 남짓을 매 프레임 움직여도 헤드리스에서 버틴다(PR 표 참고).
+  // 점 개수는 농도에 정비례: 280 ppm일 때 N280개. 상한 MAX는 지시서가 성능 확인 기준으로 정한 1269 ppm(680개)보다
+  // 여유 있게 잡았다(약 1490 ppm에서 포화). 점은 Points 하나에 setDrawRange로 그려 개수와 상관없이 드로우콜 1번이다.
   const CO2_DOTS = { N280: 150, MAX: 800 };
   function co2DotCount(ppm) {
     return Math.min(CO2_DOTS.MAX, Math.max(0, Math.round(CO2_DOTS.N280 * ppm / 280)));
   }
 
-  return { CO2_DOTS, co2DotCount, clamp01 };
+  // ── 도시가 역사를 따라 자란다 (D3) ─ 등록부 city_scale (연출) ─────────────────
+  // 근거 있는 인과가 아니다. "그해 화석연료 배출이 클수록 도시가 크고 굴뚝이 많다"를 보이려고 정한 대응이다.
+  //   건물  : 누적 화석 배출의 '지금까지 최댓값'(GtC)에 묶는다 → 배출이 줄거나 음수(포집)가 돼도 건물은 남는다
+  //   굴뚝·연기: 그해 화석 배출(GtC/년)에 묶는다 → 배출이 줄면 굴뚝이 꺼지고 연기가 옅어진다, 0 이하면 없다
+  //   자동차: 도시 규모를 따라 늘고(석유 시대 전에는 없음), 그중 전기차 비율은 시나리오·레버가 정한다
+  // 모양은 로그(포화형) - 1750~1850년의 작은 배출 차이도 보이고, 2023년 이후의 큰 값에서는 더 커지지 않는다.
+  const CITY = {
+    C0: 5, CREF: 1500,     // 건물: log(1 + C/C0) / log(1 + CREF/C0). CREF ≈ 현재 정책 2200년 누적(약 1490 GtC)
+    F0: 0.05, FREF: 12,    // 굴뚝: log(1 + F/F0) / log(1 + FREF/F0). F0 ≈ 1850년 배출, FREF ≈ 2023년(10.4)보다 조금 위
+    STACKS: 6,             // 굴뚝 최대 개수
+    CAR_START: 0.35,       // 도시 규모가 이만큼(누적 약 30 GtC, 1930년 무렵) 넘어야 자동차가 나온다
+    CAR_FULL: 0.85,
+  };
+  const logSat = (x, x0, xref) => (x <= 0 ? 0 : clamp01(Math.log1p(x / x0) / Math.log1p(xref / x0)));
+  const cityLevel = cumMax => logSat(cumMax, CITY.C0, CITY.CREF);         // 0(마을) ~ 1(대도시)
+  const stackLevel = fossil => logSat(fossil, CITY.F0, CITY.FREF);        // 0(굴뚝 없음) ~ 1
+  const stackCount = fossil => Math.round(CITY.STACKS * stackLevel(fossil));
+  const carFrac = level => clamp01((level - CITY.CAR_START) / (CITY.CAR_FULL - CITY.CAR_START));
+
+  // 엔진 궤적(EarthSystem.run 결과)에 누적 화석 배출의 '지금까지 최댓값'을 붙인다(o.cumFossilMax, GtC).
+  // 1750년 이전 배출은 0으로 본다(엔진도 1750년에서 시작한다).
+  function annotateCumFossil(run) {
+    let cum = 0, max = 0;
+    for (const o of run) { cum += o.fossil || 0; max = Math.max(max, cum); o.cumFossilMax = max; }
+    return run;
+  }
+
+  // 시나리오(직접 설계가 아닌 SSP)의 미래 사회 모습. SSP 배출 자료에는 전력 구성·전기차 비율이 없으므로
+  // "2023년보다 화석 배출이 줄어든 만큼(red) 전기차·재생에너지가 늘었다"고 연출한다. 화석 배출이 음수인 해는
+  // 대기에서 탄소를 거둬들인다는 뜻이라 포집 타워를 세운다(−3 GtC/년에서 최대 = 직접 설계 레버 최대).
+  // now = EarthSystem.LEVER_NOW, e2023 = EarthSystem.E2023, 2023년까지(역사)는 now 그대로(전기차는 2010년 전 0).
+  function presetSociety(fossil, year, now, e2023, lastHist) {
+    if (year <= lastHist) {
+      return { ev: year < 2010 ? 0 : now.ev, renew: now.renewShare, nuclear: now.nuclearShare, removal: 0 };
+    }
+    const red = clamp01(1 - fossil / e2023);
+    return {
+      ev: Math.max(now.ev, red),
+      renew: now.renewShare + (1 - now.renewShare - now.nuclearShare) * red,
+      nuclear: now.nuclearShare,
+      removal: clamp01(-fossil / 3),
+    };
+  }
+
+  return { CO2_DOTS, co2DotCount, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
 })();
 
 if (typeof module !== 'undefined') module.exports = { EarthVisual };

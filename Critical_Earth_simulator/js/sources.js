@@ -538,6 +538,24 @@ const SOURCES = {
     related: ['model_co2'],
   },
 
+  city_scale: {
+    label: '도시 규모·굴뚝·자동차 (연출)',
+    summary: '도시 규모는 그해 화석연료 배출량에 비례하도록 연출한 것입니다. 건물은 누적 배출을, 굴뚝·연기는 그해 배출을 따릅니다.',
+    kind: 'assumption',
+    org: '이 프로그램 (배출량: Global Carbon Project · SSP 시나리오)',
+    dataset: 'EarthVisual.cityLevel · stackCount · carFrac · presetSociety (js/earth-visual.js)',
+    version: '-',
+    cite: '이 프로그램의 연출 규칙. 입력 배출량은 emis_gcp(1750~2023 관측), 미래는 고른 SSP 시나리오 또는 직접 설계 레버의 엔진 결과',
+    url: REPO_URL + 'js/earth-visual.js',
+    license: '-',
+    status: 'verified',
+    note: '도시 크기·굴뚝 수·자동차 수와 배출량 사이에 근거 있는 공식은 없다. 학습 경로("산업혁명 무렵부터 CO₂가 늘었다")를 눈으로 따라가게 하려고 정한 단조증가·포화형(로그) 대응이다. ' +
+      '건물 = log(1 + C/5) ÷ log(1 + 1500/5), C = 누적 화석 배출의 지금까지 최댓값(GtC) → 배출이 줄어도 건물은 남는다. ' +
+      '굴뚝 = 6 × log(1 + F/0.05) ÷ log(1 + 12/0.05), F = 그해 화석 배출(GtC/년, 0 이하이면 굴뚝 없음) → 1750년 0개, 1850년 1개, 1950년 4개, 2023년 6개. ' +
+      '자동차는 도시 규모가 0.35(누적 약 30 GtC)를 넘으면 나온다. SSP 시나리오에는 전기차·전력 구성 자료가 없어서 2023년보다 화석 배출이 줄어든 비율만큼 전기차·재생에너지가 늘고, 화석 배출이 음수인 해에는 포집 타워가 선다고 연출했다(직접 설계는 레버 값 그대로).',
+    related: ['emis_gcp', 'ssp_emissions'],
+  },
+
   // ── IPCC 문서 (E 단계 영향 카드·A4 비교용) ───────────────────────────────
   ar6_spm: {
     label: 'IPCC AR6 제1실무그룹 정책결정자 요약',
