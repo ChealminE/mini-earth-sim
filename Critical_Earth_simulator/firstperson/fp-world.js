@@ -2109,6 +2109,29 @@ const CAR_MIN_GAP = 0.115;     // 앞차 중심과 이보다 가까워지면 안
 const CAR_GAP = 0.20;          // 이 거리 안으로 들어오면 감속 시작
 const XING_GUARD = 0.11;       // 교차로 충돌 판정 반경
 
+// 플레이어가 차 앞을 막고 있을 때 차 중심이 이보다 가까이 오지 않는다 (차 절반 + 사람 반지름 + 여유)
+const CAR_PLAYER_STOP = CAR_LEN / 2 + 0.009 + 0.012;
+const CAR_PLAYER_SLOW = CAR_PLAYER_STOP + 0.10;   // 여기서부터 감속
+
+// 플레이어가 이 차의 진행 방향 앞에서 차선을 막고 있으면 그 거리(차 중심 기준), 아니면 Infinity.
+// 예전엔 차가 사람을 무시하고 달려서, 차 충돌체가 사람 중심을 덮어 버리면 충돌 처리가
+// '가장 가까운 면'으로 밀어내느라 사람이 한 프레임에 차 옆이나 반대편으로 순간이동했다
+// (시점·위치가 갑자기 튀는 버그의 주원인. 헤드리스로 걸어 다니게 해서 재현함).
+function playerAheadGap(c, player) {
+  if (!player || player.flying) return Infinity;
+  const b = c.box, m = 0.009 + 0.004;   // 사람 반지름 + 여유
+  if (player.pos.y >= b.top - 0.005) return Infinity;   // 지붕 위에 올라탄 사람은 막는 게 아님
+  let along;
+  if (c.lane === 'main') {
+    if (player.pos.z < b.minZ - m || player.pos.z > b.maxZ + m) return Infinity;
+    along = (player.pos.x - (b.minX + b.maxX) / 2) * c.dir;
+  } else {
+    if (player.pos.x < b.minX - m || player.pos.x > b.maxX + m) return Infinity;
+    along = (player.pos.z - (b.minZ + b.maxZ) / 2) * c.dir;
+  }
+  return along > 0 ? along : Infinity;
+}
+
 // 같은 차선·같은 방향에서 내 앞에 있는 가장 가까운 차
 function leaderOf(c, cars) {
   let best = null, gap = Infinity;
@@ -2120,7 +2143,7 @@ function leaderOf(c, cars) {
   return { leader: best, gap };
 }
 
-function updateCars(dt) {
+function updateCars(dt, player) {
   const cars = FPWorld.cars;
   if (!cars || !cars.length) return;
 
@@ -2147,10 +2170,22 @@ function updateCars(dt) {
       const toXing = (RD.mainZ - c.s) * c.dir;         // 교차점까지 남은 거리
       if (toXing > 0 && toXing < 0.16) target = 0;
     }
+    // 사람이 차선을 막고 있으면 앞차가 있을 때처럼 서서히 서고, 비키면 다시 출발한다
+    const pGap = playerAheadGap(c, player);
+    if (pGap < CAR_PLAYER_SLOW) {
+      target *= Math.min(1, Math.max(0, (pGap - CAR_PLAYER_STOP) / (CAR_PLAYER_SLOW - CAR_PLAYER_STOP)));
+    }
     // 급출발·급정거로 보이지 않게 부드럽게 따라간다
     c.speed += (target - c.speed) * Math.min(1, dt * 4);
 
+    const prevS = c.s;
     c.s += c.dir * c.speed * dt;
+    // 사람이 바로 앞으로 뛰어든 경우: 감속이 늦으면 이번 프레임은 아예 움직이지 않는다.
+    // 앞차처럼 위치를 끌어당기면 차가 뒤로 순간이동하므로 '안 움직임'으로만 막는다.
+    if (pGap < CAR_PLAYER_STOP + c.speed * dt) {
+      c.s = prevS;
+      c.speed = 0;
+    }
 
     // 부드러운 감속만으로는 겹침을 100% 막지 못한다(프레임이 길거나 앞차가 급정거하면
     // 파고든다). 최소 간격을 넘으면 위치 자체를 되돌려 물리적으로 막는다.

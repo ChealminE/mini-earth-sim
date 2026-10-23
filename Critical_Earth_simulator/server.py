@@ -43,6 +43,7 @@ MQTT 토픽 (<dev> = 보드 이름)
 
 import argparse
 import asyncio
+import contextlib
 import csv
 import hashlib
 import json
@@ -58,7 +59,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
@@ -412,6 +413,13 @@ async def select_page():
     return versioned_html(RESOURCE_DIR / "select.html")
 
 
+# 브라우저가 페이지마다 /favicon.ico를 자동으로 요청하는데, 아이콘 파일이 없어서 콘솔에 매번
+# "404 Not Found"가 찍혔다. 오류처럼 보여 혼란스러우므로 "내용 없음(204)"으로 조용히 답한다.
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
+
 # 현재실태/미래예측/직접실험 대시보드 (예전엔 "/"였음) - ?tab=current|future|live로 접속
 @app.get("/dashboard")
 async def dashboard():
@@ -585,10 +593,22 @@ SERIAL_POLL_SECONDS = 3.0    # 새로 꽂힌 포트가 있는지 확인하는 �
 
 serial_rescan_event = threading.Event()  # 화면의 '포트 다시 찾기' 버튼
 active_serial: Dict[str, "SerialLink"] = {}
+# 포트 이름 → (장치 설명, 블루투스 가상 포트인지). 콘솔 안내 문구를 포트 종류에 맞게 고르려고 기억해 둔다.
+port_details: Dict[str, tuple] = {}
+
+
+def _is_bluetooth_port(p) -> bool:
+    # Windows는 블루투스 기기를 한 번이라도 페어링하면 "블루투스 링크를 통한 표준 직렬" COM 포트를
+    # 보통 2개(보내기용·받기용) 만들어 두고, 보드를 안 꽂아도 계속 목록에 남는다. 설명 문구는
+    # Windows 언어마다 다르므로 언어와 무관한 하드웨어 ID(BTHENUM)를 먼저 본다.
+    hwid = (p.hwid or "").upper()
+    desc = (p.description or "").lower()
+    return "BTHENUM" in hwid or "bluetooth" in desc or "블루투스" in desc
 
 
 def _list_candidate_ports() -> List[str]:
-    """연결된 포트 목록. Arduino/USB-Serial 칩(CH340, CP210x, FTDI 등) 이름이 들어간 포트를 우선순위로 정렬."""
+    """연결된 포트 목록. Arduino/USB-Serial 칩(CH340, CP210x, FTDI 등) 이름이 들어간 포트를 우선순위로 정렬.
+    HC-06(클래식 블루투스) 코드는 블루투스 가상 포트로 들어오므로 블루투스 포트도 빼지 않는다."""
     import serial.tools.list_ports
 
     ports = list(serial.tools.list_ports.comports())
@@ -598,12 +618,24 @@ def _list_candidate_ports() -> List[str]:
         desc = (p.description or "").lower()
         return any(k in desc for k in keywords)
 
+    for p in ports:
+        port_details[p.device] = (p.description or "", _is_bluetooth_port(p))
     return [p.device for p in sorted(ports, key=lambda p: not looks_like_device(p))]
+
+
+def _port_label(port: str) -> str:
+    # Windows 설명은 끝에 "(COM4)"가 이미 붙어 있어서 그대로 쓰면 포트 이름이 두 번 나온다
+    desc = port_details.get(port, ("", False))[0].replace(f"({port})", "").strip()
+    return f"{port} ({desc})" if desc and desc not in (port, "n/a") else port
+
+
+def _is_bt(port: str) -> bool:
+    return port_details.get(port, ("", False))[1]
 
 
 def _probe_serial_port(port: str, baud: int, probe_seconds: float):
     """포트를 열어서 최대 probe_seconds 동안 JSON 한 줄이 오는지 확인.
-    결과를 ("found", 열린 포트, 첫 JSON) / ("busy", None, None) / ("no_data", None, None) 로 돌려준다 -
+    결과를 ("found", 열린 포트, 첫 JSON) / ("busy" 또는 "bt_unreachable", None, None) / ("no_data", None, None) 로 돌려준다 -
     그래야 자동 감지가 실패했을 때 "포트는 있는데 다른 프로그램이 물고 있음"인지 "포트는 열리는데
     JSON이 안 옴(보드레이트 불일치 등)"인지 콘솔에서 바로 구분해서 알려줄 수 있다.
     찾으면 포트를 닫지 않고 그대로 넘긴다 - 우노는 포트를 열 때마다 리셋되므로 닫았다 다시 열면
@@ -613,7 +645,14 @@ def _probe_serial_port(port: str, baud: int, probe_seconds: float):
     try:
         ser = serial.Serial(port, baud, timeout=0.5)
     except Exception as e:
-        print(f"[시리얼] {port} 열기 실패 ({e}) — 아두이노 IDE 시리얼 모니터, CoolTerm 등 다른 프로그램이 "
+        if _is_bt(port):
+            # 블루투스 보내기용 포트는 여는 순간 페어링된 기기에 무선으로 접속을 시도하는데, 그 기기가
+            # 꺼져 있거나 멀리 있으면 몇 초~수십 초 뒤 "세마포 제한 시간 만료(오류 121)"로 실패한다.
+            # 예전엔 이것도 "다른 프로그램이 사용 중"이라고 안내해서 엉뚱한 프로그램을 찾게 만들었다.
+            print(f"[시리얼] {_port_label(port)} 열기 실패 — 블루투스 가상 포트입니다. 페어링해 둔 기기(HC-06 등)가 "
+                  f"꺼져 있거나 멀리 있으면 이렇게 됩니다. 블루투스 보드를 쓰지 않는다면 무시해도 됩니다. ({e})")
+            return "bt_unreachable", None, None
+        print(f"[시리얼] {_port_label(port)} 열기 실패 ({e}) — 아두이노 IDE 시리얼 모니터, CoolTerm 등 다른 프로그램이 "
               f"이 포트를 이미 사용 중일 수 있습니다. 닫고 '포트 다시 찾기'를 눌러보세요.")
         return "busy", None, None
     deadline = time.time() + probe_seconds
@@ -758,7 +797,7 @@ def serial_manager(baud: int, fixed_ports: Optional[List[str]]):
             announced_empty = True
         if new_ports:
             announced_empty = False
-            print(f"[시리얼] 포트 {len(new_ports)}개 확인 중 ({', '.join(new_ports)}, "
+            print(f"[시리얼] 포트 {len(new_ports)}개 확인 중 ({', '.join(_port_label(p) for p in new_ports)}, "
                   f"최대 {int(SERIAL_PROBE_SECONDS)}초 — 전송 주기가 긴 실험 코드도 있어서 시간이 걸릴 수 있음)…")
             results: Dict[str, str] = {}
 
@@ -774,11 +813,19 @@ def serial_manager(baud: int, fixed_ports: Optional[List[str]]):
             for t in threads:
                 t.join(SERIAL_PROBE_SECONDS + 2)
             tried.update(new_ports)
-            no_data_ports = [p for p, s in results.items() if s == "no_data"]
-            if no_data_ports:
-                print(f"[시리얼] {', '.join(no_data_ports)} 포트는 열렸지만 {int(SERIAL_PROBE_SECONDS)}초 동안 올바른 "
+            no_data = [p for p, s in results.items() if s == "no_data"]
+            # 블루투스 받기용 포트는 기기가 없어도 잘 열리고 아무것도 안 오는 게 정상이라,
+            # 보드레이트를 의심하라는 안내와 섞으면 보드가 없는 PC에서도 고장처럼 보인다.
+            bt_quiet = [p for p in no_data if _is_bt(p)]
+            usb_quiet = [p for p in no_data if not _is_bt(p)]
+            if bt_quiet:
+                print(f"[시리얼] {', '.join(_port_label(p) for p in bt_quiet)} — 블루투스 가상 포트라 열렸지만 "
+                      f"{int(SERIAL_PROBE_SECONDS)}초 동안 데이터가 없었습니다. HC-06 보드를 쓰는 중이 아니면 무시해도 됩니다.")
+            if usb_quiet:
+                print(f"[시리얼] {', '.join(_port_label(p) for p in usb_quiet)} 포트는 열렸지만 {int(SERIAL_PROBE_SECONDS)}초 동안 올바른 "
                       f"JSON을 받지 못했습니다 — 보드레이트가 스케치의 Serial.begin() 값과 일치하는지 "
-                      f"(서버는 기본 {baud}bps, 다르면 --baud 옵션으로 지정), 스케치가 JSON을 제대로 출력하는지 확인하세요.")
+                      f"(서버는 기본 {baud}bps, 다르면 --baud 옵션으로 지정), 스케치가 JSON을 제대로 출력하는지 확인하세요. "
+                      f"WiFi·BLE용 ESP32 코드는 USB로 115200bps 디버그 글만 찍으므로, 전원만 USB로 받는 거라면 이 안내는 무시해도 됩니다.")
         serial_rescan_event.wait(SERIAL_POLL_SECONDS)
 
 
@@ -989,7 +1036,16 @@ if __name__ == "__main__":
     else:
         print("  BLE 입력: 비활성화 (--ble 로 켤 수 있음)")
 
-    @app.on_event("startup")
+    # @app.on_event("startup")는 FastAPI에서 폐기 예정이라 실행할 때마다 DeprecationWarning이 길게
+    # 찍혔고, Starlette 1.0부터는 아예 없어져 라이브러리 버전을 올리면 서버가 안 뜨게 된다.
+    # 같은 일을 lifespan(서버 시작~종료를 감싸는 함수)으로 한다. args를 써야 해서 여기서 끼운다.
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        await start_inputs_if_needed()
+        yield
+
+    app.router.lifespan_context = lifespan
+
     async def start_inputs_if_needed():
         global main_loop
         main_loop = asyncio.get_running_loop()
