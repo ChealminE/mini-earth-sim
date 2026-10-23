@@ -399,3 +399,20 @@ body.paper .inq-key { display: flex; align-items: center; flex-wrap: wrap; gap: 
 body.paper .inq-swatch { display: inline-block; width: 18px; height: 0; border-top: 3px solid; flex: none; }
 body.paper .inq-swatch.fill { height: 12px; border: 1px solid var(--rule); border-radius: 2px; }
 body.paper .inq-pick { padding: var(--sp-2); border: 1.5px dashed var(--ink-3); border-radius: var(--radius); background: var(--paper); }
+/* 탐구 응답·조작 줄 */
+body.paper .inq-ask { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-2); font-weight: 600; color: var(--ink); }
+body.paper .inq-ask textarea, body.paper .inq-choice { font: inherit; font-size: var(--fs-2); font-weight: 400; color: var(--ink);
+  background: var(--paper); border: 1.5px solid var(--rule); border-radius: var(--radius); padding: var(--sp-2); resize: vertical; box-sizing: border-box; width: 100%; }
+body.paper .inq-ask textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .inq-choice { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+body.paper .inq-choice legend { font-weight: 600; padding: 0 var(--sp-1); }
+body.paper .inq-choice label { display: flex; gap: var(--sp-2); align-items: flex-start; min-height: 28px; cursor: pointer; line-height: 1.4; }
+body.paper .inq-choice input { margin-top: 3px; accent-color: var(--ctl-nav); }
+body.paper .inq-fb { margin: 0; font-size: var(--fs-2); font-weight: 700; color: var(--warn); min-height: 0; }
+body.paper .inq-fb.ok { color: var(--ctl-scen); }
+body.paper .inq-fb:empty { display: none; }
+body.paper .inq-scen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-1); }
+body.paper .inq-scen .btn { white-space: normal; line-height: 1.2; padding: 2px var(--sp-1); }
+body.paper .inq-seen { margin: var(--sp-1) 0 0; padding: 0; list-style: none; font-size: var(--fs-1); color: var(--ink-2); }
+body.paper .inq-seen li.done::before { content: '✓ '; color: var(--ctl-scen); font-weight: 700; }
+body.paper .inq-play, body.paper .inq-rec { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }

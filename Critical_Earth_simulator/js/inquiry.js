@@ -104,6 +104,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     idx: 0,           // 단계 순서(stepOrder) 안의 위치
     snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 (tab-future.js futSnapshot)
     answers: {},      // saveAs → { path, step, question, answer, year, value, chart, time } — 단계를 오가도 남는다
+    records: [],      // record 동작으로 남긴 줄 { path, step, question, answer, year, value, time, preset, T }
+    cam: null,        // 탐구를 켜기 직전의 카메라 시점
   };
   // 지금 단계가 그래프에 덧입힌 것. 단계에 들어갈 때마다 resetStepView가 비운다(선언형).
   const QV = {
@@ -111,6 +113,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     overlays: {},       // 그래프 이름 → 겹친 자료 이름
     markers: [],        // 공개한 사건 표지 키
     pick: null,         // { chart, saveAs, question } — 그래프를 눌러 연도 고르기
+    play: null,         // { from, to, recordAtEnd, value } — 이 단계의 재생 구간
+    focused: false,     // 이 단계가 3D 카메라를 옮겼는가
   };
   const chartByKey = k => charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]);
   const keyOfChart = ch => Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id);
@@ -130,12 +134,14 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     document.body.classList.toggle('inq-on', on);
     if (on) {
       INQ.snap = futSnapshot();
+      INQ.cam = getCameraView();
       enterBaseline();
       if (INQ.pathId && pathById(INQ.pathId)) showStep(); else showPicker();
     } else {
       resetStepView();
       futRestore(INQ.snap);
-      INQ.snap = null;
+      setCameraView(INQ.cam);
+      INQ.snap = INQ.cam = null;
     }
   }
 
@@ -181,6 +187,12 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     applyChartLayout();
     setTimeLimit();
     for (const ch of charts) ch.canvas.style.cursor = '';
+    QV.play = null;
+    setPopover(null);
+    if (VIEW.omega) setOmegaView(false);
+    if (FUT.showNature) setNatureView(false);
+    if (QV.focused) { setCameraView(CAM_TARGETS.overview); QV.focused = false; }
+    el('inqCards').hidden = true;
   }
 
   function showStep() {
@@ -212,12 +224,13 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
         <button class="btn btn--nav" type="button" data-inq="next">${INQ.idx === n - 1 ? '마치기' : '다음'}</button>
       </div>`;
     Icons.fill(box);
-    const ctx = { path, step, widgets: el('inqWidgets') };
+    const ctx = { path, step, widgets: el('inqWidgets'), after: [] };
     for (const a of step.actions || []) {
       const fn = ACTIONS[a.do];
       if (fn) fn(a, ctx);
       else console.warn('탐구: 모르는 동작', a.do);
     }
+    ctx.after.forEach(f => f());   // 다른 동작이 다 적용된 뒤에 보여야 하는 것 (예: 재생 결과 목록)
     renderFuture();
   }
 
@@ -369,6 +382,80 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       : '<span class="inq-sub">아직 고르지 않았어요. 그래프를 눌러 보세요.</span>';
   }
 
+  // ── 3D 카메라 대상 (focus3D) ──
+  // 모형 좌표: 바다 구역 x ≈ −2, 숲 0, 도시 +2 (common.js ZONE_W = 2). 산호는 바다 앞쪽 바닥, 조개는 바다 가운데 뒤쪽 바닥,
+  // 빙하는 바다 뒤 왼쪽 모서리. angleY·angleX·dist 는 common.js updateCamera 와 같은 뜻(회전각·올려본 각·거리).
+  const CAM_TARGETS = {
+    overview: { angleY: -0.5, angleX: 0.5, dist: 8.2, target: [0, 0.3, 0] },
+    city: { angleY: 0.35, angleX: 0.5, dist: 3.4, target: [2, 0.55, 0] },
+    coral: { angleY: -0.25, angleX: 0.62, dist: 2.3, target: [-1.9, 0.2, 0.65] },
+    shell: { angleY: -0.15, angleX: 0.95, dist: 2.6, target: [-1.65, 0.15, -0.35] },
+    glacier: { angleY: -0.65, angleX: 0.5, dist: 3.0, target: [-2.6, 0.5, -1.1] },
+  };
+
+  // ── 기록 (record) ──
+  // 측정 기록(기존 서랍 표·CSV)에 한 줄 + 탐구 기록에 한 줄. value 는 단계가 고른 변수(기본 기온 편차).
+  const REC_VALUE = {
+    T: { key: 'T', name: '기온 편차', fmt: v => `${fmtSigned(v, 2)} °C` },
+    ppm: { key: 'ppm', name: 'CO₂', fmt: v => `${v.toFixed(0)} ppm` },
+    pH: { key: 'pH', name: 'pH', fmt: v => v.toFixed(3) },
+  };
+  function doRecord(step, valueKey = 'T') {
+    addRecord();
+    const nature = FUT.showNature;
+    const h = sampleAt(nature ? FUT.nature : FUT.human, FUT.year), y = Math.round(FUT.year);
+    const scen = nature ? '자연만 있는 지구' : humanLabel();
+    const vk = REC_VALUE[valueKey] || REC_VALUE.T;
+    INQ.records.push({ path: INQ.pathId, step: step.id, question: step.question,
+      answer: `기록: ${scen} ${y}년 · CO₂ ${h.ppm.toFixed(0)} ppm · 기온 ${fmtSigned(h.T, 2)} °C · pH ${h.pH.toFixed(3)}`,
+      year: y, value: Number(h[vk.key].toFixed(4)), valueKey: vk.key, valueName: vk.name, preset: nature ? 'nature' : FUT.preset, T: h.T,
+      time: new Date().toISOString() });
+    showRecordNote();
+  }
+  function showRecordNote() {
+    const w = el('inqRecNote');
+    if (!w) return;
+    const n = INQ.records.filter(r => r.path === INQ.pathId).length;
+    w.textContent = n ? `이 경로에서 기록한 줄: ${n}` : '';
+  }
+
+  // ── 재생 (play) ──
+  function startPlay() {
+    const p = QV.play;
+    if (!p) return;
+    setTimeLimit(LIMIT.from, p.to);
+    cancelAnimationFrame(redrawAnim);
+    if (p.from >= LAST_OBS_YEAR) {   // 예측 구간을 처음부터 다시 그린다(시나리오를 바꿔 다시 해 볼 때)
+      FUT.frontier = Math.min(FUT.frontier, p.from);
+      VIEW.drawFrontier = FUT.frontier;
+    }
+    setYear(p.from);
+    renderFuture();
+    setPlaying(true);
+  }
+  function playEnded() {
+    const p = QV.play;
+    if (!INQ.on || !p || Math.round(FUT.year) < p.to) return;
+    if (p.recordAtEnd) doRecord(curOrder()[INQ.idx], p.value);
+    showSeen();
+  }
+  // 이 경로에서 재생해 본 시나리오(끝 연도 기록이 있는 것)
+  function seenScenarios() {
+    const out = new Map();
+    for (const r of INQ.records) if (r.path === INQ.pathId && QV.play && r.year === QV.play.to && r.preset !== 'nature') out.set(r.preset, r);
+    return out;
+  }
+  function showSeen() {
+    const w = el('inqSeen');
+    if (!w) return;
+    const seen = seenScenarios();
+    w.innerHTML = InquiryCore.PRESETS.map(p => {
+      const r = seen.get(p);
+      return `<li class="${r ? 'done' : ''}">${esc(PRESET_KO[p])}: ${r ? `<b>${esc(REC_VALUE[r.valueKey].fmt(r.value))}</b> (${r.year}년)` : '<span class="inq-sub">아직</span>'}</li>`;
+    }).join('');
+    document.querySelectorAll('#inqPanel [data-scen]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scen === FUT.preset)));
+  }
+
   // ── 동작 ── (TASK_2차_E §2. 이름과 필수 필드는 InquiryCore.ACTION_SPEC)
   const ACTIONS = {
     showCharts(a) {
@@ -399,6 +486,72 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       });
       drawCharts();
     },
+    setScenario(a, ctx) {
+      if (!a.wait) { if (FUT.preset !== a.preset) setPreset(a.preset); return; }
+      // 학생이 고른다: 시나리오 버튼(시나리오 영역 색). 이 단계에 play가 있으면 고르는 즉시 그 구간을 재생한다.
+      const w = widget(ctx, `<div class="inq-scen" role="group" aria-label="시나리오 고르기">${InquiryCore.PRESETS.map(p =>
+        `<button class="btn btn--scen btn--sm" type="button" data-scen="${p}" aria-pressed="false">${esc(PRESET_KO[p])}</button>`).join('')}</div>
+        <ul class="inq-seen" id="inqSeen"></ul>`);
+      w.addEventListener('click', e => {
+        const b = e.target.closest('[data-scen]');
+        if (!b) return;
+        if (FUT.preset !== b.dataset.scen) setPreset(b.dataset.scen);
+        showSeen();
+        if (QV.play) startPlay();
+      });
+      ctx.after.push(showSeen);
+    },
+    play(a, ctx) {
+      QV.play = { from: a.from, to: a.to, recordAtEnd: !!a.recordAtEnd, value: a.value || 'T' };
+      setTimeLimit(LIMIT.from, a.to);
+      const w = widget(ctx, `<button class="btn btn--time btn--sm" type="button"><span data-icon="play"></span>${a.from}→${a.to}년 재생</button>`
+        + (a.recordAtEnd ? ` <span class="inq-sub">${a.to}년에 도착하면 기록 서랍에 자동으로 저장</span>` : ''), 'inq-play');
+      w.querySelector('button').addEventListener('click', startPlay);
+    },
+    toggleNature(a) { setNatureView(a.on !== false); },
+    focus3D(a) {
+      const v = CAM_TARGETS[a.target];
+      if (!v) { console.warn('탐구: 모르는 3D 대상', a.target); return; }
+      setCameraView(v);
+      QV.focused = true;
+    },
+    openPopover(a) { setPopover({ sink: 'popSink', spec: 'popSpec' }[a.id] || a.id); },
+    omega(a) { setOmegaView(a.on !== false); },
+    askText(a, ctx) {
+      const prev = INQ.answers[a.saveAs];
+      const w = widget(ctx, `<label class="inq-ask"><span>${esc(a.prompt || ctx.step.question)}</span>
+        <textarea rows="${a.rows || 2}" placeholder="${esc(a.placeholder || '한두 문장으로 써 보세요')}"></textarea></label>`);
+      const ta = w.querySelector('textarea');
+      ta.value = prev ? prev.answer : '';
+      ta.addEventListener('input', () => setAnswer(a.saveAs, { question: a.prompt || ctx.step.question, answer: ta.value.trim() }));
+    },
+    askChoice(a, ctx) {
+      const prev = INQ.answers[a.saveAs];
+      const name = 'inqc-' + a.saveAs;
+      const w = widget(ctx, `<fieldset class="inq-choice"><legend>${esc(a.prompt || ctx.step.question)}</legend>${a.options.map((o, i) =>
+        `<label><input type="radio" name="${name}" value="${i}" ${prev && prev.choice === i ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}
+        <p class="inq-fb" role="status"></p></fieldset>`);
+      const fb = w.querySelector('.inq-fb');
+      // 정답 판정은 '다시 생각해 보세요' 수준까지만 (지시서 §2). 고른 답은 맞든 틀리든 그대로 기록한다.
+      const judge = i => {
+        if (a.answer == null || i == null) { fb.textContent = ''; return; }
+        fb.textContent = i === a.answer ? (a.feedback || '좋아요. 왜 그런지 한 문장으로 설명할 수 있나요?') : '다시 생각해 보세요.';
+        fb.classList.toggle('ok', i === a.answer);
+      };
+      judge(prev ? prev.choice : null);
+      w.addEventListener('change', e => {
+        const i = Number(e.target.value);
+        setAnswer(a.saveAs, { question: a.prompt || ctx.step.question, answer: a.options[i], choice: i });
+        judge(i);
+      });
+    },
+    record(a, ctx) {
+      const w = widget(ctx, `<button class="btn btn--rec btn--sm" type="button"><span data-icon="record"></span>${esc(a.label || '지금 상태 기록하기')}</button>
+        <span class="inq-sub" id="inqRecNote"></span>`, 'inq-rec');
+      w.querySelector('button').addEventListener('click', () => doRecord(ctx.step, a.value));
+      showRecordNote();
+    },
+    impactCards() { /* E4 */ },
   };
 
   // ── 이벤트 ──
@@ -413,8 +566,6 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     else if (b.dataset.inq === 'prev') go(-1);
     else if (b.dataset.inq === 'next') go(1);
   });
-
-  function playEnded() { }
 
   return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();

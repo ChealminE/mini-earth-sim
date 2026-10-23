@@ -35,12 +35,41 @@ function fitRenderer() {
 }
 
 let camAngleY = -0.5, camAngleX = 0.5, camDist = 8.2;
+// 바라보는 점. 평소에는 모형 가운데(0, 0.3, 0) 그대로이고, 탐구 모드의 focus3D만 옮긴다(js/inquiry.js).
+// 카메라 높이 기준(0.55)도 바라보는 점과 함께 움직여, 기본값에서는 예전과 똑같은 위치가 나온다.
+const camTarget = new THREE.Vector3(0, 0.3, 0);
 let isDragging = false, prevX = 0, prevY = 0;
 function updateCamera() {
-  camera.position.x = camDist * Math.sin(camAngleY) * Math.cos(camAngleX);
-  camera.position.z = camDist * Math.cos(camAngleY) * Math.cos(camAngleX);
-  camera.position.y = 0.55 + camDist * Math.sin(camAngleX);
-  camera.lookAt(0, 0.3, 0);
+  camera.position.x = camTarget.x + camDist * Math.sin(camAngleY) * Math.cos(camAngleX);
+  camera.position.z = camTarget.z + camDist * Math.cos(camAngleY) * Math.cos(camAngleX);
+  camera.position.y = camTarget.y + 0.25 + camDist * Math.sin(camAngleX);
+  camera.lookAt(camTarget);
+}
+// 카메라 시점 읽기·옮기기 (탐구 모드). animate면 0.9초 동안 부드럽게, 움직임 줄이기 설정이면 바로.
+// 렌더 루프와 따로 도는 rAF 하나로 보간만 한다 - 끄는 중에 사용자가 끌면 끌기가 이긴다.
+function getCameraView() {
+  return { angleY: camAngleY, angleX: camAngleX, dist: camDist, target: camTarget.toArray() };
+}
+let camTween = 0;
+function setCameraView(v, animate = true) {
+  cancelAnimationFrame(camTween);
+  const from = getCameraView();
+  const apply = k => {
+    camAngleY = from.angleY + (v.angleY - from.angleY) * k;
+    camAngleX = from.angleX + (v.angleX - from.angleX) * k;
+    camDist = from.dist + (v.dist - from.dist) * k;
+    camTarget.fromArray(from.target.map((x, i) => x + (v.target[i] - x) * k));
+    updateCamera();
+  };
+  if (!animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(1); return; }
+  const t0 = performance.now(), MS = 900;
+  const step = now => {
+    if (isDragging) return;
+    const k = Math.min(1, (now - t0) / MS);
+    apply(1 - (1 - k) ** 3);
+    if (k < 1) camTween = requestAnimationFrame(step);
+  };
+  camTween = requestAnimationFrame(step);
 }
 glCanvas.addEventListener('pointerdown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
 window.addEventListener('pointerup', () => isDragging = false);
