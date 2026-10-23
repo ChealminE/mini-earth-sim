@@ -8,7 +8,8 @@
   (원자료: Global Carbon Project), CC BY 4.0
   https://github.com/owid/co2-data  -> data/historical_emissions_gtc.csv (MtCO2 -> GtC 변환)
   1750~1849 토지이용 배출은 원자료에 없어 선형으로 추정 (luc_estimated=1)
-- 검증용 CO2: NOAA GML 마우나로아 연평균 (datasets/co2-ppm 경유) -> data/mlo_annual.csv
+- 검증용 CO2: NOAA GML 원본(data/raw/noaa) -> tools/gen_earth_data.py -> data/co2_noaa_mlo_annual.csv,
+  data/co2_noaa_gl_annual.csv (출처 전체는 js/sources.js 등록부)
 
 실행: python engine.py  (경로는 이 파일 위치 기준 ../../data/)
 """
@@ -52,7 +53,11 @@ import os
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data')
 em = {int(r['year']): [float(r['fossil_gtc']), float(r['luc_gtc'])]
       for r in csv.DictReader(open(os.path.join(DATA, 'historical_emissions_gtc.csv')))}
-mlo = {int(r['Year']): float(r['Mean']) for r in csv.DictReader(open(os.path.join(DATA, 'mlo_annual.csv')))}
+def read_clean(name):
+    # 정리 CSV는 첫 줄들이 '#' 주석(원본 파일명·버전)이다
+    with open(os.path.join(DATA, name), encoding='utf-8') as f:
+        return list(csv.DictReader(l for l in f if not l.startswith('#')))
+mlo = {int(r['year']): float(r['ppm']) for r in read_clean('co2_noaa_mlo_annual.csv')}
 
 # ---------- 엔진 ----------
 PPM2GTC = 2.124
@@ -66,7 +71,8 @@ P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=6.0,    # 해양
          lam=1.2, Cs=8.0, Cd=100.0, gamma=0.7,                     # 2층 기온 (W, yr, m2, K)
          sst0=18.0, c0=278.0)
 
-# 지구 평균 CO2 1988~2023 - js/tab-current.js의 histCo2를 그대로 옮긴 것 (검증용)
+# 지구 평균 CO2 1988~2023 - 2차 개편 전 js/tab-current.js의 histCo2(출처 불명, NOAA 지구 평균보다 평균 0.9 ppm 낮음).
+# 위 P를 고를 때 쓴 기준이라 기록용으로 남긴다. 새 관측 대조는 tools/test_earth_system.js의 A4 게이트.
 GLOBAL_CO2_START = 1988
 GLOBAL_CO2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24]
 
@@ -135,7 +141,7 @@ def dump_runs():
     import scen   # 프리셋 정의는 scen.py가 원본이다
     years = range(1750, 2201)
     runs = {'hist': run(years, hist), 'nature': run(years, nature)}
-    for k in ['bau', 'paris', 'nz2050']:
+    for k in scen.SSP_KEYS:
         runs[k] = run(years, scen.mk(k))
     for c in FIXED_PPMS:
         runs['fixed%d' % c] = run_fixed(c, years)
@@ -166,3 +172,7 @@ if __name__ == '__main__':
     R = {o['y']: o for o in r}
     rmse_g = math.sqrt(np.mean([(R[GLOBAL_CO2_START+i]['ppm']-v)**2 for i, v in enumerate(GLOBAL_CO2)]))
     print('RMSE vs global mean 1988-2023: %.2f ppm' % rmse_g)
+    gl = {int(r['year']): float(r['ppm']) for r in read_clean('co2_noaa_gl_annual.csv')}
+    r = {o['y']: o for o in run(range(1750, max(em) + 1), hist)}
+    yrs = [y for y in gl if y in r]
+    print('RMSE vs NOAA global mean %d-%d: %.2f ppm' % (min(yrs), max(yrs), math.sqrt(np.mean([(r[y]['ppm']-gl[y])**2 for y in yrs]))))

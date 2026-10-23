@@ -1,0 +1,161 @@
+/* ============================================================================
+   디자인 토큰 + 공통 부품 (2차 개편 B) — "문서처럼, 페이퍼처럼, 가독성"
+   ----------------------------------------------------------------------------
+   style.css 보다 먼저 읽는다. 색·글자 크기·간격은 여기 변수로만 정의하고, 다른 곳에서는
+   var(--…) 와 js/theme.js(Theme.color)로만 쓴다.
+
+   적용 범위: 라이트 테마는 body.paper 아래에서만 켜진다(현재 실태·미래 예측·시작 화면).
+   직접 실험 탭은 body.paper 가 없으므로 style.css 의 기존 다크 규칙이 그대로 적용된다.
+   그래서 #tab-live 를 다크로 되돌리는 '보호 규칙'이 따로 필요 없다 — 동료가 직접 실험 탭을
+   옮길 때는 main.js switchTab 에서 live 탭에도 paper 클래스를 붙이면 된다(docs/테마_이관_가이드.md).
+
+   토큰 대비는 tools/check_contrast.js 로 확인한다(모든 글자색 × 바탕색 ≥ 4.5:1).
+   ============================================================================ */
+:root {
+  /* ── 면과 글자 (종이와 먹) ── */
+  --paper: #f8f5ee;        /* 바탕: 따뜻한 미색 */
+  --paper-2: #efeadf;      /* 패널: 조금 더 짙은 미색 */
+  --paper-3: #e4ddce;      /* 눌림·트랙 등 한 단계 더 짙은 면 */
+  --rule: #d3cab7;         /* 구분선 */
+  --ink: #1d2025;          /* 본문 */
+  --ink-2: #3d434b;        /* 보조 */
+  --ink-3: #575d65;        /* 가장 옅은 글자 — paper-2 위에서도 4.5:1 이상 */
+  --on-fill: #ffffff;      /* 영역색으로 채운 버튼 위 글자 */
+
+  /* ── 데이터 색 (그래프·3D 공통). 밝은 바탕에서 서로 구분되고 명도 차를 둔다 ── */
+  --data-co2: #6b4a2b;     /* 갈색 — 탄소·연기 */
+  --data-temp: #c0262d;    /* 빨강 */
+  --data-ph: #0b7285;      /* 청록 */
+  --data-sst: #b0175a;     /* 자홍 */
+  --data-omega: #876400;   /* 황토 */
+  --data-nature: #858b93;  /* 자연 지구: 회색 */
+  --data-obs: #22262b;     /* 관측: 먹색 */
+  --data-land: #5d6b1a;    /* 토양·식생 (탄소 흡수 막대) */
+  --data-band: rgba(34, 38, 43, 0.12);   /* 관측 불확도 띠 */
+
+  /* ── 조작 영역 5색: 테두리·글자 / 옅은 바탕 / 눌린 상태 ── */
+  --ctl-nav: #2f3742;   --ctl-nav-bg: #ebe7de;   --ctl-nav-on: #2f3742;
+  --ctl-time: #1c4fbf;  --ctl-time-bg: #e4ebfa;  --ctl-time-on: #1c4fbf;
+  --ctl-scen: #175e31;  --ctl-scen-bg: #e2efe4;  --ctl-scen-on: #175e31;
+  --ctl-view: #6a2ea6;  --ctl-view-bg: #efe6f7;  --ctl-view-on: #6a2ea6;
+  --ctl-rec: #963805;   --ctl-rec-bg: #fbebe0;   --ctl-rec-on: #963805;
+  --focus: #1c4fbf;
+
+  /* ── 출처 종류 배지 (ⓘ 상자) ── */
+  --kind-obs: #22262b;
+  --kind-model: #1d5a8a;
+  --kind-param: #5a4a1e;
+  --kind-assumption: #7a3b14;
+  --kind-calibrated: #5b3a7a;
+  --warn: #8a3d00;      --warn-bg: #fdf0d8;
+
+  /* ── 글자: 기준을 20 % 키운다. 단계별 크기의 최솟값은 13 px 이상 ── */
+  --fs-scale: 1.2;
+  --fs-1: calc(11px * var(--fs-scale));   /* 13.2 px — 가장 작은 글자(축 이름·꼬리표) */
+  --fs-2: calc(12px * var(--fs-scale));   /* 14.4 px — 보조 설명 */
+  --fs-3: calc(13px * var(--fs-scale));   /* 15.6 px — 본문 */
+  --fs-4: calc(15px * var(--fs-scale));   /* 18 px — 소제목·버튼 강조 */
+  --fs-5: calc(19px * var(--fs-scale));   /* 22.8 px — 큰 숫자 */
+  --fs-6: calc(24px * var(--fs-scale));   /* 28.8 px — 시작 화면 제목 */
+  --font-body: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  /* 제목에만 명조를 쓴다(문서 느낌). Windows 기본 글꼴(바탕)로 끝나게 해 오프라인 교실 PC에서도 같은 계열 */
+  --font-title: "Noto Serif KR", "Nanum Myeongjo", "Batang", serif;
+
+  /* ── 간격·모양 ── */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+  --radius: 8px;
+  --btn-h: 36px;        /* 최소 높이 — 전자칠판 터치 */
+}
+
+/* ── 라이트 테마 바탕 ─────────────────────────────────────────────────────── */
+body.paper {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--fs-3); line-height: 1.5;
+}
+body.paper .num, body.paper .readout { font-variant-numeric: tabular-nums; }
+
+/* ── 버튼 체계 (B §3) ─────────────────────────────────────────────────────
+   누를 수 있는 것은 모두 버튼 모양, 정보는 평평한 글자(.readout).
+   영역색은 --c(글자·테두리) / --c-bg(옅은 바탕) / --c-on(채움) 로 받아 한 규칙으로 그린다. */
+.btn {
+  --c: var(--ctl-nav); --c-bg: var(--ctl-nav-bg); --c-on: var(--ctl-nav-on);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--btn-h); padding: 0 var(--sp-3);
+  font: inherit; font-size: var(--fs-2); font-weight: 600; line-height: 1.2; white-space: nowrap;
+  color: var(--c); background: var(--c-bg); border: 1.5px solid var(--c); border-radius: var(--radius);
+  cursor: pointer; text-decoration: none; user-select: none;
+  transition: background-color .12s, color .12s;
+}
+.btn:hover { background: color-mix(in srgb, var(--c) 16%, var(--c-bg)); }
+.btn[aria-pressed="true"], .btn.is-on { background: var(--c-on); color: var(--on-fill); }
+.btn[aria-pressed="true"]:hover, .btn.is-on:hover { background: color-mix(in srgb, var(--c-on) 88%, #000); }
+.btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; background: var(--c-bg); color: var(--c); }
+.btn svg { width: 20px; height: 20px; flex: none; }
+.btn [data-icon] { display: inline-flex; }
+.btn--nav  { --c: var(--ctl-nav);  --c-bg: var(--ctl-nav-bg);  --c-on: var(--ctl-nav-on); }
+.btn--time { --c: var(--ctl-time); --c-bg: var(--ctl-time-bg); --c-on: var(--ctl-time-on); }
+.btn--scen { --c: var(--ctl-scen); --c-bg: var(--ctl-scen-bg); --c-on: var(--ctl-scen-on); }
+.btn--view { --c: var(--ctl-view); --c-bg: var(--ctl-view-bg); --c-on: var(--ctl-view-on); }
+.btn--rec  { --c: var(--ctl-rec);  --c-bg: var(--ctl-rec-bg);  --c-on: var(--ctl-rec-on); }
+/* 아이콘 위·글자 아래 (공간이 좁은 아이콘 카드) */
+.btn--stack { flex-direction: column; gap: 2px; padding: var(--sp-2) var(--sp-2); }
+.btn--stack .btn-sub { font-size: var(--fs-1); font-weight: 500; }
+/* 작은 버튼(그래프 머리의 보기 버튼 등). 높이는 줄여도 글자는 13 px 이상 */
+.btn--sm { min-height: 30px; padding: 0 var(--sp-2); font-size: var(--fs-1); gap: var(--sp-1); }
+.btn--sm svg { width: 16px; height: 16px; }
+
+/* 범위 입력(슬라이더)도 조작이다 — 영역색을 따른다 */
+input[type="range"].range { accent-color: var(--c, var(--ctl-nav)); cursor: pointer; min-height: 28px; }
+input[type="range"].range--time { --c: var(--ctl-time); }
+input[type="range"].range--scen { --c: var(--ctl-scen); }
+input[type="range"].range--view { --c: var(--ctl-view); }
+input[type="range"].range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+select.select {
+  font: inherit; font-size: var(--fs-2); min-height: var(--btn-h); padding: 0 var(--sp-2);
+  color: var(--c, var(--ctl-nav)); background: var(--c-bg, var(--ctl-nav-bg));
+  border: 1.5px solid var(--c, var(--ctl-nav)); border-radius: var(--radius); cursor: pointer;
+}
+select.select--time { --c: var(--ctl-time); --c-bg: var(--ctl-time-bg); }
+select.select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* 정보 표시: 테두리·바탕 없음, 마우스 반응 없음 */
+.readout { border: 0; background: none; cursor: default; color: var(--ink); }
+.readout b, .readout strong { font-weight: 700; }
+
+/* ── ⓘ 출처 버튼 + 상자 (B §4, js/source-tip.js) ─────────────────────────── */
+.src-i {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 20px; height: 20px; padding: 0; margin: 0 0 0 var(--sp-1); vertical-align: -3px;
+  font: 700 13px/1 var(--font-body); color: var(--ink-2);
+  background: var(--paper); border: 1.5px solid var(--ink-3); border-radius: 50%; cursor: help;
+}
+/* 터치 대상이 너무 작지 않게 보이지 않는 여백으로 누를 자리를 넓힌다 */
+.src-i { position: relative; }
+.src-i::after { content: ""; position: absolute; inset: -8px; }
+.src-i:hover, .src-i[aria-expanded="true"] { color: var(--paper); background: var(--ink-2); border-color: var(--ink-2); }
+.src-i:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.src-tip {
+  position: fixed; z-index: 2000; width: min(380px, calc(100vw - 16px)); max-height: min(70vh, 460px); overflow: auto;
+  padding: var(--sp-3) var(--sp-4); background: var(--paper); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(40, 32, 16, .16);
+  font-family: var(--font-body); font-size: var(--fs-2); line-height: 1.5;
+}
+.src-tip[hidden] { display: none; }
+.src-tip .st-warn { margin: 0 0 var(--sp-2); padding: var(--sp-1) var(--sp-2); border-radius: 6px;
+  background: var(--warn-bg); color: var(--warn); font-weight: 700; font-size: var(--fs-1); }
+.src-tip .st-badge { display: inline-block; padding: 1px var(--sp-2); border-radius: 999px; color: var(--on-fill);
+  font-size: var(--fs-1); font-weight: 700; margin-bottom: var(--sp-1); }
+.src-tip .st-badge[data-kind="obs"] { background: var(--kind-obs); }
+.src-tip .st-badge[data-kind="model"] { background: var(--kind-model); }
+.src-tip .st-badge[data-kind="param"] { background: var(--kind-param); }
+.src-tip .st-badge[data-kind="assumption"] { background: var(--kind-assumption); }
+.src-tip .st-badge[data-kind="calibrated"] { background: var(--kind-calibrated); }
+.src-tip .st-lead { font-weight: 700; margin: var(--sp-1) 0 var(--sp-2); }
+.src-tip .st-meta { color: var(--ink-2); margin: 0 0 var(--sp-2); }
+.src-tip .st-cite { color: var(--ink-3); font-size: var(--fs-1); margin: 0 0 var(--sp-2); word-break: break-word; }
+.src-tip .st-link { color: var(--ctl-time); font-weight: 600; word-break: break-all; }
+.src-tip .st-rel { border-top: 1px solid var(--rule); margin-top: var(--sp-2); padding-top: var(--sp-2); }
+.src-tip .st-rel-item { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--fs-1); }
+.src-tip .st-rel-item b { color: var(--ink); }

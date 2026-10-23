@@ -4,15 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>미니 지구 모델 - 시작 화면</title>
+<link rel="stylesheet" href="css/theme.css">
 <style>
+  /* 시작 화면 - 종이(라이트) 테마 (2차 개편 B §5). 토큰은 css/theme.css.
+     tools/build_single_html.py 의 SHELL_CSS(단일 파일 시작 화면)도 같은 모양으로 맞춘다. */
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
-  html { background: #14171c; }
+  html { background: var(--paper); }
   body {
-    font-family: system-ui, -apple-system, sans-serif;
-    color: #e7e9ec;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 100vh; padding: 40px 20px;
+    min-height: 100vh; padding: var(--sp-5) var(--sp-4);
     /* 카드 사이 빈 곳의 마우스는 뒤의 3D 아크릴로 넘긴다 (끌어서 돌리기·휠 확대) */
     pointer-events: none;
   }
@@ -21,44 +22,42 @@
   /* 배경 = 진짜 3D 아크릴 모형 (다른 화면과 같은 js/common.js). 평소엔 천천히 저절로 돌고,
      끌면 그쪽으로 돌다가 놓으면 다시 천천히 돈다. 3D가 뜨기 전·WebGL이 안 되는 PC에서는 사진이 보인다. */
   #gl-container { position: fixed; inset: 0; z-index: 0;
-    background: #14171c url('/texture_image/start_bg.jpg') center 60% / cover no-repeat; }
+    background: var(--paper) url('/texture_image/start_bg.jpg') center 60% / cover no-repeat; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
   #gl:active { cursor: grabbing; }
-  /* 3D(불투명)가 사진을 덮고, 그 위에 어두운 막을 씌워 옅게 보이게 */
+  /* 3D 위에 종이색 막을 씌워 글자가 잘 읽히게 (가운데는 옅게, 가장자리는 짙게) */
   .shade { position: fixed; inset: 0; z-index: 1; pointer-events: none;
-    background: radial-gradient(ellipse at 50% 45%, rgba(20,23,28,0.45) 0%, rgba(20,23,28,0.88) 78%); }
-  .footer-hint { text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
-  .header { text-align: center; margin-bottom: 36px; }
-  .header h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
-  .header p { font-size: 13px; color: #9198a3; margin: 0; line-height: 1.6; }
+    background: radial-gradient(ellipse at 50% 45%, rgba(248,245,238,0.55) 0%, rgba(248,245,238,0.92) 78%); }
+  .header { text-align: center; margin-bottom: var(--sp-5); }
+  .header h1 { font-family: var(--font-title); font-size: var(--fs-6); font-weight: 700; margin: 0 0 var(--sp-2); color: var(--ink); }
+  .header p { font-size: var(--fs-3); color: var(--ink-2); margin: 0; line-height: 1.6; }
 
   .grid {
-    display: grid; grid-template-columns: repeat(2, minmax(220px, 320px)); gap: 18px;
-    width: 100%; max-width: 700px;
+    display: grid; grid-template-columns: repeat(2, minmax(240px, 340px)); gap: var(--sp-4);
+    width: 100%; max-width: 720px;
   }
   @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
 
-  .card {
-    display: flex; flex-direction: column; gap: 8px;
-    background: rgba(27,30,36,0.78); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
-    backdrop-filter: blur(6px);
-    padding: 22px 20px; text-decoration: none; color: inherit;
-    transition: border-color .15s, transform .15s, background .15s;
+  /* 모드 카드 = 이동(nav) 영역 버튼. .btn 의 색·눌림·포커스 규칙을 그대로 쓰고 모양만 카드로 */
+  .card.btn {
+    flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--sp-1);
+    padding: var(--sp-4) var(--sp-4); white-space: normal; text-align: left;
+    background: var(--paper-2); font-weight: 400;
   }
-  .card:hover { border-color: #5DCAA5; background: rgba(32,36,43,0.9); transform: translateY(-2px); }
-  .header h1 { text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
-  .card .icon { font-size: 28px; }
-  .card .title { font-size: 15.5px; font-weight: 600; color: #e7e9ec; }
-  .card .desc { font-size: 12px; color: #9198a3; line-height: 1.6; }
+  .card.btn:hover { background: color-mix(in srgb, var(--ctl-nav) 10%, var(--paper-2)); }
+  .card .icon { display: inline-flex; color: var(--ctl-nav); }
+  .card .icon svg { width: 30px; height: 30px; }
+  .card .title { font-size: var(--fs-4); font-weight: 700; color: var(--ink); }
+  .card .desc { font-size: var(--fs-2); color: var(--ink-2); line-height: 1.55; }
   .card .badge {
-    align-self: flex-start; font-size: 10px; margin-top: 2px; padding: 2px 8px;
-    border-radius: 10px; background: #10231c; color: #5DCAA5; border: 1px solid #2f8f7a;
+    align-self: flex-start; font-size: var(--fs-1); font-weight: 600; margin-top: 2px; padding: 0 var(--sp-2);
+    border-radius: 999px; background: var(--paper); color: var(--ink-2); border: 1px solid var(--rule);
   }
-
-  .footer-hint { margin-top: 28px; font-size: 11px; color: #565b62; text-align: center; line-height: 1.7; }
+  .footer-hint { margin-top: var(--sp-5); font-size: var(--fs-1); color: var(--ink-2); text-align: center; line-height: 1.7;
+    background: color-mix(in srgb, var(--paper) 85%, transparent); padding: var(--sp-1) var(--sp-3); border-radius: var(--radius); }
 </style>
 </head>
-<body>
+<body class="paper">
   <div id="gl-container"><canvas id="gl"></canvas></div>
   <div class="shade"></div>
 
@@ -68,26 +67,26 @@
   </div>
 
   <div class="grid">
-    <a class="card" href="/dashboard?tab=current">
-      <div class="icon">🌍</div>
-      <div class="title">현재 실태</div>
-      <div class="desc">1988~2023년 CO₂ 농도·기온편차·해양 pH·화석연료 배출 실측 데이터 그래프</div>
+    <a class="card btn btn--nav" href="/dashboard?tab=current">
+      <span class="icon" data-icon="lines" data-icon-size="30"></span>
+      <span class="title">현재 실태</span>
+      <span class="desc">관측 자료로 본 지구의 지금 — 대기 CO₂·기온·바다 pH·화석연료 배출 (NOAA·HadCRUT5·HOT·GCP)</span>
     </a>
-    <a class="card" href="/dashboard?tab=future">
-      <div class="icon">🔮</div>
-      <div class="title">미래 예측</div>
-      <div class="desc">1750~2200년 타임라인 · 자연 지구와 인간활동 지구를 나란히, 배출 시나리오·레버로 미래의 기온·해양 산성화를 예측</div>
+    <a class="card btn btn--nav" href="/dashboard?tab=future">
+      <span class="icon" data-icon="globe" data-icon-size="30"></span>
+      <span class="title">미래 예측</span>
+      <span class="desc">1750~2200년 · 사람이 내보낸 탄소가 지구를 어떻게 바꾸는지 재생하고, IPCC 시나리오와 직접 설계로 미래를 예측</span>
     </a>
-    <a class="card" href="/dashboard?tab=live">
-      <div class="icon">🔬</div>
-      <div class="title">직접 실험</div>
-      <div class="desc">보드·센서를 골라 코드를 받고, 아크릴 모형에 센서를 배치해 실시간으로 측정·기록·분석</div>
+    <a class="card btn btn--nav" href="/dashboard?tab=live">
+      <span class="icon" data-icon="beaker" data-icon-size="30"></span>
+      <span class="title">직접 실험</span>
+      <span class="desc">보드·센서를 골라 코드를 받고, 아크릴 모형에 센서를 배치해 실시간으로 측정·기록·분석</span>
     </a>
-    <a class="card" href="/firstperson/">
-      <div class="icon">🧭</div>
-      <div class="title">탐험</div>
-      <div class="desc">1인칭 시점으로 걸어다니며 환경을 조사하는 탐험 모드</div>
-      <div class="badge">별도 모드</div>
+    <a class="card btn btn--nav" href="/firstperson/">
+      <span class="icon" data-icon="compass" data-icon-size="30"></span>
+      <span class="title">탐험</span>
+      <span class="desc">1인칭 시점으로 걸어다니며 환경을 조사하는 탐험 모드</span>
+      <span class="badge">별도 모드</span>
     </a>
   </div>
 
@@ -95,9 +94,13 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="js/earth-model.js?v=4"></script>
+<script src="js/theme.js"></script>
+<script src="js/icons.js"></script>
 <script src="js/common.js?v=4"></script>
 <script>
   // 대시보드와 같은 아크릴 씬을 배경으로 하나만 띄운다 (common.js의 animate()는 bundles[activeTab]을 그린다)
+  Icons.fill();
+  setSceneBackdrop(Theme.hex('--paper'));   // 종이색 바탕 (예전: 렌더러 기본 검정)
   const homeScene = buildAcrylicScene();
   const bundles = { home: homeScene };
   let activeTab = 'home';

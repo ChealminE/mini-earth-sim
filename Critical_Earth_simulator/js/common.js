@@ -8,12 +8,29 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
+// 3D 바탕색: 탭마다 다르다. 현재 실태·미래 예측은 종이색(css/theme.css --paper), 직접 실험 탭은 예전 그대로
+// 검정(렌더러 기본값)을 넘긴다 - 직접 실험 탭은 동료가 테마를 옮길 때까지 바꾸지 않는다.
+const LIVE_BACKDROP = 0x000000;
+function setSceneBackdrop(hex) { renderer.setClearColor(hex, 1); }
+
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+// 화각은 세로 기준 38°다. 3D 칸이 세로로 길면 같은 세로 화각에서 모형 양옆이 잘린다.
+// setCameraFit(a)를 부른 화면(현재 실태·미래 예측)에서만, 칸의 종횡비가 a보다 좁을 때 세로 화각을 넓혀
+// 가로로 보이는 폭을 종횡비 a일 때와 같게 둔다. 부르지 않은 화면(직접 실험 탭·시작 화면)은 예전과 똑같다.
+const CAM_FOV = 38;
+let camFitAspect = null;
+function fovForAspect(a) {
+  if (!camFitAspect || a >= camFitAspect) return CAM_FOV;
+  const halfW = Math.tan(THREE.MathUtils.degToRad(CAM_FOV / 2)) * camFitAspect;
+  return THREE.MathUtils.radToDeg(2 * Math.atan(halfW / a));
+}
+function setCameraFit(a) { camFitAspect = a; }
 function fitRenderer() {
   const w = glContainer.clientWidth, h = glContainer.clientHeight;
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   camera.aspect = w / h;
+  camera.fov = fovForAspect(camera.aspect);
   camera.updateProjectionMatrix();
 }
 
@@ -848,11 +865,14 @@ function applyState(S) {
   if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  // state.noTint(미래 예측 탭): 뚜껑·입자·안개가 갈황색으로 물드는 효과만 끈다. CO2는 무색이라
+  // "공기만 노래지는 효과"가 오해를 준다는 피드백(2차 개편 C2). 다른 탭은 noTint가 없어 예전과 같다.
+  const tint = S.state.noTint ? 0 : intensity;
   S.lidMat.opacity = 0.12 + intensity * 0.35;
-  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, intensity);
+  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, tint);
   S.atmoMat.opacity = 0.35 + intensity * 0.45;
-  S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
-  S.hazeMat.opacity = 0.04 + intensity * 0.18;
+  S.atmoMat.color.setHSL(0.55 - tint * 0.46, 0.55, 0.75 - tint * 0.15);
+  S.hazeMat.opacity = 0.04 + tint * 0.18;
 
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
@@ -956,7 +976,7 @@ renderer.info.autoReset = false;
 let lastFrameDrawCalls = 0;
 let t = 0;
 function setCameraAspect(a) {
-  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.updateProjectionMatrix(); }
+  if (Math.abs(camera.aspect - a) > 1e-6) { camera.aspect = a; camera.fov = fovForAspect(a); camera.updateProjectionMatrix(); }
 }
 function animate() {
   requestAnimationFrame(animate);
