@@ -152,10 +152,23 @@ body.tab-future.paper #hint { left: auto; right: var(--sp-3); }
 
 /* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
 body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
-  display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: var(--sp-2);
+  display: grid; grid-template-rows: auto repeat(4, minmax(0, 1fr)); gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3); border-left: 1px solid var(--rule); background: var(--paper); }
 body.paper .fut-charts .chart-title { flex-wrap: nowrap; }
 body.paper .fut-charts .fut-pop-btn { margin-left: auto; }
+body.paper .fut-charts .fut-omega-btn { margin-left: auto; }
+body.paper .fut-charts .fut-omega-btn + .fut-pop-btn { margin-left: var(--sp-1); }
+body.paper .fut-charts .chart-title { margin: 0; min-height: 30px; }
+/* 공용 범례: 선 모양 견본은 그래픽(관측 먹 실선, 예측 점선, 자연 회색 점선, 이전 선택 옅은 선) */
+body.paper .fut-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--sp-3); font-size: var(--fs-1); color: var(--ink-2); }
+body.paper .fut-legend #futValidateBtn { margin-left: auto; }
+body.paper .fk { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }
+body.paper .fk[hidden] { display: none; }
+body.paper .fk b { color: var(--ink); }
+body.paper .fk-line { display: inline-block; width: 22px; height: 0; border-top: 2.5px solid var(--data-obs); }
+body.paper .fk-line.pred { border-top: 2.5px dashed var(--ink-2); }
+body.paper .fk-line.nature { border-top: 2px dotted var(--data-nature); }
+body.paper .fk-line.prev { border-top: 2.5px solid color-mix(in srgb, var(--ink-2) 30%, transparent); }
 /* 팝오버: 그래프 열을 덮는다(배치를 밀지 않음) */
 body.paper .fut-pop { position: absolute; inset: var(--sp-2); z-index: 20; display: flex; flex-direction: column; gap: var(--sp-2);
   padding: var(--sp-3); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
@@ -259,3 +272,11 @@ body.paper .mix-key .src-i { margin-left: 1px; }
 body.paper .mix-key.fossil svg { color: var(--data-co2); }
 body.paper .mix-key.nuclear svg { color: var(--data-omega); }
 body.paper .mix-key.renew svg { color: var(--data-ph); }
+
+/* 낮은 화면(1280×720 등)에서 그래프 4개가 각각 110 px 넘게 남도록 머리줄·그래프 제목 줄을 줄인다 */
+@media (max-height: 760px) {
+  body.paper #topbar { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+  body.paper .fut-charts { padding-top: var(--sp-1); padding-bottom: var(--sp-1); gap: 2px; }
+  body.paper .fut-charts .chart-title { min-height: 26px; }
+  body.paper .fut-charts .chart-title .btn--sm, body.paper .fut-legend .btn--sm { min-height: 26px; }
+}

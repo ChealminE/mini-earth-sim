@@ -209,14 +209,25 @@
       <!-- 1750~2200 타임라인. 궤적은 js/earth-system.js가 미리 계산하고 여기서는 배열을 읽기만 한다 (js/tab-future.js).
            배치(스크롤 없음): 왼쪽 패널(#futureControls) | 3D | 그래프 열, 맨 아래 시간 막대 (css/paper.css) -->
       <section class="fut-charts" id="futCharts" aria-label="그래프">
+        <!-- 공용 범례 + 보기 토글 (그래프마다 범례를 두면 4개가 한 화면에 들어가지 않는다) -->
+        <div class="fut-legend readout" aria-label="범례">
+          <span class="fk"><i class="fk-line obs"></i>관측</span>
+          <span class="fk"><i class="fk-line pred"></i>인간활동 지구 (예측)</span>
+          <span class="fk"><i class="fk-line nature"></i>자연만 있는 지구</span>
+          <span class="fk" id="futPrevKey" hidden><i class="fk-line prev"></i>이전 선택: <b id="futPrevName"></b></span>
+          <button class="btn btn--view btn--sm" type="button" id="futValidateBtn" aria-pressed="false"><span data-icon="lines"></span>모형 검증 보기</button>
+        </div>
         <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂ (모형 계산)">ⓘ</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSink" aria-pressed="false" aria-controls="popSink"><span data-icon="sink"></span>탄소는 어디로?</button></div>
           <div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button></div>
+        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해수 pH · 아라고나이트 포화도 Ω<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="model_omega" aria-label="출처 보기: 아라고나이트 포화도 (모형 계산)">ⓘ</button>
+        <div class="chart-block"><div class="chart-title">해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
+          <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false">Ω 함께 보기</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec"><span data-icon="flask"></span>바다 속 탄소</button></div>
           <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산, 관측 비교 없음)">ⓘ</button></div>
+          <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
 
         <!-- 보조 정보 팝오버: 그래프 열 위에 뜨고 배치를 밀지 않는다 -->
         <div class="fut-pop" id="popSink" role="dialog" aria-label="배출된 탄소는 어디로 갔나" hidden>

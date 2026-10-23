@@ -16,6 +16,7 @@ const FUT = {
   preset: 'ssp245',       // 인간활동 지구의 배출 시나리오 (ssp245 | ssp126 | ssp119 | custom)
   levers: { ...EarthSystem.LEVER_NOW },   // 직접 설계의 2050년 목표값
   year: 2023,             // 재생 위치 (소수 가능 - 연도 사이 보간)
+  frontier: 2023,         // 예측 전선: 인간활동 지구 예측선을 이 해까지만 그린다 (재생·끌기로 앞으로만 간다)
   playing: false,
   speed: 10,              // 년/초
   human: null,            // EarthSystem.run 결과 배열
@@ -48,10 +49,20 @@ function sampleAt(arr, year) {
   return o;
 }
 
-// ── 그래프 ────────────────────────────────────────────────────────────
-// 색은 css/theme.css 토큰(js/theme.js). 관측 = 먹색, 인간활동 지구 = 데이터 색, 자연 지구 = 회색 점선.
+// ── 그래프 4개 (2차 개편 C4) ───────────────────────────────────────────
+// 대기 CO₂ / 기온 편차 / 해수 pH / 해수온, x축 1750~2200 공유. 색은 css/theme.css 토큰(js/theme.js).
+//   관측            : 먹색(--data-obs). CO₂ 1750~1978 CMIP6 재구성 + 1979~ NOAA, 기온 1850~ HadCRUT5(+95 % 띠), pH 1989~ HOT
+//   인간활동 지구 예측: 2023 ~ 예측 전선(frontier), 데이터 색 점선
+//   인간활동 지구 과거: 1750~2023, 기본 숨김 — [모형 검증 보기]를 켜면 옅은 실선
+//   자연만 있는 지구  : 1750~2200 전체, 회색 가는 점선 (사람이 없으면 미래도 이미 알 수 있다는 대비)
+//   이전 선택         : 직전 시나리오의 예측, 아주 옅은 선
+// 예측 전선(frontier): 예측선은 x ≤ frontier 까지만 보인다. 재생하거나 슬라이더를 미래로 끌면 전선이 앞으로 가며
+// 선이 그려진다(피드백 10). 선 데이터는 2200년까지 다 넣어 두고 그릴 때 잘라 낸다(frontierClip) — 재생 중에는
+// 데이터를 바꾸지 않고 chart.draw()만 하므로 0.2초 틱 안에서 가볍다.
 // y축은 하드코딩하지 않는다. 예전에 max: 600을 박아 곡선이 그래프 밖으로 나간 적이 있고,
 // 시나리오마다 2200년 값이 크게 다르다. 범위는 매번 데이터에서 계산한다.
+const $ = id => document.getElementById(id);   // 이 탭 안에서만 쓰는 짧은 이름 (다른 스크립트에 $ 없음)
+const LAST_OBS_YEAR = EarthSystem.LAST_HIST_YEAR;   // 2023: 관측 끝 · 예측 시작
 function niceRange(vals, padFrac = 0.06, minSpan = 0) {
   let lo = Infinity, hi = -Infinity;
   for (const v of vals) if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
@@ -60,68 +71,213 @@ function niceRange(vals, padFrac = 0.06, minSpan = 0) {
   const pad = (hi - lo) * padFrac;
   lo -= pad; hi += pad;
   // 눈금이 1318.9 같은 값으로 끝나지 않게, 1·2·5 계열의 깔끔한 간격에 맞춰 넓힌다
-  const raw = (hi - lo) / 6, mag = 10 ** Math.floor(Math.log10(raw));
+  const raw = (hi - lo) / 4, mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 5, 10].map(k => k * mag).find(s => s >= raw);
   return { min: Math.floor(lo / step) * step, max: Math.ceil(hi / step) * step };
 }
 
-// 재생 위치 세로선 - 데이터를 다시 계산하지 않고 그리기만 다시 하면 되도록 플러그인으로 둔다
-const playheadPlugin = {
-  id: 'playhead',
-  afterDatasetsDraw(chart) {
-    const x = chart.scales.x;
-    if (!x || x.type !== 'linear') return;
-    const px = x.getPixelForValue(FUT.year);
-    if (px < chart.chartArea.left || px > chart.chartArea.right) return;
-    const ctx = chart.ctx;
+const C = Theme.color;
+const NATURE = { width: 1.4, widthOn: 3 };   // 자연 지구를 3D로 보고 있을 때 그래프의 자연 지구 선을 굵게
+const VIEW = { validate: false, omega: false, hoverYear: null, drawFrontier: LAST_OBS_YEAR };
+
+// 관측 자료: 연도 → 값 (데이터 레이블이 과거 연도에서 관측값을 찾을 때)
+const toPoints = (d, key) => d[key].map((v, i) => ({ x: d.startYear + i, y: v })).filter(p => p.y != null);
+const OBS_PTS = {
+  co2: [...toPoints(EARTH_DATA.co2Cmip6, 'ppm'), ...toPoints(EARTH_DATA.co2Noaa, 'ppm')],
+  T: toPoints(EARTH_DATA.tempHadcrut, 'anom'),
+  pH: toPoints(EARTH_DATA.phHot, 'ph'),
+};
+const OBS_BY_YEAR = Object.fromEntries(Object.entries(OBS_PTS).map(([k, pts]) => [k, new Map(pts.map(p => [p.x, p.y]))]));
+
+// 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(없으면 해수온처럼 관측 비교 없음)
+const fmtSigned = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
+const SERIES = [
+  { id: 'futChartCo2', key: 'ppm', obs: 'co2', color: '--data-co2', fmt: v => `${v.toFixed(0)} ppm`, minSpan: 40 },
+  { id: 'futChartT', key: 'T', obs: 'T', color: '--data-temp', fmt: v => `${fmtSigned(v, 2)} °C`, minSpan: 0.5 },
+  { id: 'futChartPh', key: 'pH', obs: 'pH', color: '--data-ph', fmt: v => v.toFixed(3), minSpan: 0.1 },
+  { id: 'futChartSst', key: 'sst', obs: null, color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
+];
+// 계열 순서(데이터셋 번호). Chart.js는 앞 번호를 위에 그린다 → 예측선을 맨 위에.
+const DS = { pred: 0, prev: 1, past: 2, nature: 3, obs: 4 };
+
+// ── 플러그인 ──
+// 1) 과거와 예측 구분: 2023 오른쪽에 아주 옅은 바탕 + 빗금, 2023 세로선, 첫 그래프에만 머리표.
+//    예측이 비어 있으면(frontier = 2023) 빗금 위에 안내 글씨. 시간 막대 슬라이더도 같은 빗금을 쓴다(css/paper.css).
+const hatchCache = new WeakMap();
+function hatchPattern(ctx) {
+  if (hatchCache.has(ctx)) return hatchCache.get(ctx);
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const g = c.getContext('2d');
+  g.strokeStyle = Theme.alpha('--ink-3', 0.22); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
+  const p = ctx.createPattern(c, 'repeat');
+  hatchCache.set(ctx, p);
+  return p;
+}
+const predZonePlugin = {
+  id: 'predZone',
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    const px = x.getPixelForValue(LAST_OBS_YEAR);
     ctx.save();
-    ctx.strokeStyle = Theme.color('--ctl-time');
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(px, chart.chartArea.top); ctx.lineTo(px, chart.chartArea.bottom); ctx.stroke();
+    ctx.fillStyle = Theme.alpha('--ctl-time', 0.035);
+    ctx.fillRect(px, a.top, a.right - px, a.bottom - a.top);
+    ctx.fillStyle = hatchPattern(ctx);
+    ctx.fillRect(px, a.top, a.right - px, a.bottom - a.top);
+    ctx.strokeStyle = C('--ink-2'); ctx.lineWidth = 1.2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    ctx.font = `600 ${Theme.px('--fs-1')}px ${C('--font-body')}`;
+    ctx.textBaseline = 'top';
+    if (chart.$first) {
+      ctx.fillStyle = C('--ink-2'); ctx.textAlign = 'right';
+      ctx.fillText('관측 끝 · 예측 시작', px - 4, a.top + 2);
+    }
+    if (FUT.frontier <= LAST_OBS_YEAR && chart.$first) {
+      ctx.fillStyle = C('--ink-3'); ctx.textAlign = 'center';
+      // 아래쪽에 두 줄로 둔다 - 가운데는 재생 위치의 데이터 레이블 자리이고, 1280 폭에서는 빗금 칸이 100 px 남짓이다
+      const cx = (px + a.right) / 2, lh = Theme.px('--fs-1') + 2;
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('▶을 누르면', cx, a.bottom - 6 - lh);
+      ctx.fillText('예측이 그려집니다', cx, a.bottom - 6);
+    }
     ctx.restore();
   },
 };
+// 2) 예측 전선: 예측선·이전 선택 선(·Ω 예측)은 x ≤ drawFrontier 까지만 그린다
+const frontierClipPlugin = {
+  id: 'frontierClip',
+  beforeDatasetDraw(chart, args) {
+    if (!chart.data.datasets[args.index].$clip) return;
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    const px = Math.min(a.right, x.getPixelForValue(VIEW.drawFrontier));
+    ctx.save();
+    ctx.beginPath(); ctx.rect(a.left, a.top - 4, Math.max(0, px - a.left), a.bottom - a.top + 8); ctx.clip();
+  },
+  afterDatasetDraw(chart, args) {
+    if (chart.data.datasets[args.index].$clip) chart.ctx.restore();
+  },
+};
+// 3) 데이터 레이블 (피드백 8): 재생 위치의 연도에 점 하나 + 값 하나(굵게, 단위). 과거(≤ 2023)는 관측값(있으면)을
+//    "관측", 미래는 인간활동 지구 값을 "예측" 꼬리표로. 마우스를 올린 연도에는 같은 모양의 세로 안내선 + 값.
+function valueAt(spec, year, key = spec.key) {
+  const y = Math.round(year);
+  if (year <= LAST_OBS_YEAR + 1e-9) {
+    const m = spec.obs && key === spec.key ? OBS_BY_YEAR[spec.obs].get(y) : undefined;
+    if (m != null) return { v: m, tag: '관측', color: C('--data-obs') };
+    return { v: sampleAt(FUT.human, year)[key], tag: '모형', color: C('--ink-2') };
+  }
+  if (year > FUT.frontier + 1e-9) return null;   // 아직 예측하지 않은 해
+  return { v: sampleAt(FUT.human, year)[key], tag: '예측', color: C(key === 'omega' ? '--data-omega' : spec.color) };
+}
+function drawLabel(chart, year, spec, ghost) {
+  const { ctx, chartArea: a, scales } = chart;
+  const px = scales.x.getPixelForValue(year);
+  if (px < a.left - 1 || px > a.right + 1) return;
+  ctx.save();
+  ctx.strokeStyle = ghost ? C('--ink-3') : C('--ctl-time');
+  ctx.lineWidth = ghost ? 1 : 1.5;
+  ctx.setLineDash(ghost ? [2, 3] : [4, 3]);
+  ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+  ctx.setLineDash([]);
+  const items = [[spec, spec.key, 'y']];
+  if (spec.key === 'pH' && VIEW.omega) items.push([{ ...spec, fmt: v => `Ω ${v.toFixed(2)}` }, 'omega', 'y1']);
+  let lastY = -Infinity;
+  for (const [sp, key, axis] of items) {
+    const r = valueAt(spec, year, key);
+    if (!r) continue;
+    const py = scales[axis].getPixelForValue(r.v);
+    ctx.fillStyle = r.color; ctx.strokeStyle = C('--paper'); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, ghost ? 3.5 : 4.5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    const fs = Theme.px('--fs-1');
+    const main = sp.fmt(r.v), tag = ` ${r.tag}`;
+    ctx.font = `700 ${fs + 1}px ${C('--font-body')}`;
+    const w1 = ctx.measureText(main).width;
+    ctx.font = `600 ${fs}px ${C('--font-body')}`;
+    const w2 = ctx.measureText(tag).width;
+    const w = w1 + w2 + 10, h = fs + 8;
+    let lx = px + 8; if (lx + w > a.right) lx = px - 8 - w;
+    let ly = Math.max(a.top, Math.min(a.bottom - h, py - h / 2));
+    if (Math.abs(ly - lastY) < h) ly = Math.min(a.bottom - h, lastY + h + 2);   // Ω 레이블이 pH 레이블과 겹치지 않게
+    lastY = ly;
+    ctx.globalAlpha = ghost ? 0.92 : 1;
+    ctx.fillStyle = C('--paper'); ctx.strokeStyle = ghost ? C('--rule') : r.color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(lx, ly, w, h); ctx.fill(); ctx.stroke();
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.font = `700 ${fs + 1}px ${C('--font-body')}`; ctx.fillStyle = C('--ink');
+    ctx.fillText(main, lx + 5, ly + h / 2 + 0.5);
+    ctx.font = `600 ${fs}px ${C('--font-body')}`; ctx.fillStyle = C('--ink-2');
+    ctx.fillText(tag, lx + 5 + w1, ly + h / 2 + 0.5);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+const valueLabelPlugin = {
+  id: 'valueLabel',
+  afterDatasetsDraw(chart) {
+    const spec = chart.$spec;
+    if (VIEW.hoverYear != null && Math.abs(VIEW.hoverYear - FUT.year) > 0.5) drawLabel(chart, VIEW.hoverYear, spec, true);
+    drawLabel(chart, FUT.year, spec, false);
+  },
+  // 마우스를 올린 연도: 그래프 4개가 같은 연도를 함께 가리킨다(기본 툴팁 대신)
+  afterEvent(chart, args) {
+    const e = args.event;
+    if (e.type === 'mouseout') { if (VIEW.hoverYear != null) { VIEW.hoverYear = null; drawCharts(); } return; }
+    if (e.type !== 'mousemove') return;
+    const a = chart.chartArea;
+    const inside = e.x >= a.left && e.x <= a.right && e.y >= a.top && e.y <= a.bottom;
+    const y = inside ? Math.round(chart.scales.x.getValueForPixel(e.x)) : null;
+    if (y !== VIEW.hoverYear) { VIEW.hoverYear = y; drawCharts(); }
+  },
+};
 
-const C = Theme.color;
-const NATURE = { width: 1.6, widthOn: 3.2 };   // 자연 지구를 3D로 보고 있을 때 그래프의 자연 지구 선을 굵게
-const tlAxis = () => Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
-  ticks: { color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v), maxTicksLimit: 10 } });
 const lineDs = (label, color, extra = {}) => ({ label, data: [], borderColor: color, backgroundColor: color,
   borderWidth: 2.2, pointRadius: 0, tension: 0, ...extra });
-const natureDs = (label, extra = {}) => lineDs(label, C('--data-nature'), { borderDash: [5, 4], borderWidth: NATURE.width, ...extra });
-
-function tlChart(id, datasets, scales) {
-  return new Chart(document.getElementById(id), {
-    type: 'line', data: { datasets },
+const Y_AXIS_W = 46, Y1_AXIS_W = 40;
+const charts = SERIES.map((spec, i) => {
+  const color = C(spec.color);
+  const ds = [];
+  ds[DS.pred] = lineDs('인간활동 지구 (예측)', color, { borderDash: [6, 4], borderWidth: 2.6, $clip: true });
+  ds[DS.prev] = lineDs('이전 선택', Theme.alpha(spec.color, 0.28), { borderWidth: 2, $clip: true, hidden: true });
+  ds[DS.past] = lineDs('인간활동 지구 (모형, 과거)', Theme.alpha(spec.color, 0.45), { borderWidth: 1.6, hidden: true });
+  ds[DS.nature] = lineDs('자연만 있는 지구', C('--data-nature'), { borderDash: [3, 3], borderWidth: NATURE.width });
+  const obsC = C('--data-obs');
+  if (spec.obs === 'co2') {
+    ds.push(lineDs('관측 (CMIP6 재구성)', obsC, { data: toPoints(EARTH_DATA.co2Cmip6, 'ppm'), borderWidth: 1.6 }));
+    ds.push(lineDs('관측 (NOAA)', obsC, { data: toPoints(EARTH_DATA.co2Noaa, 'ppm'), showLine: false, pointRadius: 1.6 }));
+  } else if (spec.obs === 'T') {
+    ds.push(lineDs('관측 (HadCRUT5)', obsC, { data: OBS_PTS.T, borderWidth: 1.4 }));
+    // 95 % 불확도 띠: 위 경계를 바로 다음 계열(아래 경계)까지 채운다
+    ds.push(lineDs('_띠 위', C('--data-band'), { data: toPoints(EARTH_DATA.tempHadcrut, 'hi'), borderWidth: 0, fill: '+1', backgroundColor: C('--data-band') }));
+    ds.push(lineDs('_띠 아래', C('--data-band'), { data: toPoints(EARTH_DATA.tempHadcrut, 'lo'), borderWidth: 0 }));
+  } else if (spec.obs === 'pH') {
+    ds.push(lineDs('관측 (HOT)', obsC, { data: OBS_PTS.pH, borderWidth: 1.4, pointRadius: 1.6 }));
+  }
+  const scales = {
+    x: Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
+      ticks: { display: i === SERIES.length - 1, color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v) } }),
+    // y축 폭을 고정해 그래프 4개의 x축(연도)이 세로로 정확히 맞게 한다
+    y: Theme.axis({ ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 5 }, afterFit: sc => { sc.width = Y_AXIS_W; } }),
+  };
+  if (spec.key === 'pH') {
+    ds.push(lineDs('Ω (예측)', C('--data-omega'), { yAxisID: 'y1', borderDash: [6, 4], $clip: true, hidden: true }));
+    ds.push(lineDs('Ω = 1 (골격 용해 시작)', Theme.alpha('--data-temp', 0.8), { yAxisID: 'y1', borderDash: [2, 3], borderWidth: 1.2, hidden: true }));
+    scales.y1 = Theme.axis({ position: 'right', display: false, grid: { drawOnChartArea: false },
+      ticks: { color: C('--data-omega'), font: Theme.font(), maxTicksLimit: 5 }, afterFit: sc => { sc.width = sc.options.display ? Y1_AXIS_W : 0; } });
+  }
+  const chart = new Chart($(spec.id), {
+    type: 'line', data: { datasets: ds },
     options: { responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
-      interaction: { mode: 'nearest', axis: 'x', intersect: false },
-      scales: { x: tlAxis(), ...scales }, plugins: { legend: Theme.legend() } },
-    plugins: [playheadPlugin],
+      events: ['mousemove', 'mouseout'],
+      layout: { padding: { right: Y1_AXIS_W + 4 } },   // Ω 축 자리를 모든 그래프가 비워 둔다(x축 정렬)
+      scales, plugins: { legend: { display: false }, tooltip: { enabled: false } } },
+    plugins: [predZonePlugin, frontierClipPlugin, valueLabelPlugin],
   });
-}
-// 관측 CO2는 두 자료를 잇는다: 1750~1978은 얼음 코어 기반 재구성(CMIP6 역사 농도), 1979~는 NOAA 지구 평균.
-// 이음매(1978→1979)의 차이는 1.84 ppm으로 그해 증가량과 같은 크기다(겹치는 1979~2014 두 자료 차이 평균 −0.03 ppm).
-const toPoints = (d, key) => d[key].map((v, i) => ({ x: d.startYear + i, y: v }));
-const cmip6Points = toPoints(EARTH_DATA.co2Cmip6, 'ppm');
-const obsCo2Points = toPoints(EARTH_DATA.co2Noaa, 'ppm');
-const futChartCo2 = tlChart('futChartCo2', [
-  lineDs('인간활동 지구', C('--data-co2')),
-  natureDs('자연만 있는 지구'),
-  { label: '얼음 코어 기반 재구성 (CMIP6)', data: cmip6Points, borderWidth: 1.5, pointRadius: 0, borderColor: C('--data-obs'), backgroundColor: C('--data-obs') },
-  { label: '관측 (NOAA 지구 평균)', data: obsCo2Points, showLine: false, pointRadius: 1.8, borderColor: C('--data-obs'), backgroundColor: C('--data-obs') },
-], { y: Theme.axis({ title: 'ppm' }) });
-const futChartT = tlChart('futChartT', [
-  lineDs('인간활동 지구', C('--data-temp')),
-  natureDs('자연만 있는 지구'),
-], { y: Theme.axis({ title: '°C' }) });
-const futChartPh = tlChart('futChartPh', [
-  lineDs('pH', C('--data-ph'), { yAxisID: 'y' }),
-  natureDs('pH (자연)', { yAxisID: 'y' }),
-  lineDs('Ω', C('--data-omega'), { yAxisID: 'y1' }),
-  lineDs('Ω = 1 (골격 용해 시작)', Theme.alpha('--data-temp', 0.8), { yAxisID: 'y1', borderDash: [2, 3], borderWidth: 1.2 }),
-], { y: Theme.axis({ title: 'pH' }), y1: Theme.axis({ title: 'Ω', position: 'right', grid: { drawOnChartArea: false } }) });
-const NATURE_DS = [[futChartCo2, 1], [futChartT, 1], [futChartPh, 1]];
+  chart.$spec = spec;
+  chart.$first = i === 0;
+  return chart;
+});
+const [futChartCo2, futChartT, futChartPh, futChartSst] = charts;
+const drawCharts = () => charts.forEach(c => c.draw());
 
 // 누적 막대: 재생 연도까지 내보낸 탄소가 대기 / 바다 / 토양·식생에 얼마씩 있는가 (팝오버 "탄소는 어디로?")
 const SINK_PARTS = [
@@ -138,23 +294,30 @@ const futChartSink = new Chart(document.getElementById('futChartSink'), {
     plugins: { legend: Theme.legend() } },
 });
 
-const toXY = (arr, key) => arr.map(o => ({ x: o.year, y: o[key] }));
-// 궤적이 바뀌었을 때만 부른다 (선 데이터와 축 범위). 재생 중에는 세로선만 다시 그린다.
+const toXY = (arr, key, from = TL_START) => arr.filter(o => o.year >= from).map(o => ({ x: o.year, y: o[key] }));
+const PREV = { run: null, label: '' };   // 직전 시나리오의 궤적 (이전 선택 선)
+// 궤적이 바뀌었을 때만 부른다 (선 데이터와 축 범위). 재생 중에는 draw()만 한다.
 function refreshCharts() {
   const H = FUT.human, N = FUT.nature;
-  futChartCo2.data.datasets[0].data = toXY(H, 'ppm');
-  futChartCo2.data.datasets[1].data = toXY(N, 'ppm');
-  Object.assign(futChartCo2.options.scales.y, niceRange([...H.map(o => o.ppm), 278, ...EARTH_DATA.co2Cmip6.ppm, ...EARTH_DATA.co2Noaa.ppm], 0.05, 40));
-  futChartT.data.datasets[0].data = toXY(H, 'T');
-  futChartT.data.datasets[1].data = toXY(N, 'T');
-  Object.assign(futChartT.options.scales.y, niceRange([...H.map(o => o.T), 0], 0.06, 0.5));
-  futChartPh.data.datasets[0].data = toXY(H, 'pH');
-  futChartPh.data.datasets[1].data = toXY(N, 'pH');
-  futChartPh.data.datasets[2].data = toXY(H, 'omega');
-  futChartPh.data.datasets[3].data = [{ x: TL_START, y: 1 }, { x: TL_END, y: 1 }];
-  Object.assign(futChartPh.options.scales.y, niceRange([...H.map(o => o.pH), ...N.map(o => o.pH)], 0.06, 0.1));
-  Object.assign(futChartPh.options.scales.y1, niceRange([...H.map(o => o.omega), ...N.map(o => o.omega), 1], 0.06, 0.5));
-  futChartCo2.update('none'); futChartT.update('none'); futChartPh.update('none');
+  for (const ch of charts) {
+    const sp = ch.$spec, d = ch.data.datasets;
+    d[DS.pred].data = toXY(H, sp.key, LAST_OBS_YEAR);
+    d[DS.past].data = toXY(H.filter(o => o.year <= LAST_OBS_YEAR), sp.key);
+    d[DS.nature].data = toXY(N, sp.key);
+    d[DS.prev].data = PREV.run ? toXY(PREV.run, sp.key, LAST_OBS_YEAR) : [];
+    d[DS.prev].hidden = !PREV.run;
+    d[DS.prev].label = PREV.run ? `이전 선택: ${PREV.label}` : '이전 선택';
+    const vals = [...H.map(o => o[sp.key]), ...N.map(o => o[sp.key])];
+    if (PREV.run) vals.push(...PREV.run.map(o => o[sp.key]));
+    if (sp.obs) vals.push(...OBS_PTS[sp.obs].map(p => p.y));
+    Object.assign(ch.options.scales.y, niceRange(vals, 0.06, sp.minSpan));
+    if (sp.key === 'pH') {
+      d[d.length - 2].data = toXY(H, 'omega', LAST_OBS_YEAR);
+      d[d.length - 1].data = [{ x: TL_START, y: 1 }, { x: TL_END, y: 1 }];
+      Object.assign(ch.options.scales.y1, niceRange([...H.map(o => o.omega), ...N.map(o => o.omega), 1], 0.06, 0.5));
+    }
+    ch.update('none');
+  }
   // 막대 축은 궤적 전체의 최대 누적에 고정해, 재생하면서 막대가 자라는 게 보이게 한다
   let lo = 0, hi = 0;
   for (const o of H) for (const p of SINK_PARTS) { lo = Math.min(lo, o.cum[p.key]); }
@@ -162,7 +325,55 @@ function refreshCharts() {
   const r = niceRange([lo, hi], 0.04, 10);
   futChartSink.options.scales.x.min = lo < 0 ? r.min : 0;   // 흡수가 음수(방출)인 경우만 0 왼쪽을 연다
   futChartSink.options.scales.x.max = r.max;
+  updateLegend();
 }
+
+// 시나리오·레버를 바꾸면 예측선을 2023부터 지금 전선까지 0.6초 안팎으로 다시 그린다(움직임 줄이기면 바로)
+const REDRAW_MS = 600;
+let redrawAnim = 0;
+function animateRedraw() {
+  cancelAnimationFrame(redrawAnim);
+  if (reduceMotion() || FUT.frontier <= LAST_OBS_YEAR) { VIEW.drawFrontier = FUT.frontier; drawCharts(); return; }
+  const t0 = performance.now(), from = LAST_OBS_YEAR, to = FUT.frontier;
+  VIEW.drawFrontier = from;   // 첫 프레임 전에 예전 전선이 잠깐 보이지 않게 바로 2023으로 되돌린다
+  drawCharts();
+  const step = now => {
+    const k = Math.min(1, (now - t0) / REDRAW_MS);
+    VIEW.drawFrontier = from + (to - from) * (1 - (1 - k) ** 3);
+    drawCharts();
+    if (k < 1) redrawAnim = requestAnimationFrame(step);
+  };
+  redrawAnim = requestAnimationFrame(step);
+}
+// 전선을 앞으로 (재생·끌기). 뒤로는 가지 않는다 — 과거로 끌어도 이미 그린 예측은 남는다.
+function advanceFrontier(year) {
+  if (year <= FUT.frontier) return;
+  FUT.frontier = Math.min(TL_END, year);
+  cancelAnimationFrame(redrawAnim);
+  VIEW.drawFrontier = FUT.frontier;
+}
+
+// 그래프 열 머리의 공용 범례·보기 토글 (그래프마다 범례를 따로 두면 그래프 높이가 모자라다)
+function updateLegend() {
+  $('futPrevKey').hidden = !PREV.run;
+  $('futPrevName').textContent = PREV.label;
+}
+function setViewToggle(btn, on) { btn.setAttribute('aria-pressed', String(on)); }
+$('futValidateBtn').addEventListener('click', e => {
+  VIEW.validate = !VIEW.validate;
+  setViewToggle(e.currentTarget, VIEW.validate);
+  for (const ch of charts) ch.data.datasets[DS.past].hidden = !VIEW.validate;
+  charts.forEach(c => c.update('none'));
+});
+$('futOmegaBtn').addEventListener('click', e => {
+  VIEW.omega = !VIEW.omega;
+  setViewToggle(e.currentTarget, VIEW.omega);
+  const d = futChartPh.data.datasets;
+  d[d.length - 2].hidden = d[d.length - 1].hidden = !VIEW.omega;
+  futChartPh.options.scales.y1.display = VIEW.omega;
+  futChartPh.options.layout.padding.right = VIEW.omega ? 4 : Y1_AXIS_W + 4;   // Ω 축이 비워 둔 자리를 쓴다
+  futChartPh.update('none');
+});
 
 // ── 탄산 화학종 분포 (팝오버 "바다 속 탄소") ──────────────────────────────
 // pH 숫자 하나로는 "평형이 어느 쪽으로 이동했는지"가 안 보이므로 화학종 비율을 그대로 그린다.
@@ -208,7 +419,6 @@ for (const sp of [...SPECIES, { key: 'dic', name: 'DIC (합계)', digits: 0 }]) 
 }
 
 const UMOL = 1e6;   // mol/kg -> µmol/kg
-const $ = id => document.getElementById(id);   // 이 탭 안에서만 쓰는 짧은 이름 (다른 스크립트에 $ 없음)
 function updateSpeciation(s, ref) {
   $('specBarYear').textContent = Math.round(s.year);
   $('specBarCo2').textContent = s.ppm.toFixed(0);
@@ -364,8 +574,8 @@ function setNatureView(on) {
   FUT.showNature = on;
   $('natureToggle').setAttribute('aria-pressed', String(on));
   // 같은 정보를 3D와 그래프가 같은 색으로 가리키게: 자연 지구를 보는 동안 그래프의 자연 지구 선을 굵게
-  for (const [chart, i] of NATURE_DS) chart.data.datasets[i].borderWidth = on ? NATURE.widthOn : NATURE.width;
-  [futChartCo2, futChartT, futChartPh].forEach(c => c.update('none'));
+  for (const ch of charts) ch.data.datasets[DS.nature].borderWidth = on ? NATURE.widthOn : NATURE.width;
+  charts.forEach(c => c.update('none'));
   const swap = () => {
     if (on) { ensureSceneBuilt(sceneNature); apply3D(sceneNature, sampleAt(FUT.nature, FUT.year)); }
     bundles.future = on ? sceneNature : sceneFuture;
@@ -385,6 +595,8 @@ function showLeverPanel(on) {
   $('fcLevers').hidden = !on;
 }
 function setPreset(name) {
+  // 다른 시나리오로 바꾸면 직전 궤적을 '이전 선택' 선으로 남긴다 (같은 것을 다시 누르면 그대로)
+  if (FUT.human && name !== FUT.preset) { PREV.run = FUT.human; PREV.label = humanLabel(); }
   FUT.preset = name;
   document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === name)));
   $('fcPresetDesc').textContent = PRESET_DESC[name];
@@ -437,7 +649,10 @@ for (const [id, which] of [['mixH1', 1], ['mixH2', 2]]) {
     h.focus();
     const bar = $('mixCtl').querySelector('.mix-bar').getBoundingClientRect();
     const move = ev => setMixBoundary(which, 100 * (ev.clientX - bar.left) / bar.width);
-    const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
+    const up = () => {
+      h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+      animateRedraw();   // 손을 떼면 예측선을 2023부터 다시 그린다
+    };
     h.addEventListener('pointermove', move);
     h.addEventListener('pointerup', up);
     h.addEventListener('pointercancel', up);
@@ -485,9 +700,12 @@ function onLeverInput() {
   showLeverValues();
   if (leverPending) return;
   leverPending = true;
-  requestAnimationFrame(() => { leverPending = false; recomputeFuture(); });
+  requestAnimationFrame(() => { leverPending = false; recomputeFuture(false); });
 }
-[lvEv, lvCcs, lvOther, lvForest].forEach(el => el.addEventListener('input', onLeverInput));
+[lvEv, lvCcs, lvOther, lvForest].forEach(el => {
+  el.addEventListener('input', onLeverInput);
+  el.addEventListener('change', () => animateRedraw());   // 손을 떼면 예측선을 2023부터 다시 그린다
+});
 $('lvReset').addEventListener('click', () => {
   FUT.levers = { ...ES.LEVER_NOW };
   leversToInputs(FUT.levers);
@@ -505,14 +723,20 @@ function setYear(y) {
 }
 function setPlaying(on) {
   FUT.playing = on;
-  if (on && FUT.year >= TL_END) FUT.year = TL_START;   // 끝에서 누르면 처음부터
+  if (on && FUT.year >= TL_END) FUT.year = LAST_OBS_YEAR;   // 끝에서 누르면 예측 시작(2023)부터 다시
   tlPlay.setAttribute('aria-pressed', String(on));
   $('tlPlayIcon').innerHTML = Icons.svg(on ? 'pause' : 'play');
   $('tlPlayLabel').textContent = on ? '일시정지' : '재생';
   lastTick = performance.now();
 }
 tlPlay.addEventListener('click', () => setPlaying(!FUT.playing));
-tlScrub.addEventListener('input', () => { setPlaying(false); setYear(Number(tlScrub.value)); renderFuture(); });
+// 슬라이더를 전선보다 앞(미래)으로 끌면 그 지점까지 전선이 늘어난다(끌어서 예측하기). 과거로 끌면 전선은 그대로.
+tlScrub.addEventListener('input', () => {
+  setPlaying(false);
+  setYear(Number(tlScrub.value));
+  advanceFrontier(FUT.year);
+  renderFuture();
+});
 $('tlSpeed').addEventListener('change', e => { FUT.speed = Number(e.target.value); });
 
 // 화면(팝오버·세로선)을 재생 연도에 맞춘다. 3D는 0.2초 틱에서만 바꾼다.
@@ -522,15 +746,17 @@ function renderFuture() {
   if (Number(tlScrub.value) !== Math.round(FUT.year)) tlScrub.value = Math.round(FUT.year);
   if (!$('popSink').hidden) updateSink(h);
   if (!$('popSpec').hidden) updateSpeciation(h, FUT.human[0]);
-  futChartCo2.draw(); futChartT.draw(); futChartPh.draw();
+  drawCharts();
   return h;
 }
 
 // 궤적을 다시 계산한다 (시나리오가 바뀔 때). 재생 위치는 그대로 둔다.
-function recomputeFuture() {
+// animate = false: 레버를 끄는 동안처럼 연달아 바뀔 때는 바로 그리고, 손을 뗐을 때(change) 다시 그리기 효과를 준다.
+function recomputeFuture(animate = true) {
   computeHuman();
   refreshCharts();
   FUT.dirty = true;
+  if (animate) animateRedraw(); else { VIEW.drawFrontier = FUT.frontier; }
   renderFuture();
 }
 
@@ -548,6 +774,7 @@ setInterval(() => {
   if (typeof activeTab === 'undefined' || activeTab !== 'future') return;
   if (FUT.playing) {
     setYear(FUT.year + FUT.speed * dt);
+    advanceFrontier(FUT.year);
     if (FUT.year >= TL_END) setPlaying(false);
   }
   if (!FUT.dirty) return;
@@ -559,7 +786,7 @@ setInterval(() => {
 
 // 탭을 열 때 main.js가 부른다
 function activateFutureTab() {
-  [futChartCo2, futChartT, futChartPh, futChartSink].forEach(c => c.resize());
+  [...charts, futChartSink].forEach(c => c.resize());
   FUT.dirty = true;
   apply3D(sceneFuture, renderFuture());
   apply3D(sceneNature, sampleAt(FUT.nature, FUT.year));
