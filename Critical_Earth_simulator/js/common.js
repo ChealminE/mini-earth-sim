@@ -147,6 +147,185 @@ function dotSprite() {
   return _dotSprite;
 }
 
+// 같은 시드면 같은 배치 - 도시 배치가 새로 고칠 때마다 바뀌면 연도·시나리오 비교 스크린샷을 맞출 수 없다
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// 여러 지오메트리를 하나로 합친다(위치·법선만). 자동차처럼 부품이 여러 개인 모형을 InstancedMesh 하나로 그리려고
+// 쓴다 - three.js 코어(r160)에는 BufferGeometryUtils.mergeGeometries가 없다(예제 모듈이라 전역 스크립트 구조에서 못 씀).
+function mergeGeos(parts) {
+  const pos = [], nor = [];
+  for (const [g, m] of parts) {
+    const ng = g.index ? g.toNonIndexed() : g.clone();
+    if (m) ng.applyMatrix4(m);
+    if (!ng.attributes.normal) ng.computeVertexNormals();
+    pos.push(...ng.attributes.position.array);
+    nor.push(...ng.attributes.normal.array);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  return out;
+}
+const mat4 = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(
+  new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
+
+// 도시 구역(로컬 x −1~1, z −1.5~1.5)에 마을집·건물·굴뚝·연기·자동차를 인스턴싱으로 짓는다.
+// 크기·개수는 applyState가 S.state.city(EarthVisual: 누적 배출 → 건물, 그해 배출 → 굴뚝)로 정한다.
+// 드로우콜: 집 2 + 건물 1 + 공장 1 + 굴뚝 1 + 연기 1 + 자동차 3 = 9 (그림자 패스 별도), 개수와 상관없이 일정.
+const CITY_ROAD = { mainZ: -0.01, crossX: 0.09, half: 0.1 };   // 도로 자리 (위 MAIN_ROAD_Z·CROSS_ROAD_X와 같은 값)
+function buildCityGrowth(group, base, stackTex) {
+  const rnd = seededRandom(1750);
+  const onRoad = (x, z, pad = 0) => Math.abs(z - CITY_ROAD.mainZ) < CITY_ROAD.half + pad || Math.abs(x - CITY_ROAD.crossX) < CITY_ROAD.half + pad;
+  // 다른 소품 자리 (공장 지대·포집 타워·냉각탑·태양광 패널 칸)는 비운다
+  const RESERVED = [[0.62, 0.5, 0.26], [-0.65, 0.15, 0.13], [0.76, 1.1, 0.3]];
+  const reserved = (x, z, r) => RESERVED.some(([cx, cz, cr]) => Math.hypot(x - cx, z - cz) < cr + r) || (z > 0.76 && x < 0.47);
+  const d = new THREE.Object3D();
+
+  // 1) 마을집 6채 - 1750년에도 있는 옛 마을. 교차로 가까이, 지붕은 사각뿔
+  const HOUSES = [[-0.12, -0.2], [0.3, -0.18], [-0.1, 0.2], [0.3, 0.22], [-0.3, -0.24], [0.48, 0.17]];
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9c9a8, roughness: 0.9 });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a3b22, roughness: 0.8 });
+  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, 0.05, 0.06), wallMat, HOUSES.length);
+  const roofGeo = new THREE.ConeGeometry(0.06, 0.04, 4); roofGeo.rotateY(Math.PI / 4);
+  const roofs = new THREE.InstancedMesh(roofGeo, roofMat, HOUSES.length);
+  HOUSES.forEach(([x, z], i) => {
+    d.position.set(x, base + 0.025, z); d.rotation.set(0, (i % 2) * 0.3, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    walls.setMatrixAt(i, d.matrix);
+    d.position.y = base + 0.07; d.updateMatrix();
+    roofs.setMatrixAt(i, d.matrix);
+  });
+  walls.castShadow = roofs.castShadow = true;
+  group.add(walls, roofs);
+
+  // 2) 건물 자리: 도로·소품·마을집을 피해 격자로 뽑고, 교차로(옛 마을)에서 가까운 순서로 나타나게 정렬한다.
+  //    → 도시가 마을에서 바깥으로 퍼져 나간다. 가운데일수록 최대 높이가 높다(도심).
+  const slots = [];
+  for (let gx = -0.86; gx <= 0.87; gx += 0.145) {
+    for (let gz = -1.36; gz <= 0.72; gz += 0.15) {
+      const x = gx + (rnd() - 0.5) * 0.03, z = gz + (rnd() - 0.5) * 0.03;
+      if (onRoad(x, z, 0.03) || reserved(x, z, 0.07)) continue;
+      if (HOUSES.some(([hx, hz]) => Math.hypot(x - hx, z - hz) < 0.11)) continue;
+      const dist = Math.hypot(x - CITY_ROAD.crossX, (z - CITY_ROAD.mainZ) * 0.8);
+      slots.push({ x, z, dist: dist + rnd() * 0.15, w: 0.08 + rnd() * 0.05 });
+    }
+  }
+  slots.sort((a, b) => a.dist - b.dist);
+  slots.forEach((sl, i) => { sl.hMax = (0.52 - 0.32 * i / slots.length) * (0.75 + rnd() * 0.5); });
+  const facade = sharedTex.buildingFacade.clone(); facade.needsUpdate = true; facade.repeat.set(1, 4);
+  const bldMat = new THREE.MeshStandardMaterial({ map: facade, color: 0xffffff, roughness: 0.5, metalness: 0.15 });
+  const bldGeo = new THREE.BoxGeometry(1, 1, 1); bldGeo.translate(0, 0.5, 0);   // 바닥 기준으로 늘리게
+  const buildings = new THREE.InstancedMesh(bldGeo, bldMat, slots.length);
+  const BLD_COLORS = [0x9aa0a8, 0x848a92, 0xb0b5bb, 0x7a8088, 0xa39a8e];
+  const col = new THREE.Color();
+  slots.forEach((sl, i) => buildings.setColorAt(i, col.setHex(BLD_COLORS[i % BLD_COLORS.length])));
+  buildings.count = 0;
+  buildings.castShadow = buildings.receiveShadow = true;
+  group.add(buildings);
+
+  // 3) 공장 지대: 굴뚝 6자리(공장 건물 + 원기둥 굴뚝). 그해 배출에 따라 앞에서부터 켠다
+  const STACKS = [[0.55, 0.42], [0.7, 0.4], [0.62, 0.56], [0.78, 0.55], [0.5, 0.6], [0.72, 0.7]];
+  const hallMat = new THREE.MeshStandardMaterial({ color: 0x7d6f60, roughness: 0.85 });
+  const halls = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.06, 0.08), hallMat, STACKS.length);
+  const stackGeo = new THREE.CylinderGeometry(0.018, 0.025, 0.28, 10); stackGeo.translate(0, 0.14, 0);
+  const stacks = new THREE.InstancedMesh(stackGeo, new THREE.MeshStandardMaterial({ map: stackTex, color: 0x5c5852, roughness: 0.85 }), STACKS.length);
+  STACKS.forEach(([x, z], i) => {
+    d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1);
+    d.position.set(x - 0.03, base + 0.03, z); d.updateMatrix(); halls.setMatrixAt(i, d.matrix);
+    d.position.set(x + 0.025, base, z); d.updateMatrix(); stacks.setMatrixAt(i, d.matrix);
+  });
+  halls.count = stacks.count = 0;
+  halls.castShadow = stacks.castShadow = true;
+  group.add(halls, stacks);
+  // 연기: 굴뚝마다 SMOKE_PER개. 입자 j는 굴뚝 floor(j / SMOKE_PER)의 것 → 켜진 굴뚝 수 × SMOKE_PER 만 그린다
+  const SMOKE_PER = 28;
+  const smokeGeo = new THREE.BufferGeometry();
+  smokeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(STACKS.length * SMOKE_PER * 3), 3));
+  smokeGeo.setDrawRange(0, 0);
+  const smokeLife = Float32Array.from({ length: STACKS.length * SMOKE_PER }, () => rnd());
+  const smokeMat = new THREE.PointsMaterial({ color: 0x8c8a85, size: 0.06, map: dotSprite(), transparent: true, opacity: 0.5, depthWrite: false });
+  const smokePts = new THREE.Points(smokeGeo, smokeMat);
+  smokePts.frustumCulled = false;
+  group.add(smokePts);
+
+  // 4) 자동차: 차체(몸통·캐빈·펜더)·바퀴·유리를 각각 하나로 합쳐 InstancedMesh 3개. 색은 인스턴스 색(휘발유 회색 / 전기차 청록)
+  const bodyGeo = mergeGeos([
+    [new THREE.BoxGeometry(0.09, 0.028, 0.045), mat4(0, 0.036, 0)],
+    [new THREE.BoxGeometry(0.05, 0.022, 0.038), mat4(-0.006, 0.061, 0)],
+    ...[[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]].map(([x, z]) => [new THREE.BoxGeometry(0.024, 0.01, 0.006), mat4(x, 0.022, z)]),
+  ]);
+  const wheelGeo = mergeGeos([[-0.03, 0.024], [0.03, 0.024], [-0.03, -0.024], [0.03, -0.024]]
+    .map(([x, z]) => [new THREE.CylinderGeometry(0.011, 0.011, 0.008, 10), mat4(x, 0.011, z, Math.PI / 2)]));
+  const glassGeo = mergeGeos([[new THREE.PlaneGeometry(0.03, 0.034), mat4(0.021, 0.061, 0, 0, Math.PI / 2, 0)]]);
+  // 자리: 큰길 두 차로 + 세로길 두 차로, 교차로(가운데 0.16)는 비움
+  const CAR_SLOTS = [];
+  for (let x = -0.85; x <= 0.9; x += 0.12) if (Math.abs(x - CITY_ROAD.crossX) > 0.16) {
+    CAR_SLOTS.push([x, CITY_ROAD.mainZ + 0.03, 0], [x + 0.06, CITY_ROAD.mainZ - 0.03, Math.PI]);
+  }
+  for (let z = -1.35; z <= 0.75; z += 0.14) if (Math.abs(z - CITY_ROAD.mainZ) > 0.16) {
+    CAR_SLOTS.push([CITY_ROAD.crossX - 0.03, z, Math.PI / 2], [CITY_ROAD.crossX + 0.03, z + 0.07, -Math.PI / 2]);
+  }
+  for (let i = CAR_SLOTS.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [CAR_SLOTS[i], CAR_SLOTS[j]] = [CAR_SLOTS[j], CAR_SLOTS[i]]; }
+  const NC = Math.min(28, CAR_SLOTS.length);
+  const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 }), NC);
+  const carWheels = new THREE.InstancedMesh(wheelGeo, new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.8 }), NC);
+  const carGlass = new THREE.InstancedMesh(glassGeo, new THREE.MeshStandardMaterial({ color: 0x9fd0e8, roughness: 0.15, metalness: 0.3, side: THREE.DoubleSide }), NC);
+  for (let i = 0; i < NC; i++) {
+    const [x, z, ry] = CAR_SLOTS[i];
+    d.position.set(x, base + 0.003, z); d.rotation.set(0, ry, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    carBody.setMatrixAt(i, d.matrix); carWheels.setMatrixAt(i, d.matrix); carGlass.setMatrixAt(i, d.matrix);
+    carBody.setColorAt(i, col.setHex(0x5a5650));
+  }
+  carBody.count = carWheels.count = carGlass.count = 0;
+  carBody.castShadow = true;
+  group.add(carBody, carWheels, carGlass);
+
+  return { slots, buildings, STACKS, halls, stacks, smokeGeo, smokeLife, smokeMat, smokePts, SMOKE_PER, carBody, carWheels, carGlass, NC,
+           last: { level: -1, stacks: -1, cars: -1, ev: -1 } };
+}
+
+// 도시 상태 반영 (applyState에서, 0.2초 틱). 바뀐 것만 다시 쓴다 - 행렬 수십 개라 가볍지만 매 틱 쓸 이유도 없다.
+//   c = S.state.city = { level 0~1 (누적 배출), stacks 굴뚝 수, stackLevel 0~1 (그해 배출), cars 0~1, ev 0~1 }
+const _cityDummy = new THREE.Object3D();
+const CAR_GAS = new THREE.Color(0x5a5650), CAR_EV = new THREE.Color(0x2f9e8f);
+function applyCity(S, c) {
+  const C = S.city;
+  if (!C || !c) return;
+  const base = S.CITY_BASE, L = c.level, n = C.slots.length;
+  if (Math.abs(L - C.last.level) > 1e-4) {
+    // 건물 i는 도시 규모가 i/n을 넘으면 나타나고, 그 뒤 규모가 0.25 더 커질 때까지 최대 높이로 자란다
+    let shown = 0;
+    C.slots.forEach((sl, i) => {
+      const g = (L - i / n) / 0.25;
+      if (g <= 0) return;
+      const h = sl.hMax * (0.3 + 0.7 * Math.min(1, g));
+      _cityDummy.position.set(sl.x, base, sl.z); _cityDummy.rotation.set(0, 0, 0); _cityDummy.scale.set(sl.w, h, sl.w * 0.9);
+      _cityDummy.updateMatrix();
+      C.buildings.setMatrixAt(i, _cityDummy.matrix);
+      shown = i + 1;
+    });
+    C.buildings.count = shown;
+    C.buildings.instanceMatrix.needsUpdate = true;
+    C.last.level = L;
+  }
+  if (c.stacks !== C.last.stacks) {
+    C.halls.count = C.stacks.count = c.stacks;
+    C.smokeGeo.setDrawRange(0, c.stacks * C.SMOKE_PER);
+    C.last.stacks = c.stacks;
+  }
+  // 연기는 그해 배출이 클수록 짙고 굵게
+  C.smokeMat.opacity = 0.25 + 0.5 * c.stackLevel;
+  C.smokeMat.size = 0.04 + 0.05 * c.stackLevel;
+  const nCar = Math.round(c.cars * C.NC), nEv = Math.round(nCar * c.ev);
+  if (nCar !== C.last.cars || nEv !== C.last.ev) {
+    C.carBody.count = C.carWheels.count = C.carGlass.count = nCar;
+    for (let i = 0; i < C.NC; i++) C.carBody.setColorAt(i, i < nEv ? CAR_EV : CAR_GAS);
+    C.carBody.instanceColor.needsUpdate = true;
+    C.last.cars = nCar; C.last.ev = nEv;
+  }
+}
+
 // 3D 보기 토글 (2차 개편 D, 종이 탭 씬에만 적용). 탭·지구(인간활동/자연)를 바꿔도 같은 보기를 유지하도록 전역 하나로 둔다.
 //   co2       : [CO₂ 보기] 공기 중 점 구름
 //   indicator : [지시약으로 보기] 바다 표면에 pH 색 (D5)
@@ -874,8 +1053,19 @@ solarPanels.count = 0;
 solarPanels.visible = false;
 cityGroup.add(solarPanels);
 
+// ── 도시가 역사를 따라 자란다 (2차 개편 D3, 종이 탭 인간활동 지구만) ──
+// 예전 도시(건물 8채·공장 1개·자동차 12대, 자동차 한 대가 메시 10개)는 고정 모양이라 1750년에도 빌딩이 서 있었다.
+// 종이 탭은 아래 인스턴싱 도시로 바꾸고 예전 것은 숨긴다(직접 실험 탭은 예전 그대로).
+const city = PAPER && !opts.nature ? buildCityGrowth(cityGroup, CITY_BASE, stackTex) : null;
+if (city) {
+  buildingMeshes.forEach(b => { b.visible = false; });
+  carMeshes.forEach(c => { c.visible = false; });
+  factory.visible = false;
+  smoke.visible = false;
+}
+
 return {
-  paper: PAPER, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -976,13 +1166,15 @@ function applyState(S) {
   S.bubbleMat.opacity = ch4Intensity > 0.02 ? 0.35 + ch4Intensity * 0.5 : 0;
   S.bubbleSpeed = 0.6 + ch4Intensity * 1.8;
 
+  // 종이 탭 인간활동 지구(2차 개편 D3): 도시가 배출 역사를 따라 자란다 (예전 건물·공장·자동차는 만들 때 숨겼다)
+  if (S.city) applyCity(S, S.state.city);
   // 자동차: 도시화 지수만큼 전체 대수, 그중 전기차 비율만큼 친환경 색으로
   const carCount = Math.round((S.state.cityRatio / 100) * S.carMeshes.length);
   const evCount = Math.round(carCount * (S.state.ev / 100));
   // 미래 예측 탭의 "자연만 있는 지구"(state.nature)는 도시 구역의 인공물을 숨긴다 (지면은 그대로)
   const nat = !!S.state.nature;
   S.carMeshes.forEach((c, i) => {
-    c.visible = !nat && i < carCount;
+    c.visible = !nat && !S.city && i < carCount;
     const mat = i < evCount ? S.evCarMat : S.gasCarMat;
     c.userData.bodyParts.forEach(p => { p.material = mat; });
   });
@@ -993,9 +1185,9 @@ function applyState(S) {
 
   // 도시화 지수 → 표시되는 건물 수
   const bCount = Math.max(1, Math.round((S.state.cityRatio / 100) * S.buildingMeshes.length));
-  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && i < bCount; });
-  S.factory.visible = !nat;
-  S.smoke.visible = !nat;
+  S.buildingMeshes.forEach((bld, i) => { bld.visible = !nat && !S.city && i < bCount; });
+  S.factory.visible = !nat && !S.city;
+  S.smoke.visible = !nat && !S.city;
   S.roads.forEach(r => { r.visible = !nat; });
 
   // 탄소제거기술 도입률 → 포집 타워 등장/크기
@@ -1159,9 +1351,24 @@ function stepScene(S) {
   }
   bp.needsUpdate = true;
 
-  // 연기 파티클
+  // 종이 탭 도시의 굴뚝 연기: 켜진 굴뚝의 입자만, 그해 배출이 클수록 빨리 오른다
+  if (S.city && S.city.smokeGeo.drawRange.count > 0) {
+    const C = S.city, arr = C.smokeGeo.attributes.position.array, base = S.CITY_BASE;
+    const lvl = S.state.city ? S.state.city.stackLevel : 0;
+    for (let j = 0; j < C.smokeGeo.drawRange.count; j++) {
+      C.smokeLife[j] += 0.006 + lvl * 0.01;
+      if (C.smokeLife[j] > 1) C.smokeLife[j] -= 1;
+      const life = C.smokeLife[j], [x, z] = C.STACKS[Math.floor(j / C.SMOKE_PER)];
+      arr[j * 3] = x + 0.025 + Math.sin(j * 12.9) * 0.05 * life + life * 0.08;   // 바람에 살짝 기울게
+      arr[j * 3 + 1] = base + 0.29 + life * 0.7;
+      arr[j * 3 + 2] = z + Math.cos(j * 7.3) * 0.05 * life;
+    }
+    C.smokeGeo.attributes.position.needsUpdate = true;
+  }
+
+  // 연기 파티클 (예전 공장 - 종이 탭 인간활동 지구는 숨겨 둠)
   const sp = S.smokeGeo.attributes.position;
-  for (let i = 0; i < S.smokeCount; i++) {
+  if (S.smoke.visible) for (let i = 0; i < S.smokeCount; i++) {
     S.smokeLife[i] += 0.01 + (S.state.fossil / 100) * 0.015;
     if (S.smokeLife[i] > 1) S.smokeLife[i] = 0;
     const life = S.smokeLife[i];
