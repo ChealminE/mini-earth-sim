@@ -519,12 +519,11 @@ $('recCsv').addEventListener('click', () => {
 // 기존 매핑 상수(CO2_MIN/MAX, PH_MIN/MAX)를 그대로 쓴다. CO2_MAX(1000)는 1인칭과 공유하므로
 // 바꾸지 않는다 - 1000 ppm을 넘는 구간은 3D 효과만 포화된다(그래프는 그대로 그린다).
 // 빙하는 기온 편차 T로 줄인다 (T = 5 °C에서 최대 축소).
-// noTint: 뚜껑·안개가 노랗게 물드는 효과를 끈다(피드백 2번 - CO2는 무색이다). 대체 표현은 2차 개편 D 단계.
+// CO₂는 무색이라 뚜껑·안개 색에 묶지 않는다(피드백 2번). 종이 탭 씬은 applyState가 [CO₂ 보기] 점 구름으로만 보인다(2차 개편 D2).
 const ICE_MELT_T = 5;
 function apply3D(S, s) {
   if (S.dormant) return;
   S.state.co2 = s.ppm;
-  S.state.noTint = true;
   S.state.ph = s.pH;
   S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
   if (S === sceneFuture) applyLevers3D(S, s);

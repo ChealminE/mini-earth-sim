@@ -109,6 +109,10 @@
     <div class="earth-badge readout future-only" id="earthBadge">인간활동 지구 · 현재 정책</div>
     <button class="btn btn--view nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
     <div class="gl-fade" id="glFade" aria-hidden="true"></div>
+    <!-- 3D 보기 토글 (2차 개편 D, 종이 탭에서만 보임): 눈에 보이지 않는 것을 켰을 때만 보이게 한다 (js/common.js VIEW3D) -->
+    <div class="view3d paper-only" role="group" aria-label="3D 보기">
+      <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false"><span data-icon="dots"></span>CO₂ 보기</button>
+    </div>
     <!-- 예측 전환 효과 (C6): 재생 위치가 2023을 넘어 미래로 들어갈 때 한 번 뜨는 띠, 미래 구간 동안의 청사진 격자·배지 -->
     <div class="blueprint future-only" id="blueprint" aria-hidden="true"></div>
     <div class="pred-badge readout future-only" id="predBadge" hidden>예측</div>
@@ -612,6 +616,7 @@
 <script src="js/icons.js"></script>
 <script src="js/source-tip.js"></script>
 <script src="js/earth-system.js?v=2"></script>
+<script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
 <script src="js/tab-current.js?v=5"></script>
 <script src="js/tab-future.js?v=5"></script>

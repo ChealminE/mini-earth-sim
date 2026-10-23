@@ -150,6 +150,15 @@ body.tab-future.paper .gl-fade.on { opacity: .9; }
 body.tab-future.paper #hint { left: auto; right: var(--sp-3); }
 @media (prefers-reduced-motion: reduce) { body.paper .gl-fade { transition: none; } }
 
+/* 3D 보기 토글 (2차 개편 D): 3D 왼쪽 아래에 세로로. 미래 예측 탭은 가운데 아래에 자연 지구 토글이 있어 겹치지 않게 왼쪽에 둔다 */
+.view3d { display: none; }
+body.paper .view3d { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
+  position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 2; }
+/* 현재 실태 탭은 왼쪽 아래에 밝기 조절이 있다 - 그 위로 올린다 */
+body.tab-current.paper .view3d { bottom: calc(var(--sp-3) + 52px); }
+body.paper .view3d .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); }
+body.paper .view3d .btn[aria-pressed="true"] { background: var(--ctl-view-on); }
+
 /* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
 body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
   display: grid; grid-template-rows: auto repeat(4, minmax(0, 1fr)); gap: var(--sp-1);

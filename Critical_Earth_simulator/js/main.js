@@ -72,6 +72,18 @@ document.documentElement.classList.remove('booting'); // 화면이 정해졌으�
 
 window.addEventListener('resize', fitRenderer);
 
+// ── 3D 보기 토글 (2차 개편 D, 종이 탭) ─────────────────────────────
+// 값은 common.js VIEW3D 하나에 둔다. 지금 그리는 씬에 바로 반영하고, 다른 씬은 다음 applyState(탭 전환·0.2초 틱)에서 따라온다.
+function bindView3D(id, key) {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => {
+    VIEW3D[key] = !VIEW3D[key];
+    btn.setAttribute('aria-pressed', String(VIEW3D[key]));
+    applyState(bundles[activeTab]);
+  });
+}
+bindView3D('view3dCo2', 'co2');
+
 // ── 밝기 슬라이더 ──────────────────────────────────
 // 같은 씬이라도 화면 밝기·명암비에 따라 톤매핑 결과가 다르게 보여서(어두운 패널일수록
 // 새까맣게 보임), 화면마다 사용자가 직접 노출값을 보정할 수 있게 슬라이더로 노출

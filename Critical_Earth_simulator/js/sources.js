@@ -521,6 +521,23 @@ const SOURCES = {
     related: ['lever_s_power', 'lever_s_road'],
   },
 
+  // ── 3D 시각 언어 (2차 개편 D) ── 3D 범례(index.html #legend3d)의 ⓘ ─────────────
+  // 3D 표현이 무엇에 묶여 있는지. 근거가 있는 대응(산호·Ω)과 연출(도시·빙하)을 여기서 구분한다.
+  co2_dots: {
+    label: 'CO₂ 보기 — 점의 밀도',
+    summary: 'CO₂는 눈에 보이지 않습니다. [CO₂ 보기]를 켜면 점의 밀도로 그해 대기 CO₂ 농도를 나타냅니다.',
+    kind: 'assumption',
+    org: '이 프로그램',
+    dataset: 'EarthVisual.co2DotCount (js/earth-visual.js)',
+    version: '-',
+    cite: '이 프로그램의 표현 규칙: 점 개수 = 150 × (CO₂ ppm ÷ 280), 최대 800개',
+    url: REPO_URL + 'js/earth-visual.js',
+    license: '-',
+    status: 'verified',
+    note: '농도 값 자체는 모형 계산(model_co2) 또는 관측이다. 점 개수는 농도에 정비례하도록 정한 표시 방법일 뿐이고, 점 하나가 실제 분자 몇 개라는 뜻은 없다. 280 ppm에서 150개, 1269 ppm에서 680개, 상한 800개(약 1490 ppm).',
+    related: ['model_co2'],
+  },
+
   // ── IPCC 문서 (E 단계 영향 카드·A4 비교용) ───────────────────────────────
   ar6_spm: {
     label: 'IPCC AR6 제1실무그룹 정책결정자 요약',

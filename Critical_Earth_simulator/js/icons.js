@@ -36,6 +36,10 @@ const Icons = (() => {
     beaker: '<path d="M9 3v6l-5 10a1.5 1.5 0 0 0 1.3 2h13.4a1.5 1.5 0 0 0 1.3-2L15 9V3"/><path d="M8 3h8"/><path d="M6.5 15h11"/>',
     sink: '<path d="M4 12h16"/><path d="M12 3v9"/><path d="M12 12l-6 8M12 12l6 8M12 12v9"/>',
     compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+    // CO₂ 보기: 공기 중에 흩어진 점 (2차 개편 D)
+    dots: '<circle cx="5" cy="7" r="1.4" fill="currentColor"/><circle cx="12" cy="5" r="1.4" fill="currentColor"/><circle cx="18" cy="9" r="1.4" fill="currentColor"/><circle cx="8" cy="13" r="1.4" fill="currentColor"/><circle cx="15" cy="15" r="1.4" fill="currentColor"/><circle cx="5" cy="19" r="1.4" fill="currentColor"/><circle cx="19" cy="19" r="1.4" fill="currentColor"/>',
+    // 지시약으로 보기: 물방울 + 색 띠
+    drop: '<path d="M12 3c3.5 4.5 6 7.8 6 11a6 6 0 0 1-12 0c0-3.2 2.5-6.5 6-11z"/><path d="M7.5 14h9"/>',
     flask: '<path d="M9 3h6"/><path d="M10 3v6L5 19a1.5 1.5 0 0 0 1.4 2h11.2a1.5 1.5 0 0 0 1.4-2L14 9V3"/>',
   };
   function svg(name, size = 24) {

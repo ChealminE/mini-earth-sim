@@ -136,6 +136,22 @@ function waveHeightAt(lx, ly, t, intensity, halfD) {
   return swell + chop;
 }
 
+// 둥근 점 스프라이트 (CO₂ 보기 점 구름이 공유) - 처음 쓸 때 한 번만 만든다
+let _dotSprite = null;
+function dotSprite() {
+  if (_dotSprite) return _dotSprite;
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 14, 0, Math.PI * 2); g.fill();
+  _dotSprite = new THREE.CanvasTexture(c);
+  return _dotSprite;
+}
+
+// 3D 보기 토글 (2차 개편 D, 종이 탭 씬에만 적용). 탭·지구(인간활동/자연)를 바꿔도 같은 보기를 유지하도록 전역 하나로 둔다.
+//   co2       : [CO₂ 보기] 공기 중 점 구름
+//   indicator : [지시약으로 보기] 바다 표면에 pH 색 (D5)
+const VIEW3D = { co2: false, indicator: false };
+
 // ================= 아크릴 모형: 탭마다 독립적인 씬을 만드는 팩토리 함수 =================
 // opts.paper: 종이(라이트) 테마 탭(현재 실태·미래 예측)의 씬. 2차 개편 D의 3D 시각 언어(밝은 바탕 맞춤,
 //   CO₂ 보기, 도시 성장, 산호·조개 등)는 이 씬에서만 켠다 - 직접 실험 탭은 같은 함수를 쓰지만 예전 모습 그대로 둔다.
@@ -341,6 +357,34 @@ const hazeMat = new THREE.MeshBasicMaterial({ color: HAZY_SKY.clone(), transpare
 const haze = new THREE.Mesh(new THREE.BoxGeometry(BOX_W - 0.02, BOX_H - TERRAIN_TOP - 0.05, BOX_D - 0.02), hazeMat);
 haze.position.y = TERRAIN_TOP + (BOX_H - TERRAIN_TOP) / 2;
 box.add(haze);
+// 종이 탭(2차 개편 D2): CO₂는 무색이다. 뚜껑 색·안개·노란 입자를 CO₂에 묶으면 스모그로 오해하게 되므로
+// 셋 다 쓰지 않고, [CO₂ 보기]를 켰을 때만 아래 점 구름으로 농도를 보인다.
+if (PAPER) { atmosphere.visible = false; haze.visible = false; }
+
+// [CO₂ 보기] 점 구름: 점 개수 ∝ 농도 (EarthVisual.co2DotCount). 최대 개수만큼 미리 자리를 만들고
+// setDrawRange로 앞에서부터 보일 개수만 그린다 - 점이 몇 개든 드로우콜 1번.
+let co2Dots = null;
+if (PAPER) {
+  const N = EarthVisual.CO2_DOTS.MAX;
+  const pos = new Float32Array(N * 3), base = new Float32Array(N * 3), seed = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    base[i * 3] = (Math.random() - 0.5) * (BOX_W - 0.2);
+    base[i * 3 + 1] = TERRAIN_TOP + 0.08 + Math.random() * (BOX_H - TERRAIN_TOP - 0.18);
+    base[i * 3 + 2] = (Math.random() - 0.5) * (BOX_D - 0.2);
+    seed[i * 2] = Math.random() * Math.PI * 2;
+    seed[i * 2 + 1] = 0.3 + Math.random() * 0.6;
+  }
+  pos.set(base);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setDrawRange(0, 0);
+  // 둥근 점: 기본 Points는 네모라 작은 원 텍스처를 입힌다. 색은 먹색 - 무색 기체를 '표시'한 것이지 색이 있는 것처럼 보이면 안 된다
+  const mat = new THREE.PointsMaterial({ color: 0x3d434b, size: 0.045, map: dotSprite(), transparent: true, opacity: 0.85, alphaTest: 0.3, depthWrite: false });
+  co2Dots = new THREE.Points(geo, mat);
+  co2Dots.visible = false;
+  co2Dots.userData = { base, seed };
+  box.add(co2Dots);
+}
 
 // 4) 박스 위쪽 가장자리에 얹힌 얼음(구름 역할) 덩어리 클러스터
 const cloudIceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
@@ -831,7 +875,7 @@ solarPanels.visible = false;
 cityGroup.add(solarPanels);
 
 return {
-  paper: PAPER, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -882,14 +926,21 @@ function applyState(S) {
   if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
-  // state.noTint(미래 예측 탭): 뚜껑·입자·안개가 갈황색으로 물드는 효과만 끈다. CO2는 무색이라
-  // "공기만 노래지는 효과"가 오해를 준다는 피드백(2차 개편 C2). 다른 탭은 noTint가 없어 예전과 같다.
-  const tint = S.state.noTint ? 0 : intensity;
-  S.lidMat.opacity = 0.12 + intensity * 0.35;
-  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, tint);
-  S.atmoMat.opacity = 0.35 + intensity * 0.45;
-  S.atmoMat.color.setHSL(0.55 - tint * 0.46, 0.55, 0.75 - tint * 0.15);
-  S.hazeMat.opacity = 0.04 + tint * 0.18;
+  if (S.paper) {
+    // 종이 탭(2차 개편 D2): CO₂는 무색 - 뚜껑은 늘 맑게, 안개·노란 입자는 만들 때 숨겼다.
+    // 농도는 [CO₂ 보기]를 켰을 때만 점 개수로 보인다 ("공기만 노래지는 효과" 피드백, 노란 안개 = 스모그 오개념)
+    S.lidMat.opacity = 0.12;
+    S.lidMat.color.copy(S.CLEAR_SKY);
+    S.co2Dots.visible = VIEW3D.co2;
+    S.co2Dots.geometry.setDrawRange(0, EarthVisual.co2DotCount(S.state.co2));
+  } else {
+    // 직접 실험 탭: 예전 그대로 (실측 CO₂ → 뚜껑·입자·안개 색)
+    S.lidMat.opacity = 0.12 + intensity * 0.35;
+    S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, intensity);
+    S.atmoMat.opacity = 0.35 + intensity * 0.45;
+    S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
+    S.hazeMat.opacity = 0.04 + intensity * 0.18;
+  }
 
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
@@ -915,7 +966,8 @@ function applyState(S) {
 
   // 실측 습도 → 응결 물방울 농도·낙하 속도 (역시 co2 강도와 더 강한 쪽 반영)
   const humIntensity = Math.min(1, Math.max(0, (S.state.hum - HUM_MIN) / (HUM_MAX - HUM_MIN)));
-  const dropIntensity = Math.max(intensity, humIntensity);
+  // 종이 탭은 습도 센서가 없고, CO₂로 물방울을 늘리던 대응은 근거가 없어 쓰지 않는다(D 원칙 3)
+  const dropIntensity = S.paper ? 0.3 : Math.max(intensity, humIntensity);
   S.dropMat.opacity = 0.45 + dropIntensity * 0.4;
   S.condensationSpeed = 1 + dropIntensity * 1.5;
 
@@ -1029,9 +1081,22 @@ function animate() {
 function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
 
-  // 대기 입자 드리프트
+  // [CO₂ 보기] 점 구름: 보일 때만, 보이는 개수만 천천히 떠다니게
+  if (S.co2Dots && S.co2Dots.visible) {
+    const cp = S.co2Dots.geometry.attributes.position, { base, seed } = S.co2Dots.userData;
+    const n = S.co2Dots.geometry.drawRange.count;
+    for (let i = 0; i < n; i++) {
+      const ph = seed[i * 2], sp = seed[i * 2 + 1];
+      cp.array[i * 3] = base[i * 3] + Math.sin(t * sp + ph) * 0.05;
+      cp.array[i * 3 + 1] = base[i * 3 + 1] + Math.sin(t * sp * 0.7 + ph * 1.3) * 0.03;
+      cp.array[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * sp + ph) * 0.05;
+    }
+    cp.needsUpdate = true;
+  }
+
+  // 대기 입자 드리프트 (종이 탭은 숨겨 둔 입자라 계산하지 않는다)
   const ap = S.atmoGeo.attributes.position;
-  for (let i = 0; i < S.atmoCount; i++) {
+  if (!S.paper) for (let i = 0; i < S.atmoCount; i++) {
     const phase = S.atmoSeed[i * 3], speed = S.atmoSeed[i * 3 + 1], radius = 0.06 + S.atmoSeed[i * 3 + 2] * 0.05;
     ap.setX(i, S.atmoBase[i * 3] + Math.sin(t * speed + phase) * radius);
     ap.setY(i, S.atmoBase[i * 3 + 1] + Math.sin(t * speed * 0.6 + phase * 1.7) * radius * 0.6);
@@ -1040,7 +1105,8 @@ function stepScene(S) {
   ap.needsUpdate = true;
 
   // 비대칭 브레이킹 웨이브: 정면(카메라 쪽)으로 갈수록 크게 말려 부서지는 느낌
-  const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  // 종이 탭은 파도 세기를 CO₂에 묶지 않는다(근거 없는 대응, D 원칙 1·3) - 잔잔한 고정값
+  const intensity = S.paper ? 0.2 : Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
   const halfD = S.waveD / 2;
   for (let i = 0; i < S.wavePosAttr.count; i++) {
     const lx = S.waveBase[i * 3];
