@@ -30,6 +30,7 @@ const InquiryCore = (() => {
     focus3D: ['target'],
     openPopover: ['id'],
     omega: [],
+    modelPast: [],
     askText: ['saveAs'],
     askChoice: ['saveAs', 'options'],
     impactCards: [],
@@ -210,6 +211,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     QV.play = null;
     setPopover(null);
     if (VIEW.omega) setOmegaView(false);
+    if (VIEW.validate) setValidateView(false);
     if (FUT.showNature) setNatureView(false);
     if (QV.focused) { setCameraView(CAM_TARGETS.overview); QV.focused = false; }
     el('inqCards').hidden = true;
@@ -468,7 +470,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     ppm: { key: 'ppm', name: 'CO₂', fmt: v => `${v.toFixed(0)} ppm` },
     pH: { key: 'pH', name: 'pH', fmt: v => v.toFixed(3) },
   };
-  function doRecord(step, valueKey = 'T') {
+  function doRecord(step, valueKey = 'T', extra = {}) {
     addRecord();
     const nature = FUT.showNature;
     const h = sampleAt(nature ? FUT.nature : FUT.human, FUT.year), y = Math.round(FUT.year);
@@ -477,7 +479,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     INQ.records.push({ path: INQ.pathId, step: step.id, question: step.question,
       answer: `기록: ${scen} ${y}년 · CO₂ ${h.ppm.toFixed(0)} ppm · 기온 ${fmtSigned(h.T, 2)} °C · pH ${h.pH.toFixed(3)}`,
       year: y, value: Number(h[vk.key].toFixed(4)), valueKey: vk.key, valueName: vk.name, preset: nature ? 'nature' : FUT.preset, T: h.T,
-      time: new Date().toISOString() });
+      time: new Date().toISOString(), ...extra });
     showRecordNote();
     logChanged();
   }
@@ -505,13 +507,14 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   function playEnded() {
     const p = QV.play;
     if (!INQ.on || !p || Math.round(FUT.year) < p.to) return;
-    if (p.recordAtEnd) doRecord(curOrder()[INQ.idx], p.value);
+    if (p.recordAtEnd) doRecord(curOrder()[INQ.idx], p.value, { auto: true });
     showSeen();
   }
-  // 이 경로에서 재생해 본 시나리오(끝 연도 기록이 있는 것)
+  // 이 경로에서 재생해 본 시나리오: 재생 끝에 자동으로 남긴 기록(auto). 같은 시나리오를 다시 하면 마지막 것.
+  // 다음 단계(영향 카드)에서도 읽으므로 지금 단계의 재생 구간과 상관없이 기록에서 찾는다.
   function seenScenarios() {
     const out = new Map();
-    for (const r of INQ.records) if (r.path === INQ.pathId && QV.play && r.year === QV.play.to && r.preset !== 'nature') out.set(r.preset, r);
+    for (const r of INQ.records) if (r.path === INQ.pathId && r.auto && r.preset !== 'nature') out.set(r.preset, r);
     return out;
   }
   function showSeen() {
@@ -624,6 +627,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     },
     openPopover(a) { setPopover({ sink: 'popSink', spec: 'popSpec' }[a.id] || a.id); },
     omega(a) { setOmegaView(a.on !== false); },
+    modelPast(a) { setValidateView(a.on !== false); },   // [모형 검증 보기]: 모형이 계산한 과거(옅은 선)를 관측과 함께
     askText(a, ctx) {
       const prev = INQ.answers[a.saveAs];
       const w = widget(ctx, `<label class="inq-ask"><span>${esc(a.prompt || ctx.step.question)}</span>

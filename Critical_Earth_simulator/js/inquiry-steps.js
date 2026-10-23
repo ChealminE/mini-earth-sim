@@ -39,6 +39,7 @@
 //   { do: 'focus3D', target: 'city' }                      3D 카메라 이동: city · coral · shell · glacier
 //   { do: 'openPopover', id: 'spec' }                      그래프 팝오버: sink(탄소는 어디로?) · spec(바다 속 탄소)
 //   { do: 'omega', on: true }                              pH 그래프의 [Ω 함께 보기]
+//   { do: 'modelPast', on: true }                          [모형 검증 보기]: 모형이 계산한 과거(1750~2023)를 옅은 선으로
 //   { do: 'askText', saveAs: 'A_change', prompt: '…', placeholder: '…' }   짧은 글 응답 (prompt 생략 시 질문)
 //   { do: 'askChoice', saveAs: 'B_why', prompt: '…', options: ['…', …], answer: 1, feedback: '…' }
 //                                                          보기 고르기. answer(0부터)를 적으면 틀렸을 때 "다시 생각해 보세요"
@@ -112,6 +113,67 @@ const INQUIRY_PATHS = [
           { do: 'record', value: 'ppm' },
         ] },
     ] },
+
+  // ── 경로 B — 해양 pH는 그동안 어땠을까? (랩미팅 학습 과정 2) ──
+  { id: 'B', title: '해양 pH는 그동안 어땠을까?', summary: '바다의 pH와 CO₂를 비교하고, 바다가 산성화되는 까닭을 알아봅니다',
+    steps: [
+      { id: 'B1', title: 'pH는 어떻게 변하고 있을까?',
+        question: 'pH는 어떻게 변하고 있나요?',
+        text: '검은 점은 하와이 앞바다(Station ALOHA)에서 1989년부터 잰 pH, 옅은 선은 모형이 계산한 1750년부터의 전 지구 평균 표층 pH입니다.',
+        hint: 'pH가 작아질수록 산성 쪽입니다. 0.1만 달라져도 수소 이온(H⁺)은 약 26 % 늘어납니다.',
+        actions: [
+          { do: 'showCharts', charts: ['pH'] },
+          PAST_ONLY,
+          { do: 'modelPast', on: true },
+          { do: 'askText', saveAs: 'B_change' },
+        ] },
+      { id: 'B2', title: 'CO₂와 비교하기',
+        question: '두 값은 어떤 관계인가요?',
+        text: 'pH 그래프 위에 대기 CO₂를 겹쳤습니다(오른쪽 축).',
+        hint: '한쪽이 올라갈 때 다른 쪽은 어떻게 되나요?',
+        actions: [
+          { do: 'showCharts', charts: ['pH'] },
+          PAST_ONLY,
+          { do: 'modelPast', on: true },
+          { do: 'overlay', chart: 'pH', series: 'co2' },
+          { do: 'askText', saveAs: 'B_relation' },
+        ] },
+      { id: 'B3', title: '바닷물 속에서 무슨 일이?',
+        question: 'pH가 낮아지는 이유는 무엇일까요?',
+        text: '대기의 CO₂가 바닷물에 녹으면 물과 반응해 탄산(H₂CO₃)이 되고, 탄산은 수소 이온(H⁺)과 중탄산 이온(HCO₃⁻)으로 나뉩니다. 오른쪽 "바다 속 탄소" 상자에서 1750년과 2023년을 비교해 보세요.',
+        equation: 'CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻',
+        hint: 'pH는 수소 이온(H⁺)이 많을수록 낮아집니다. 반응식에서 H⁺는 어디서 생기나요?',
+        actions: [
+          { do: 'showCharts', charts: ['pH'] },
+          PAST_ONLY,
+          { do: 'openPopover', id: 'spec' },
+          { do: 'askChoice', saveAs: 'B_why', prompt: 'pH가 낮아지는 이유는?',
+            options: ['바닷물의 온도가 올라가서', '바다에 녹은 CO₂가 탄산이 되어 H⁺를 내놓아서', '바닷물의 소금이 늘어나서', '바다 생물이 줄어들어서'],
+            answer: 1, feedback: '좋아요. 그런데 표에서 CO₃²⁻(탄산 이온)는 왜 줄었을까요?' },
+        ] },
+      { id: 'B4', title: '조개와 산호의 껍데기',
+        question: 'Ω가 1보다 작아지면 무슨 일이 생길까요?',
+        text: 'Ω(아라고나이트 포화도)는 조개·산호가 껍데기(탄산칼슘)를 만들기 쉬운 정도입니다. 3D에서 조개를 가까이 보고, 현재 정책으로 2200년까지 재생해 Ω가 어떻게 되는지 보세요. 그래프의 Ω는 전 지구 평균 표층 바다 값입니다.',
+        hint: 'Ω = 1은 껍데기가 녹기 시작하는 경계입니다(그래프의 점선). 껍데기 만드는 재료인 CO₃²⁻가 줄면 Ω도 줄어듭니다.',
+        actions: [
+          { do: 'showCharts', charts: ['pH'] },
+          { do: 'setScenario', preset: 'ssp245' },
+          { do: 'timeRange', from: 1750, to: 2200 },
+          { do: 'omega', on: true },
+          { do: 'focus3D', target: 'shell' },
+          { do: 'play', from: 2023, to: 2200 },
+          { do: 'askText', saveAs: 'B_omega' },
+        ] },
+      { id: 'B5', title: '정리하기',
+        question: '바다가 산성화되는 이유는 ____이다.',
+        text: '빈칸을 채워 한 문장으로 정리하고, 지금 상태를 기록 서랍에 남기세요.',
+        actions: [
+          { do: 'showCharts', charts: ['pH'] },
+          { do: 'askText', saveAs: 'B_cause', placeholder: '바다가 산성화되는 이유는 …이다.' },
+          { do: 'record', value: 'pH' },
+        ] },
+    ] },
+
 ];
 
 // 사건 표지 (§4): 처음에는 숨기고 revealMarkers 로만 공개한다(학생이 먼저 판단하게). src = js/sources.js 키
