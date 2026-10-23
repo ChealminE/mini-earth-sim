@@ -5,12 +5,12 @@ let activeTab = 'current';
 // ── 우측 상단(아크릴 모형 바로 아래) 탭별 제목/설명 ──────────────────
 const TAB_HEADERS = {
   current: { title: '현재 실태', desc: '관측으로 본 지구의 지금: 대기 CO₂·기온·바다 pH·화석연료 배출 (연평균)' },
-  future: { title: '미래 예측', desc: '1750년부터 2200년까지, 사람이 내보낸 탄소가 대기·바다·토양으로 나뉘며 CO₂·기온·해수 pH가 어떻게 변하는지 재생해 보세요.' },
+  future: { title: '미래 예측', desc: '1750년부터 2200년까지, 사람이 내보낸 탄소가 지구를 어떻게 바꾸는지 재생해 보세요.' },
   live: { title: '직접 실험', desc: '아두이노·ESP32 보드의 센서 값을 실시간으로 받아 기록하고, 실험이 끝나면 정리·분석해 엑셀로 내보냅니다.' },
 };
 
-// 라이트(종이) 테마를 쓰는 탭. 미래 예측은 2차 개편 C1에서 배치를 바꾼 뒤에 넣는다.
-const PAPER_TABS = ['current'];
+// 라이트(종이) 테마를 쓰는 탭. 직접 실험 탭은 동료가 옮기기 전까지 예전 다크 화면 (docs/테마_이관_가이드.md)
+const PAPER_TABS = ['current', 'future'];
 // 모형 전체가 가로로 들어오는 종횡비(실측: 1.07에서는 바다 왼쪽 끝이 잘렸다)
 const PAPER_CAM_FIT = 1.4;
 
@@ -40,7 +40,6 @@ function switchTab(name) {
   // 직접 실험 탭은 아크릴을 화면 가득 두고 그 위에 띄운다: 처음엔 '실험 준비'(body.live-setup),
   // 실험을 시작하면 '실험 화면'(body.live-run) - js/live-setup.js가 전환
   if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
-  if (name === 'future') ensureSceneBuilt(sceneNature);
   activeTab = name;
   fitRenderer();   // 탭에 따라 3D 칸 크기가 달라진다
   if (name === 'future') {

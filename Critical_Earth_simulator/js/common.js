@@ -865,11 +865,14 @@ function applyState(S) {
   if (S.dormant) return; // 아직 안 만든 화면의 아크릴 (sceneFor 참고) - 값만 기억해 두고 만들 때 반영
   // CO2 출력값을 0~1 강도로 정규화 (미래예측 슬라이더 범위 280~600ppm 기준)
   const intensity = Math.min(1, Math.max(0, (S.state.co2 - CO2_MIN) / (CO2_MAX - CO2_MIN)));
+  // state.noTint(미래 예측 탭): 뚜껑·입자·안개가 갈황색으로 물드는 효과만 끈다. CO2는 무색이라
+  // "공기만 노래지는 효과"가 오해를 준다는 피드백(2차 개편 C2). 다른 탭은 noTint가 없어 예전과 같다.
+  const tint = S.state.noTint ? 0 : intensity;
   S.lidMat.opacity = 0.12 + intensity * 0.35;
-  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, intensity);
+  S.lidMat.color.lerpColors(S.CLEAR_SKY, S.HAZY_SKY, tint);
   S.atmoMat.opacity = 0.35 + intensity * 0.45;
-  S.atmoMat.color.setHSL(0.55 - intensity * 0.46, 0.55, 0.75 - intensity * 0.15);
-  S.hazeMat.opacity = 0.04 + intensity * 0.18;
+  S.atmoMat.color.setHSL(0.55 - tint * 0.46, 0.55, 0.75 - tint * 0.15);
+  S.hazeMat.opacity = 0.04 + tint * 0.18;
 
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));

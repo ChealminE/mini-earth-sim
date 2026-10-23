@@ -30,6 +30,7 @@
   --data-omega: #876400;   /* 황토 */
   --data-nature: #858b93;  /* 자연 지구: 회색 */
   --data-obs: #22262b;     /* 관측: 먹색 */
+  --data-land: #5d6b1a;    /* 토양·식생 (탄소 흡수 막대) */
   --data-band: rgba(34, 38, 43, 0.12);   /* 관측 불확도 띠 */
 
   /* ── 조작 영역 5색: 테두리·글자 / 옅은 바탕 / 눌린 상태 ── */
@@ -100,6 +101,9 @@ body.paper .num, body.paper .readout { font-variant-numeric: tabular-nums; }
 /* 아이콘 위·글자 아래 (공간이 좁은 아이콘 카드) */
 .btn--stack { flex-direction: column; gap: 2px; padding: var(--sp-2) var(--sp-2); }
 .btn--stack .btn-sub { font-size: var(--fs-1); font-weight: 500; }
+/* 작은 버튼(그래프 머리의 보기 버튼 등). 높이는 줄여도 글자는 13 px 이상 */
+.btn--sm { min-height: 30px; padding: 0 var(--sp-2); font-size: var(--fs-1); gap: var(--sp-1); }
+.btn--sm svg { width: 16px; height: 16px; }
 
 /* 범위 입력(슬라이더)도 조작이다 — 영역색을 따른다 */
 input[type="range"].range { accent-color: var(--c, var(--ctl-nav)); cursor: pointer; min-height: 28px; }

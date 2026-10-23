@@ -78,3 +78,158 @@ body.paper .chart-block .chart-wrap, body.paper .charts-2col .chart-wrap { flex:
 /* style.css 의 예전 .home-link(11 px 글자 링크)가 버튼 모양을 덮지 않게 */
 body.paper #topbar .home-link { display: inline-flex; font-size: var(--fs-2); margin: 0; color: var(--ctl-nav); }
 body.paper #topbar .home-link:hover { color: var(--ctl-nav); }
+
+/* ── 미래 예측 (2차 개편 C1) ──────────────────────────────────────────────
+   ┌ 머리줄 ─────────────────────────────────────────────┐
+   │ 왼쪽 패널(시나리오·레버) │ 3D (지구 하나 + 토글) │ 그래프 열 │
+   ├ 시간 막대 ──────────────────────────────────────────┤
+   #graph-panel·#tab-future 를 display: contents 로 풀어 그래프 열과 시간 막대를 #app 그리드에 바로 놓는다. */
+body.tab-future.paper #app {
+  display: grid;
+  grid-template-columns: minmax(250px, 290px) minmax(0, 1fr) minmax(0, 36%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.tab-future.paper #tab-header-panel { display: block; grid-column: 1; grid-row: 2; min-height: 0; overflow: hidden auto;
+  background: var(--paper-2); color: var(--ink); border-right: 1px solid var(--rule); padding: var(--sp-3); box-sizing: border-box; }
+body.tab-future.paper #tab-header-panel > .home-link,
+body.tab-future.paper #tab-header-panel > h2,
+body.tab-future.paper #tab-header-panel > .sub { display: none; }
+body.tab-future.paper #gl-container { grid-column: 2; grid-row: 2; }
+body.tab-future.paper #graph-panel, body.tab-future.paper #tab-future { display: contents; }
+
+/* 왼쪽 패널 */
+body.paper .fc { margin: 0; padding: 0; border: 0; }
+body.paper .fc-h { display: flex; align-items: baseline; gap: var(--sp-2); margin: 0 0 var(--sp-2);
+  font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink); }
+body.paper .fc-h span { font-family: var(--font-body); font-size: var(--fs-1); font-weight: 500; color: var(--ink-3); }
+body.paper .fc-presets { display: flex; flex-direction: column; gap: var(--sp-2); }
+body.paper .fc-row { display: flex; align-items: center; gap: var(--sp-1); }
+body.paper .fc-preset, body.paper .fc-custom { flex: 1; justify-content: flex-start; text-align: left; white-space: normal;
+  padding: var(--sp-1) var(--sp-3); min-height: 44px; }
+body.paper .fc-preset { flex-direction: column; align-items: flex-start; gap: 0; }
+body.paper .fc-name { display: block; font-size: var(--fs-2); font-weight: 700; }
+body.paper .fc-ssp { display: block; font-size: var(--fs-1); font-weight: 500; opacity: .9; }
+body.paper .fc-custom { width: 100%; min-height: 56px; gap: var(--sp-2); }
+body.paper .fc-custom svg { width: 26px; height: 26px; }
+body.paper .fc-desc { margin: var(--sp-2) 0 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5; }
+body.paper .fc-rule { border: 0; border-top: 1px solid var(--rule); margin: var(--sp-3) 0; }
+body.paper .fc-back { margin-bottom: var(--sp-2); }
+body.paper .fc-note { margin: 0 0 var(--sp-2); padding: 0; background: none; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5; }
+body.paper .lv { margin: 0 0 var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--rule); }
+body.paper .lv-head { display: flex; align-items: center; justify-content: flex-start; gap: 2px; margin: 0 0 2px;
+  font-size: var(--fs-2); font-weight: 700; color: var(--ink); }
+body.paper .lv-head .lv-val { margin-left: auto; }
+body.paper .lv-val { color: var(--ink); font-size: var(--fs-1); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.paper .lv-val b { font-weight: 700; }
+body.paper .lv input[type=range] { width: 100%; margin: 0; }
+body.paper .lv-sub { display: block; font-size: var(--fs-1); color: var(--ink-2); margin-top: 2px; }
+body.paper .lv-scale { display: flex; justify-content: space-between; font-size: var(--fs-1); color: var(--ink-3); }
+body.paper .mix-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: var(--paper-3); margin: 2px 0; }
+body.paper .mix-seg { height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap;
+  font-size: var(--fs-1); font-weight: 700; color: var(--on-fill); }
+body.paper .mix-seg.fossil { background: var(--data-co2); }
+body.paper .mix-seg.nuclear { background: var(--data-omega); }
+body.paper .mix-seg.renew { background: var(--data-ph); }
+body.paper .fc-result { margin: var(--sp-2) 0; padding: var(--sp-2); background: var(--paper); border: 1px solid var(--rule);
+  border-radius: var(--radius); font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5; }
+body.paper .fc-result b { color: var(--ink); }
+
+/* 3D 위: 지금 보고 있는 지구 배지(정보) · 자연 지구 토글(보기 조작) · 전환 막 */
+.earth-badge, .nature-toggle, .gl-fade { display: none; }
+body.tab-future.paper .earth-badge { display: block; position: absolute; top: var(--sp-3); left: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3); font-size: var(--fs-2); font-weight: 700; color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 90%, transparent); border-left: 4px solid var(--ink); }
+body.tab-future.paper .nature-toggle { display: inline-flex; position: absolute; left: 50%; bottom: var(--sp-3); transform: translateX(-50%); }
+body.tab-future.paper .gl-fade { display: block; position: absolute; inset: 0; pointer-events: none; background: var(--paper);
+  opacity: 0; transition: opacity .15s ease; }
+body.tab-future.paper .gl-fade.on { opacity: .9; }
+body.tab-future.paper #hint { left: auto; right: var(--sp-3); }
+@media (prefers-reduced-motion: reduce) { body.paper .gl-fade { transition: none; } }
+
+/* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
+body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
+  display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border-left: 1px solid var(--rule); background: var(--paper); }
+body.paper .fut-charts .chart-title { flex-wrap: nowrap; }
+body.paper .fut-charts .fut-pop-btn { margin-left: auto; }
+/* 팝오버: 그래프 열을 덮는다(배치를 밀지 않음) */
+body.paper .fut-pop { position: absolute; inset: var(--sp-2); z-index: 20; display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(40, 32, 16, .14); overflow: auto; }
+body.paper .fut-pop[hidden] { display: none; }
+body.paper .fut-pop-head { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-2); color: var(--ink); }
+body.paper .fut-pop-head .fut-pop-close { margin-left: auto; }
+body.paper .sink-wrap { position: relative; height: 170px; flex: none; }
+body.paper .sink-note { font-size: var(--fs-1); color: var(--ink-2); margin: 0; line-height: 1.5; }
+body.paper .spec-bar-row { display: flex; align-items: center; gap: var(--sp-2); }
+body.paper .spec-bar-label { width: 76px; flex: none; text-align: right; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.3; }
+body.paper .spec-bar-label b { color: var(--ink); }
+body.paper .spec-bar { flex: 1; display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: var(--paper-3); }
+body.paper .spec-seg { height: 100%; min-width: 2px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  white-space: nowrap; font-size: var(--fs-1); font-weight: 700; color: var(--on-fill); }
+body.paper .spec-table { width: 100%; border-collapse: collapse; font-size: var(--fs-1); margin: 0; }
+body.paper .spec-table th { font-weight: 600; color: var(--ink-2); text-align: right; padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--rule); white-space: nowrap; }
+body.paper .spec-table td { padding: var(--sp-1) var(--sp-2); text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--rule); }
+body.paper .spec-table th:first-child, body.paper .spec-table td:first-child { text-align: left; }
+body.paper .spec-table tr.total td { color: var(--ink-2); border-bottom: none; }
+body.paper .spec-table .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+body.paper .spec-note { color: var(--ink-3); }
+body.paper .buffer-note { margin: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-1); color: var(--ink-2); line-height: 1.55;
+  background: var(--paper-2); border-left: 3px solid var(--data-ph); border-radius: 0; }
+body.paper .buffer-note b { color: var(--ink); }
+
+/* 시간 막대 */
+body.paper .tl-bar { grid-column: 1 / -1; grid-row: 3; position: static; display: flex; align-items: center; gap: var(--sp-3);
+  margin: 0; padding: var(--sp-2) var(--sp-4); background: var(--paper-2); border-top: 1px solid var(--rule); }
+body.paper .tl-bar .tl-play { width: auto; height: auto; min-width: 104px; }
+body.paper .tl-year { font-size: var(--fs-2); color: var(--ink-2); white-space: nowrap; min-width: 84px; }
+body.paper .tl-year b { font-size: var(--fs-5); font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+body.paper .tl-bar input[type=range] { flex: 1; min-width: 0; }
+body.paper .tl-speed-label { font-size: var(--fs-1); color: var(--ink-2); }
+body.paper .tl-bar .tl-speed { width: auto; }
+body.paper .rec-count { display: inline-block; min-width: 1.6em; padding: 0 var(--sp-1); border-radius: 999px; text-align: center;
+  background: var(--ctl-rec); color: var(--on-fill); font-size: var(--fs-1); font-variant-numeric: tabular-nums; }
+
+/* 기록 서랍: 오른쪽에서 밀려 나와 화면을 덮는다(배치를 밀지 않음) */
+body.paper .rec-drawer { position: fixed; z-index: 1500; top: 0; right: 0; bottom: 0; width: min(640px, 92vw); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); background: var(--paper);
+  border-left: 1px solid var(--rule); box-shadow: -8px 0 28px rgba(40, 32, 16, .16); animation: drawer-in .22s ease-out; }
+body.paper .rec-drawer[hidden] { display: none; }
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { body.paper .rec-drawer { animation: none; } }
+body.paper .rec-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+body.paper .rec-head > b { margin-right: auto; font-size: var(--fs-3); }
+body.paper .rec-table-wrap { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--rule); }
+body.paper .rec-table th { position: sticky; top: 0; background: var(--paper); }
+
+/* 낮은 화면(1280×720 등): 패널·막대 여백을 줄인다 */
+@media (max-height: 760px) {
+  body.tab-future.paper #tab-header-panel { padding: var(--sp-2) var(--sp-3); }
+  body.paper .tl-bar { padding: var(--sp-1) var(--sp-3); }
+  body.paper .fc-preset { min-height: 40px; }
+}
+
+/* style.css 의 예전 미래 예측 규칙(.tl-play 초록, .tl-speed 11 px, 슬라이더 초록)이 버튼 체계를 덮지 않게 */
+body.paper .tl-bar .tl-play { background: var(--c-bg); color: var(--c); border: 1.5px solid var(--c); font-size: var(--fs-2); }
+body.paper .tl-bar .tl-play:hover { background: color-mix(in srgb, var(--c) 16%, var(--c-bg)); }
+body.paper .tl-bar .tl-play[aria-pressed="true"] { background: var(--c-on); color: var(--on-fill); }
+body.paper .tl-bar .tl-speed { font-size: var(--fs-2); padding: 0 var(--sp-2); }
+body.paper .tl-bar input[type=range] { accent-color: var(--ctl-time); }
+
+/* 레버 슬라이더는 시나리오·정책 영역색 (style.css .lv input 의 예전 초록을 덮는다) */
+body.paper .lv input[type=range] { accent-color: var(--ctl-scen); }
+/* 미래 예측 3D: 아래 가운데는 자연 지구 토글 자리라 밝기 조절을 오른쪽 위로 옮긴다.
+   조작 안내(#hint)는 같은 자리를 다투므로 이 탭에서는 숨긴다(끌어서 돌리기는 다른 탭과 같다). */
+body.tab-future.paper #brightnessControl { left: auto; right: var(--sp-3); top: var(--sp-3); bottom: auto; }
+body.tab-future.paper #hint { display: none; }
+
+@media (max-height: 760px) {
+  body.paper .lv { margin-bottom: var(--sp-1); padding-top: var(--sp-1); }
+  body.paper .lv input[type=range] { min-height: 22px; }
+  body.paper .fc-note { margin-bottom: var(--sp-1); }
+  body.paper .fc-back { min-height: 32px; margin-bottom: var(--sp-1); }
+  body.paper .fc-result { margin: var(--sp-1) 0; padding: var(--sp-1) var(--sp-2); }
+}
+body.paper .fc-lever-top { display: flex; gap: var(--sp-2); justify-content: space-between; margin-bottom: var(--sp-2); }
+body.paper .fc-lever-top .fc-back { margin: 0; }
+@media (max-height: 760px) { body.paper .fc-lever-top { margin-bottom: var(--sp-1); } body.paper .fc-lever-top .btn { min-height: 32px; } }
