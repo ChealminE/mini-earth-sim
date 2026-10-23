@@ -630,6 +630,38 @@ const SOURCES = {
     related: ['emis_gcp', 'ssp_emissions'],
   },
 
+  // ── 사건 표지 (2차 개편 E3, 탐구 모드 revealMarkers) ──────────────────────
+  industrial_revolution: {
+    label: '사건 표지: 산업혁명 (약 1760~1840년)',
+    summary: '영국에서 시작된 산업혁명 시기입니다. 석탄을 때는 증기기관과 공장이 퍼지기 시작했습니다. 표지의 연도 범위는 교과서·백과사전에서 흔히 쓰는 어림값입니다.',
+    kind: 'assumption',
+    org: '이 프로그램 (연도 범위: 백과사전·교과서의 통상적 구분)',
+    dataset: 'INQUIRY_MARKERS.industrial_revolution (js/inquiry-steps.js)',
+    version: '-',
+    cite: '산업혁명 시기: 18세기 중후반~19세기 전반(약 1760~1840년, 영국). 예) Encyclopaedia Britannica, "Industrial Revolution" 항목 — 원문 대조 못 함',
+    citeChecked: false,
+    url: 'https://www.britannica.com/event/Industrial-Revolution',
+    license: '-',
+    status: 'unverified',
+    note: '역사학에서 산업혁명의 시작·끝 연도는 하나로 정해져 있지 않다. 1760~1840년은 흔히 쓰는 어림 범위다. 2026-10 작업 환경에서 백과사전 누리집에 접속하지 못해(프록시 403) 원문 문장과 대조하지 못했다 → 발췌 추가 필요: 고등학교 통합사회·세계사 교과서 또는 백과사전의 산업혁명 시기 문장(쪽 이미지).',
+    related: ['emis_gcp'],
+  },
+  great_acceleration: {
+    label: '사건 표지: 1950년 이후 급증 ("대가속")',
+    summary: '1950년 무렵부터 인구·에너지 사용·CO₂ 농도 같은 인간 활동과 지구 시스템 지표가 함께 가파르게 늘어난 시기를 "대가속(Great Acceleration)"이라고 부릅니다.',
+    kind: 'param',
+    org: 'Steffen et al. (2015)',
+    dataset: 'The trajectory of the Anthropocene: The Great Acceleration',
+    version: '2015',
+    cite: 'Steffen, W., Broadgate, W., Deutsch, L., Gaffney, O. and Ludwig, C. (2015) The trajectory of the Anthropocene: The Great Acceleration. The Anthropocene Review 2(1): 81–98. https://doi.org/10.1177/2053019614564785',
+    citeChecked: false,
+    url: 'https://doi.org/10.1177/2053019614564785',
+    license: '확인 필요 (원문 공개 여부 확인 필요)',
+    status: 'unverified',
+    note: '표지는 1950년부터 관측 끝(2023년)까지. 지시서는 원문 확인 후 verified로 두라고 했으나, 원문이 발췌본(docs/refs/발췌/)에 없고 2026-10 작업 환경에서 출판사·DOI 누리집에 접속하지 못했다(프록시 403). 서지 정보는 기억에 의존해 적었으므로 원문과 대조해야 한다 → 발췌 추가 필요: Steffen et al. (2015) 초록·그림 1~2 쪽 이미지.',
+    related: ['co2_noaa_gl', 'co2_cmip6_hist', 'emis_gcp'],
+  },
+
   // ── IPCC 문서 (E 단계 영향 카드·A4 비교용) ───────────────────────────────
   ar6_spm: {
     label: 'IPCC AR6 제1실무그룹 정책결정자 요약',

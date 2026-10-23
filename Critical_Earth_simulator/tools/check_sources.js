@@ -31,9 +31,11 @@ for (const d of SCAN_DIRS) {
 }
 const used = new Map();   // 키 -> 처음 나온 파일
 const PATTERNS = [/data-src\s*=\s*["']([^"'$`{}]+)["']/g, /srcButton\(\s*["']([\w]+)["']/g];
+// 탐구 단계 데이터(js/inquiry-steps.js)는 사건 표지·영향 카드의 출처를 src: '키' 로 적고 실행기가 srcButton(src)로 그린다
+const STEP_FILE = path.join('js', 'inquiry-steps.js');
 for (const f of files) {
   const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
-  for (const re of PATTERNS) {
+  for (const re of f === STEP_FILE ? [...PATTERNS, /\bsrc:\s*["']([\w]+)["']/g] : PATTERNS) {
     for (const m of text.matchAll(re)) {
       const key = m[1].trim();
       if (!used.has(key)) used.set(key, f);

@@ -51,7 +51,10 @@ const INQUIRY_PATHS = [
 ];
 
 // 사건 표지 (§4): 처음에는 숨기고 revealMarkers 로만 공개한다(학생이 먼저 판단하게). src = js/sources.js 키
+// from·to = 그래프에 칠할 연도 범위, range = 단계 안내에 보일 글
 const INQUIRY_MARKERS = {
+  industrial_revolution: { label: '산업혁명', from: 1760, to: 1840, range: '약 1760~1840년', src: 'industrial_revolution' },
+  great_acceleration: { label: '1950년 이후 급증 (대가속)', from: 1950, to: 2023, range: '1950년~', src: 'great_acceleration' },
 };
 
 // 영향 카드 (§5): E4에서 채운다
