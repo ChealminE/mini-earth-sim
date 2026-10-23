@@ -280,3 +280,49 @@ body.paper .mix-key.renew svg { color: var(--data-ph); }
   body.paper .fut-charts .chart-title { min-height: 26px; }
   body.paper .fut-charts .chart-title .btn--sm, body.paper .fut-legend .btn--sm { min-height: 26px; }
 }
+
+/* ── 예측 전환 효과 (C6) ─────────────────────────────────────────────────── */
+.blueprint, .pred-badge, .pred-band { display: none; }
+/* 청사진 격자: 미래 구간에 있는 동안 3D 위에 옅게. 클릭은 3D로 통과 */
+body.tab-future.paper .blueprint { display: block; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s ease;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ctl-time) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ctl-time) 14%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--ctl-time) 30%, transparent); }
+body.tab-future.paper .blueprint.on { opacity: 1; }
+body.tab-future.paper .pred-badge:not([hidden]) { display: block; position: absolute; top: 64px; right: var(--sp-3);
+  padding: 2px var(--sp-3); font-size: var(--fs-2); font-weight: 700; color: var(--on-fill); background: var(--ctl-time); border-radius: 999px; }
+/* 띠: 0.4초 나타남 → 2초 유지 → 0.6초 사라짐 (합 3초) */
+body.tab-future.paper .pred-band:not([hidden]) { display: flex; flex-direction: column; align-items: center; gap: 2px; position: absolute;
+  top: var(--sp-4); left: 50%; transform: translateX(-50%); z-index: 5; pointer-events: none; opacity: 0;
+  padding: var(--sp-2) var(--sp-5); background: var(--paper); border: 2px solid var(--ctl-time); border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(28, 79, 191, .18); white-space: nowrap; }
+body.tab-future.paper .pred-band b { font-family: var(--font-title); font-size: var(--fs-4); color: var(--ink); }
+body.tab-future.paper .pred-band span { font-size: var(--fs-1); color: var(--ink-2); }
+body.tab-future.paper .pred-band.show { animation: pred-band 3s ease forwards; }
+@keyframes pred-band { 0% { opacity: 0; transform: translate(-50%, -8px); } 13% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+/* 움직임 줄이기: 페이드 없이 짧게(1.5초 보였다 사라짐). 격자·손잡이 변화는 그대로 */
+@media (prefers-reduced-motion: reduce) {
+  body.tab-future.paper .pred-band.show { animation: pred-band-plain 1.5s steps(1, end) forwards; }
+  body.tab-future.paper .blueprint { transition: none; }
+}
+@keyframes pred-band-plain { 0% { opacity: 1; transform: translateX(-50%); } 100% { opacity: 0; transform: translateX(-50%); } }
+
+/* 시간 막대 슬라이더: 1750~2023 실선 채움 / 2023~2200 빗금 / 전선까지 빗금 위 옅은 채움 (그래프와 같은 표현).
+   --p-obs, --p-front 는 js/tab-future.js updateTrack 이 넣는다. 손잡이는 예측 구간에서 점선 테두리로 바뀐다. */
+body.paper #tlScrub { -webkit-appearance: none; appearance: none; height: 30px; background: transparent; cursor: pointer;
+  --p-obs: 60.67%; --p-front: 60.67%;
+  --track: linear-gradient(to right, var(--ctl-time) 0 var(--p-obs), transparent var(--p-obs)),
+           linear-gradient(to right, transparent var(--p-obs), color-mix(in srgb, var(--ctl-time) 28%, transparent) var(--p-obs) var(--p-front), transparent var(--p-front)),
+           repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink-3) 45%, transparent) 0 1.5px, transparent 1.5px 6px),
+           var(--paper-3); }
+body.paper #tlScrub::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }
+body.paper #tlScrub::-moz-range-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }
+body.paper #tlScrub::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -6px; border-radius: 50%;
+  background: var(--ctl-time); border: 3px solid var(--paper); box-shadow: 0 0 0 1.5px var(--ctl-time); }
+body.paper #tlScrub::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--ctl-time); border: 3px solid var(--paper); box-shadow: 0 0 0 1.5px var(--ctl-time); }
+body.paper #tlScrub.is-future::-webkit-slider-thumb { background: var(--paper); border: 3px dashed var(--ctl-time); box-shadow: none; }
+body.paper #tlScrub.is-future::-moz-range-thumb { background: var(--paper); border: 3px dashed var(--ctl-time); box-shadow: none; }
+body.paper #tlScrub:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

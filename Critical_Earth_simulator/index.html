@@ -109,6 +109,10 @@
     <div class="earth-badge readout future-only" id="earthBadge">인간활동 지구 · 현재 정책</div>
     <button class="btn btn--view nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
     <div class="gl-fade" id="glFade" aria-hidden="true"></div>
+    <!-- 예측 전환 효과 (C6): 재생 위치가 2023을 넘어 미래로 들어갈 때 한 번 뜨는 띠, 미래 구간 동안의 청사진 격자·배지 -->
+    <div class="blueprint future-only" id="blueprint" aria-hidden="true"></div>
+    <div class="pred-badge readout future-only" id="predBadge" hidden>예측</div>
+    <div class="pred-band future-only" id="predBand" role="status" aria-live="polite" hidden><b>여기서부터는 예측입니다</b><span>관측이 아니라, 고른 시나리오로 모형이 계산한 미래</span></div>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
       <input type="range" class="range range--view" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
@@ -264,8 +268,9 @@
         <input type="range" class="range range--time" id="tlScrub" min="1750" max="2200" step="1" value="2023" aria-label="연도">
         <label class="tl-speed-label readout" for="tlSpeed">속도</label>
         <select class="select select--time tl-speed" id="tlSpeed">
-          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="25">25년/초</option>
+          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="20">20년/초</option>
         </select>
+        <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
         <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
         <button class="btn btn--rec" type="button" id="recOpen" aria-controls="recDrawer" aria-expanded="false"><span data-icon="list"></span>기록 보기</button>
       </div>

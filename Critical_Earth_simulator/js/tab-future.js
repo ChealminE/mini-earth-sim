@@ -731,12 +731,58 @@ function setPlaying(on) {
 }
 tlPlay.addEventListener('click', () => setPlaying(!FUT.playing));
 // 슬라이더를 전선보다 앞(미래)으로 끌면 그 지점까지 전선이 늘어난다(끌어서 예측하기). 과거로 끌면 전선은 그대로.
+// 끄는 동안에는 예측 전환 띠를 띄우지 않고, 놓은 뒤(change)에 과거 → 미래로 넘어갔는지 판단한다.
+const SCRUB = { active: false, startFuture: false };
 tlScrub.addEventListener('input', () => {
+  if (!SCRUB.active) { SCRUB.active = true; SCRUB.startFuture = FUT.year > LAST_OBS_YEAR; }
   setPlaying(false);
   setYear(Number(tlScrub.value));
   advanceFrontier(FUT.year);
   renderFuture();
 });
+tlScrub.addEventListener('change', () => {
+  const crossed = !SCRUB.startFuture && FUT.year > LAST_OBS_YEAR;
+  SCRUB.active = false;
+  if (crossed) showPredBand();
+});
+// [예측 지우기]: 전선과 재생 위치를 2023으로 (그린 예측을 지우고 처음부터)
+$('tlClear').addEventListener('click', () => {
+  setPlaying(false);
+  cancelAnimationFrame(redrawAnim);
+  FUT.frontier = LAST_OBS_YEAR;
+  VIEW.drawFrontier = LAST_OBS_YEAR;
+  setYear(LAST_OBS_YEAR);
+  renderFuture();
+});
+
+// ── 예측 전환 효과 (C6) ───────────────────────────────────────────────
+// 재생 위치가 과거(≤ 2023)에서 미래로 넘어가는 순간 한 번: 3D 위쪽 띠(0.4초 나타남 → 2초 → 0.6초 사라짐, css/paper.css).
+// 미래 구간에 있는 동안: 3D에 청사진 격자 + '예측' 배지, 시간 막대 손잡이 점선 테두리. 과거로 돌아오면 걷힌다.
+// 넘나들 때마다 한 번씩만 띄우고, 슬라이더를 끄는 중에는 띄우지 않는다(놓은 뒤에 판단, 위 change).
+let inFuture = false;
+function showPredBand() {
+  const band = $('predBand');
+  band.hidden = false;
+  band.classList.remove('show');
+  void band.offsetWidth;            // 애니메이션을 처음부터 다시 돌리기
+  band.classList.add('show');
+}
+$('predBand').addEventListener('animationend', e => { e.currentTarget.classList.remove('show'); e.currentTarget.hidden = true; });
+function updatePredState() {
+  const now = FUT.year > LAST_OBS_YEAR + 1e-9;
+  if (now === inFuture) return;
+  inFuture = now;
+  $('blueprint').classList.toggle('on', now);
+  $('predBadge').hidden = !now;
+  tlScrub.classList.toggle('is-future', now);
+  if (now && !SCRUB.active) showPredBand();
+}
+// 시간 막대 슬라이더 트랙: 1750~2023 실선 채움, 2023~2200 빗금, 전선까지는 빗금 위에 옅은 채움 (css/paper.css 가 변수를 쓴다)
+function updateTrack() {
+  const at = y => (100 * (y - TL_START) / (TL_END - TL_START)).toFixed(2) + '%';
+  tlScrub.style.setProperty('--p-obs', at(LAST_OBS_YEAR));
+  tlScrub.style.setProperty('--p-front', at(FUT.frontier));
+}
 $('tlSpeed').addEventListener('change', e => { FUT.speed = Number(e.target.value); });
 
 // 화면(팝오버·세로선)을 재생 연도에 맞춘다. 3D는 0.2초 틱에서만 바꾼다.
@@ -744,6 +790,8 @@ function renderFuture() {
   const h = sampleAt(FUT.human, FUT.year);
   tlYearEl.textContent = Math.round(FUT.year);
   if (Number(tlScrub.value) !== Math.round(FUT.year)) tlScrub.value = Math.round(FUT.year);
+  updateTrack();
+  updatePredState();
   if (!$('popSink').hidden) updateSink(h);
   if (!$('popSpec').hidden) updateSpeciation(h, FUT.human[0]);
   drawCharts();
