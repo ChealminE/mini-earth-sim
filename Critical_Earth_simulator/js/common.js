@@ -289,6 +289,40 @@ function buildCityGrowth(group, base, stackTex) {
            last: { level: -1, stacks: -1, cars: -1, ev: -1 } };
 }
 
+// 자연 지구의 도시 구역 자리: 나무(줄기·잎 덩어리)·풀을 인스턴싱으로. 드로우콜 3번(그림자 별도)
+function buildWilderness(group, groundY) {
+  const rnd = seededRandom(1492), d = new THREE.Object3D();
+  const spots = [];
+  for (let i = 0; i < 400 && spots.length < 34; i++) {
+    const x = -0.88 + rnd() * 1.76, z = -1.36 + rnd() * 2.72;
+    if (!spots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.16)) spots.push([x, z]);
+  }
+  const trunkGeo = new THREE.CylinderGeometry(0.012, 0.018, 1, 6); trunkGeo.translate(0, 0.5, 0);
+  const crownGeo = mergeGeos([[0, 0, 0, 0.06], [0.035, -0.02, 0.01, 0.045], [-0.03, -0.015, -0.02, 0.045], [0.005, 0.035, -0.01, 0.04]]
+    .map(([x, y, z, r]) => [new THREE.IcosahedronGeometry(r, 1), mat4(x, y, z)]));
+  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ map: sharedTex.treeBark, roughness: 0.9 }), spots.length);
+  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, flatShading: true }), spots.length);
+  const greens = [0x3f7433, 0x4d8a3a, 0x356629, 0x5a9440].map(h => new THREE.Color(h));
+  spots.forEach(([x, z], i) => {
+    const h = 0.12 + rnd() * 0.14, s = 0.9 + rnd() * 0.7, y = groundY(x, z);
+    d.position.set(x, y, z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(1, h, 1); d.updateMatrix();
+    trunks.setMatrixAt(i, d.matrix);
+    d.position.y = y + h; d.scale.set(s, s, s); d.updateMatrix();
+    crowns.setMatrixAt(i, d.matrix);
+    crowns.setColorAt(i, greens[i % greens.length]);
+  });
+  trunks.castShadow = crowns.castShadow = true;
+  const GRASS_N = 260;
+  const grassGeo = new THREE.ConeGeometry(0.006, 0.045, 5); grassGeo.translate(0, 0.0225, 0);
+  const grass = new THREE.InstancedMesh(grassGeo, new THREE.MeshStandardMaterial({ color: 0x5a9c4a, roughness: 0.85 }), GRASS_N);
+  for (let i = 0; i < GRASS_N; i++) {
+    const x = -0.9 + rnd() * 1.8, z = -1.4 + rnd() * 2.8, gs = 0.7 + rnd() * 0.8;
+    d.position.set(x, groundY(x, z), z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(gs, gs, gs); d.updateMatrix();
+    grass.setMatrixAt(i, d.matrix);
+  }
+  group.add(trunks, crowns, grass);
+}
+
 // 도시 상태 반영 (applyState에서, 0.2초 틱). 바뀐 것만 다시 쓴다 - 행렬 수십 개라 가볍지만 매 틱 쓸 이유도 없다.
 //   c = S.state.city = { level 0~1 (누적 배출), stacks 굴뚝 수, stackLevel 0~1 (그해 배출), cars 0~1, ev 0~1 }
 const _cityDummy = new THREE.Object3D();
@@ -697,11 +731,15 @@ zoneFloor(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, 0xa89f83);
 zoneFloor(0, WETLAND_BASE, sharedTex.forestGrass, 0x2c331c);
 // 도시 바닥 텍스처가 씬 조명 아래 너무 밝아 안 보여서 씬 전체 조명을 건드리는 대신
 // 이 재질에만 어두운 틴트를 곱해 노출을 낮춘 효과를 줌
-zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832, 0x9a9a9a);
+// 자연 지구(2차 개편 D6)는 도시 구역 자리도 포장도로가 아닌 풀밭이다
+const WILD = PAPER && !!opts.nature;
+if (WILD) zoneFloor(ZONE_W, CITY_BASE, sharedTex.forestGrass, 0x2c331c);
+else zoneFloor(ZONE_W, CITY_BASE, sharedTex.cityPavement, 0x3a3832, 0x9a9a9a);
 // 해저·습지 바닥에만 절차적 지형 기복 적용. 도시는 실제로도 평평하게 포장된 땅이라
 // (건물·차 등 고정 좌표 소품도 많아 굴곡을 주면 오히려 붕 뜬 것처럼 보임) 그대로 둔다.
 createTerrainCap(-ZONE_W, OCEAN_BASE, sharedTex.oceanFloor, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
 createTerrainCap(0, WETLAND_BASE, sharedTex.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED);
+if (WILD) createTerrainCap(ZONE_W, CITY_BASE, sharedTex.forestGrass, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED + 2.3);
 // 세 블록이 높이가 달라서 경계면(옆면)이 자연스럽게 계단 절벽처럼 드러남 - 별도 리저 불필요
 
 
@@ -1226,6 +1264,8 @@ cityGroup.add(solarPanels);
 // 예전 도시(건물 8채·공장 1개·자동차 12대, 자동차 한 대가 메시 10개)는 고정 모양이라 1750년에도 빌딩이 서 있었다.
 // 종이 탭은 아래 인스턴싱 도시로 바꾸고 예전 것은 숨긴다(직접 실험 탭은 예전 그대로).
 const city = PAPER && !opts.nature ? buildCityGrowth(cityGroup, CITY_BASE, stackTex) : null;
+// 자연 지구: 도시 구역 자리에 나무·풀 (인스턴싱). 1750~2200 내내 그대로다 - 그것이 보여 줄 내용이다(D6)
+if (WILD) buildWilderness(cityGroup, (x, z) => CITY_BASE + terrainNoise(x, -z, WETLAND_TERRAIN_AMP, WETLAND_TERRAIN_SEED + 2.3));
 if (city) {
   buildingMeshes.forEach(b => { b.visible = false; });
   carMeshes.forEach(c => { c.visible = false; });
