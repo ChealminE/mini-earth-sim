@@ -103,7 +103,17 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     pathId: null,     // 진행 중인 경로 (null = 경로 고르는 화면)
     idx: 0,           // 단계 순서(stepOrder) 안의 위치
     snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 (tab-future.js futSnapshot)
+    answers: {},      // saveAs → { path, step, question, answer, year, value, chart, time } — 단계를 오가도 남는다
   };
+  // 지금 단계가 그래프에 덧입힌 것. 단계에 들어갈 때마다 resetStepView가 비운다(선언형).
+  const QV = {
+    charts: null,       // 펼쳐 둘 그래프 이름 목록 (null = 모두)
+    overlays: {},       // 그래프 이름 → 겹친 자료 이름
+    markers: [],        // 공개한 사건 표지 키
+    pick: null,         // { chart, saveAs, question } — 그래프를 눌러 연도 고르기
+  };
+  const chartByKey = k => charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]);
+  const keyOfChart = ch => Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id);
 
   const pathById = id => INQUIRY_PATHS.find(p => p.id === id);
   const curPath = () => pathById(INQ.pathId);
@@ -164,6 +174,13 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // 단계 화면 상태(탐구가 그래프·3D에 덧입힌 것)를 모두 걷는다. 단계에 들어갈 때마다, 그리고 탐구를 끌 때 부른다.
   function resetStepView() {
     setPlaying(false);
+    QV.charts = null;
+    QV.markers = [];
+    QV.pick = null;
+    for (const k of Object.keys(QV.overlays)) removeOverlay(k);
+    applyChartLayout();
+    setTimeLimit();
+    for (const ch of charts) ch.canvas.style.cursor = '';
   }
 
   function showStep() {
@@ -211,8 +228,178 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     showStep();
   }
 
+  // ── 학생 응답 ──
+  function setAnswer(saveAs, rec) {
+    const step = curOrder()[INQ.idx];
+    INQ.answers[saveAs] = { path: INQ.pathId, step: step.id, question: rec.question || step.question,
+      answer: '', year: '', value: '', ...rec, time: new Date().toISOString() };
+  }
+
+  // 단계 패널에 넣는 작은 안내 줄 (출처 ⓘ 포함 가능)
+  function widget(ctx, html, cls = '') {
+    const d = document.createElement('div');
+    d.className = 'inq-w ' + cls;
+    d.innerHTML = html;
+    Icons.fill(d);
+    ctx.widgets.appendChild(d);
+    return d;
+  }
+
+  // ── 그래프: 펼치기·접기 ──
+  // 접은 그래프는 제목 줄만 옅게 남긴다(그래프 열 높이는 그대로라 스크롤이 생기지 않는다).
+  function applyChartLayout() {
+    const rows = ['auto'];
+    for (const k of Object.keys(InquiryCore.CHART_IDS)) {
+      const show = !QV.charts || QV.charts.includes(k);
+      el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !show);
+      rows.push(show ? 'minmax(0, 1fr)' : 'auto');
+    }
+    el('futCharts').style.gridTemplateRows = QV.charts ? rows.join(' ') : '';
+    // ResizeObserver를 기다리지 않고 바로 맞춘다(헤드리스·느린 기기에서 한동안 예전 크기로 겹쳐 그려졌다)
+    charts.forEach(c => c.resize());
+  }
+
+  // ── 그래프: 겹치기 (오른쪽 축) ──
+  // 자료마다: 이름(축 제목), 색 토큰, 출처 키, 점 만들기. 예측이 있는 자료는 예측 전선까지만 그린다($clip).
+  const OVERLAY = {
+    fossil: { label: '화석연료 배출 (GtC/년)', color: '--data-fossil', src: 'emis_gcp', clip: false, zero: true,
+      points: () => toPoints(EARTH_DATA.emissions, 'fossil').filter(p => p.x <= LAST_OBS_YEAR) },
+    co2: { label: '대기 CO₂ (ppm)', color: '--data-co2', src: 'model_co2', clip: true,
+      points: () => [...OBS_PTS.co2.filter(p => p.x <= LAST_OBS_YEAR), ...toXY(FUT.human, 'ppm', LAST_OBS_YEAR + 1)] },
+  };
+  function overlayDataset(ch) { return ch.data.datasets.find(d => d.$inq); }
+  function addOverlay(key, series) {
+    const ch = chartByKey(key), o = OVERLAY[series];
+    removeOverlay(key);
+    ch.data.datasets.push(lineDs(o.label, C(o.color), { yAxisID: 'yq', borderWidth: 2, $inq: series, $clip: o.clip }));
+    ch.options.scales.yq = Theme.axis({ position: 'right', grid: { drawOnChartArea: false },
+      ticks: { color: C(o.color), font: Theme.font(), maxTicksLimit: 5 } });
+    ch.options.layout.padding.right = 4;   // Ω 축 자리를 겹친 자료 축이 쓴다
+    QV.overlays[key] = series;
+    fillOverlay(ch);
+  }
+  function fillOverlay(ch) {
+    const d = overlayDataset(ch);
+    if (!d) return;
+    d.data = OVERLAY[d.$inq].points();
+    const r = niceRange(d.data.map(p => p.y), 0.06);
+    if (OVERLAY[d.$inq].zero) r.min = 0;   // 배출량은 0에서 시작해야 '늘어난 정도'가 바로 읽힌다
+    Object.assign(ch.options.scales.yq, r);
+    ch.update('none');
+  }
+  function removeOverlay(key) {
+    const ch = chartByKey(key);
+    ch.data.datasets = ch.data.datasets.filter(d => !d.$inq);
+    delete ch.options.scales.yq;
+    ch.options.layout.padding.right = key === 'pH' && VIEW.omega ? 4 : Y1_AXIS_W + 4;
+    delete QV.overlays[key];
+    ch.update('none');
+  }
+  // 궤적이 바뀌면(시나리오 선택) 겹친 예측 자료도 다시 (tab-future.js refreshCharts가 부른다)
+  function refresh() {
+    for (const k of Object.keys(QV.overlays)) fillOverlay(chartByKey(k));
+  }
+
+  // ── 그래프 층 그리기 (tab-future.js inquiryLayerPlugin 이 부른다) ──
+  const MARKER_TINT = ['--data-fossil', '--data-temp', '--data-ph'];
+  function drawUnder(chart) {
+    if (!INQ.on || !QV.markers.length) return;
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    ctx.save();
+    QV.markers.forEach((key, i) => {
+      const m = INQUIRY_MARKERS[key];
+      const x0 = Math.max(a.left, x.getPixelForValue(m.from)), x1 = Math.min(a.right, x.getPixelForValue(m.to));
+      if (x1 <= x0) return;
+      const tint = MARKER_TINT[i % MARKER_TINT.length];
+      ctx.fillStyle = Theme.alpha(tint, 0.12);
+      ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+      ctx.strokeStyle = Theme.alpha(tint, 0.6); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x0, a.top); ctx.lineTo(x0, a.bottom); ctx.moveTo(x1, a.top); ctx.lineTo(x1, a.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `700 ${Theme.px('--fs-1')}px ${C('--font-body')}`;
+      ctx.fillStyle = C(tint); ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+      ctx.fillText(m.label, x0 + 4, a.top + 3 + i * (Theme.px('--fs-1') + 4));
+    });
+    ctx.restore();
+  }
+  // 학생이 고른 점: 경로 안에서 저장한 pickPoint 답을 그 그래프에 늘 보인다(나중 단계에서 표지와 비교하도록)
+  function drawOver(chart) {
+    if (!INQ.on) return;
+    const key = keyOfChart(chart);
+    const { ctx, chartArea: a, scales } = chart;
+    for (const r of Object.values(INQ.answers)) {
+      if (r.chart !== key || r.path !== INQ.pathId || r.year === '') continue;
+      const px = scales.x.getPixelForValue(r.year), py = scales.y.getPixelForValue(r.value);
+      if (px < a.left || px > a.right) continue;
+      ctx.save();
+      ctx.strokeStyle = C('--ink'); ctx.lineWidth = 2.5; ctx.fillStyle = C('--paper');
+      ctx.beginPath(); ctx.arc(px, py, 7, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, 2.5, 0, 2 * Math.PI); ctx.fillStyle = C('--ink'); ctx.fill();
+      const txt = `내가 고른 해 ${r.year}`;
+      ctx.font = `700 ${Theme.px('--fs-1')}px ${C('--font-body')}`;
+      const w = ctx.measureText(txt).width + 10, h = Theme.px('--fs-1') + 8;
+      let lx = px - w / 2; lx = Math.max(a.left, Math.min(a.right - w, lx));
+      const ly = Math.max(a.top, py - 14 - h);
+      ctx.fillStyle = C('--paper'); ctx.strokeStyle = C('--ink'); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(lx, ly, w, h); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = C('--ink'); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.fillText(txt, lx + 5, ly + h / 2 + 0.5);
+      ctx.restore();
+    }
+  }
+  // 그래프 클릭 → 연도 고르기. 값은 데이터 레이블과 같은 규칙(과거는 관측, 없으면 모형 / 미래는 예측)으로 읽는다.
+  function chartEvent(chart, e) {
+    if (!INQ.on || !QV.pick || e.type !== 'click' || keyOfChart(chart) !== QV.pick.chart) return;
+    const a = chart.chartArea;
+    if (e.x < a.left || e.x > a.right || e.y < a.top || e.y > a.bottom) return;
+    const year = Math.round(Math.max(LIMIT.from, Math.min(LIMIT.to, chart.scales.x.getValueForPixel(e.x))));
+    const r = valueAt(chart.$spec, year);
+    if (!r) return;   // 아직 예측하지 않은 해
+    const spec = chart.$spec;
+    setAnswer(QV.pick.saveAs, { question: QV.pick.question, chart: QV.pick.chart, year, value: Number(r.v.toFixed(4)),
+      answer: `${year}년 (${spec.fmt(r.v)}, ${r.tag})` });
+    showPick();
+    drawCharts();
+  }
+  function showPick() {
+    const w = el('inqPick');
+    if (!w || !QV.pick) return;
+    const r = INQ.answers[QV.pick.saveAs];
+    w.innerHTML = r && r.year !== '' ? `고른 해: <b>${r.year}년</b> <span class="inq-sub">${esc(r.answer.replace(/^\d+년 /, ''))}</span>`
+      : '<span class="inq-sub">아직 고르지 않았어요. 그래프를 눌러 보세요.</span>';
+  }
+
   // ── 동작 ── (TASK_2차_E §2. 이름과 필수 필드는 InquiryCore.ACTION_SPEC)
-  const ACTIONS = {};
+  const ACTIONS = {
+    showCharts(a) {
+      QV.charts = a.charts.slice();
+      applyChartLayout();
+    },
+    timeRange(a) {
+      const to = a.lockFuture ? Math.min(a.to, LAST_OBS_YEAR) : a.to;
+      setTimeLimit(a.from, to);
+    },
+    overlay(a, ctx) {
+      addOverlay(a.chart, a.series);
+      const o = OVERLAY[a.series];
+      widget(ctx, `<span class="inq-swatch" style="border-color:${C(o.color)}"></span>겹친 자료: <b>${esc(o.label)}</b> — 오른쪽 축${srcButton(o.src)}`, 'inq-key');
+    },
+    pickPoint(a, ctx) {
+      QV.pick = { chart: a.chart, saveAs: a.saveAs, question: a.prompt || ctx.step.question };
+      chartByKey(a.chart).canvas.style.cursor = 'crosshair';
+      widget(ctx, '', 'inq-pick').id = 'inqPick';
+      showPick();
+    },
+    revealMarkers(a, ctx) {
+      QV.markers = a.markers.slice();
+      QV.markers.forEach((k, i) => {
+        const m = INQUIRY_MARKERS[k];
+        widget(ctx, `<span class="inq-swatch fill" style="background:${Theme.alpha(MARKER_TINT[i % MARKER_TINT.length], 0.35)}"></span>`
+          + `<b>${esc(m.label)}</b> ${esc(m.range || `${m.from}~${m.to}`)}${srcButton(m.src)}`, 'inq-key');
+      });
+      drawCharts();
+    },
+  };
 
   // ── 이벤트 ──
   el('inqModeOn').addEventListener('click', () => setMode(true));
@@ -227,10 +414,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     else if (b.dataset.inq === 'next') go(1);
   });
 
-  // 그래프 층 (tab-future.js inquiryLayerPlugin 이 부른다)
-  function drawUnder(chart) { }
-  function drawOver(chart) { }
-  function chartEvent(chart, e) { }
+  function playEnded() { }
 
-  return { setMode, startPath, go, state: INQ, drawUnder, drawOver, chartEvent, ACTIONS };
+  return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();

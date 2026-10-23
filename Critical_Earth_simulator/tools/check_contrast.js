@@ -29,7 +29,7 @@ for (const a of ['nav', 'time', 'scen', 'view', 'rec']) {
   pairs.push([`--ctl-${a}`, '--paper', '버튼 글자/종이']);
   pairs.push(['--on-fill', `--ctl-${a}-on`, '눌린 버튼(흰 글자/채움)']);
 }
-for (const d of ['co2', 'temp', 'ph', 'sst', 'omega', 'obs']) pairs.push([`--data-${d}`, '--paper', '데이터 레이블(굵게)/종이']);
+for (const d of ['co2', 'temp', 'ph', 'sst', 'omega', 'obs', 'fossil']) pairs.push([`--data-${d}`, '--paper', '데이터 레이블(굵게)/종이']);
 for (const k of ['obs', 'model', 'param', 'assumption', 'calibrated']) pairs.push(['--on-fill', `--kind-${k}`, 'ⓘ 종류 배지']);
 pairs.push(['--warn', '--warn-bg', 'ⓘ 미확인 경고']);
 pairs.push(['--ctl-time', '--paper', 'ⓘ 링크']);

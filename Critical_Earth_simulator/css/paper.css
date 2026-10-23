@@ -389,3 +389,13 @@ body.paper .inq-widgets:empty { display: none; }
 body.paper .inq-hint summary { cursor: pointer; font-size: var(--fs-2); font-weight: 600; color: var(--ctl-nav); min-height: 28px; display: flex; align-items: center; }
 body.paper .inq-hint p { margin: var(--sp-1) 0 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.5; }
 body.paper .inq-nav { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); flex: none; padding-top: var(--sp-2); border-top: 1px solid var(--rule); }
+/* 접은 그래프: 제목 줄만 옅게 (탐구 showCharts) */
+body.paper .fut-charts .chart-block.inq-fold { opacity: .5; }
+body.paper .fut-charts .chart-block.inq-fold .chart-wrap { display: none; }
+body.paper .inq-w { font-size: var(--fs-2); color: var(--ink-2); line-height: 1.45; }
+body.paper .inq-w b { color: var(--ink); }
+body.paper .inq-sub { color: var(--ink-3); font-size: var(--fs-1); }
+body.paper .inq-key { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--sp-1); }
+body.paper .inq-swatch { display: inline-block; width: 18px; height: 0; border-top: 3px solid; flex: none; }
+body.paper .inq-swatch.fill { height: 12px; border: 1px solid var(--rule); border-radius: 2px; }
+body.paper .inq-pick { padding: var(--sp-2); border: 1.5px dashed var(--ink-3); border-radius: var(--radius); background: var(--paper); }

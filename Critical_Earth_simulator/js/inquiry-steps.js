@@ -27,7 +27,7 @@
 //   { do: 'timeRange', from: 1750, to: 2023, lockFuture: true }
 //                                                          그래프 x축·시간 막대 범위. lockFuture면 예측(2023 이후)으로 못 간다
 //   { do: 'overlay', chart: 'co2', series: 'fossil' }      그래프에 다른 자료를 겹친다(오른쪽 축).
-//                                                          series: fossil(화석연료 배출, GCP) · co2(대기 CO₂) · T(기온 편차)
+//                                                          series: fossil(화석연료 배출, GCP 관측) · co2(대기 CO₂ 관측 + 예측)
 //   { do: 'pickPoint', chart: 'co2', saveAs: 'A_turningYear' }
 //                                                          학생이 그래프를 눌러 연도를 고른다 → 연도·값 저장, 점 표시
 //   { do: 'revealMarkers', markers: ['industrial_revolution', …] }   숨겨 둔 사건 표지 공개 (아래 INQUIRY_MARKERS)

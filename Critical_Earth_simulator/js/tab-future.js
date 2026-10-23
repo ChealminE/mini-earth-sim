@@ -133,7 +133,7 @@ const predZonePlugin = {
       ctx.fillStyle = C('--ink-2'); ctx.textAlign = 'right';
       ctx.fillText('관측 끝 · 예측 시작', px - 4, a.top + 2);
     }
-    if (FUT.frontier <= LAST_OBS_YEAR && chart.$first) {
+    if (FUT.frontier <= LAST_OBS_YEAR && chart.$first && a.right - px > 60) {   // x축이 2023에서 끝나면(탐구 timeRange) 칸이 없다
       ctx.fillStyle = C('--ink-3'); ctx.textAlign = 'center';
       // 아래쪽에 두 줄로 둔다 - 가운데는 재생 위치의 데이터 레이블 자리이고, 1280 폭에서는 빗금 칸이 100 px 남짓이다
       const cx = (px + a.right) / 2, lh = Theme.px('--fs-1') + 2;
@@ -309,6 +309,7 @@ const PREV = { run: null, label: '' };   // 직전 시나리오의 궤적 (이�
 // 궤적이 바뀌었을 때만 부른다 (선 데이터와 축 범위). 재생 중에는 draw()만 한다.
 function refreshCharts() {
   const H = FUT.human, N = FUT.nature;
+  if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.refresh();   // 탐구 모드가 겹친 자료(예측 CO₂ 등)도 새 궤적으로
   for (const ch of charts) {
     const sp = ch.$spec, d = ch.data.datasets;
     d[DS.pred].data = toXY(H, sp.key, LAST_OBS_YEAR);
@@ -725,13 +726,23 @@ showLeverValues();
 
 // ── 재생 ──────────────────────────────────────────────────────────────
 const tlPlay = $('tlPlay'), tlScrub = $('tlScrub'), tlYearEl = $('tlYear');
+// 재생·끌기로 갈 수 있는 범위. 평소에는 1750~2200 전체이고, 탐구 모드의 timeRange 동작이 좁힌다(js/inquiry.js).
+const LIMIT = { from: TL_START, to: TL_END };
 function setYear(y) {
-  FUT.year = Math.max(TL_START, Math.min(TL_END, y));
+  FUT.year = Math.max(LIMIT.from, Math.min(LIMIT.to, y));
   FUT.dirty = true;
+}
+// 범위를 바꾸면 슬라이더 끝과 그래프 x축도 같이 맞춘다(1750~2023만 볼 때 그래프가 그 구간으로 넓어진다)
+function setTimeLimit(from = TL_START, to = TL_END) {
+  LIMIT.from = from; LIMIT.to = to;
+  tlScrub.min = from; tlScrub.max = to;
+  for (const ch of charts) { ch.options.scales.x.min = from; ch.options.scales.x.max = to; ch.update('none'); }
+  setYear(FUT.year);
 }
 function setPlaying(on) {
   FUT.playing = on;
-  if (on && FUT.year >= TL_END) FUT.year = LAST_OBS_YEAR;   // 끝에서 누르면 예측 시작(2023)부터 다시
+  // 끝에서 누르면 처음부터 다시: 범위가 예측까지 가면 예측 시작(2023)부터, 과거만이면 범위 처음부터
+  if (on && FUT.year >= LIMIT.to - 1e-9) FUT.year = LIMIT.to > LAST_OBS_YEAR ? Math.max(LIMIT.from, LAST_OBS_YEAR) : LIMIT.from;
   tlPlay.setAttribute('aria-pressed', String(on));
   $('tlPlayIcon').innerHTML = Icons.svg(on ? 'pause' : 'play');
   $('tlPlayLabel').textContent = on ? '일시정지' : '재생';
@@ -787,7 +798,7 @@ function updatePredState() {
 }
 // 시간 막대 슬라이더 트랙: 1750~2023 실선 채움, 2023~2200 빗금, 전선까지는 빗금 위에 옅은 채움 (css/paper.css 가 변수를 쓴다)
 function updateTrack() {
-  const at = y => (100 * (y - TL_START) / (TL_END - TL_START)).toFixed(2) + '%';
+  const at = y => (100 * Math.max(0, Math.min(1, (y - LIMIT.from) / (LIMIT.to - LIMIT.from)))).toFixed(2) + '%';
   tlScrub.style.setProperty('--p-obs', at(LAST_OBS_YEAR));
   tlScrub.style.setProperty('--p-front', at(FUT.frontier));
 }
@@ -831,7 +842,10 @@ setInterval(() => {
   if (FUT.playing) {
     setYear(FUT.year + FUT.speed * dt);
     advanceFrontier(FUT.year);
-    if (FUT.year >= TL_END) setPlaying(false);
+    if (FUT.year >= LIMIT.to) {
+      setPlaying(false);
+      if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.playEnded();   // 탐구 단계의 '재생 후 기록'
+    }
   }
   if (!FUT.dirty) return;
   FUT.dirty = false;
