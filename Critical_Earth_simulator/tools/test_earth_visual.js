@@ -54,6 +54,8 @@ check('CO₂ 점: 상한에서 멈춤', V.co2DotCount(5000) === V.CO2_DOTS.MAX);
   check('1.5 °C 2100: 건물은 2023년 규모 유지', V.cityLevel(at(u, 2100).cumFossilMax) >= V.cityLevel(at(u, 2023).cumFossilMax));
   const s23 = V.presetSociety(at(r, 2023).fossil, 2023, ES.LEVER_NOW, ES.E2023, ES.LAST_HIST_YEAR);
   check('2023년까지는 현재 사회값 그대로 (전기차 = LEVER_NOW.ev)', s23.ev === ES.LEVER_NOW.ev && s23.removal === 0);
+  const s1750 = V.presetSociety(at(r, 1750).fossil, 1750, ES.LEVER_NOW, ES.E2023, ES.LAST_HIST_YEAR);
+  check('1750년: 전기차·원자력·태양광 없음', s1750.ev === 0 && s1750.nuclear === 0 && s1750.renew === 0);
   check('1950년 전기차 0', V.presetSociety(at(r, 1950).fossil, 1950, ES.LEVER_NOW, ES.E2023, ES.LAST_HIST_YEAR).ev === 0);
   check('자연 지구: 누적 0 → 도시 규모 0', RUNS.nature.every(o => V.cityLevel(o.cumFossilMax) === 0));
 }

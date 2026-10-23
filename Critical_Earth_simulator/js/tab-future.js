@@ -25,18 +25,19 @@ const FUT = {
   dirty: true,            // 다음 0.2초 틱에서 화면·3D를 다시 그릴지
 };
 
+// annotateCumFossil: 연도마다 누적 화석 배출의 지금까지 최댓값(cumFossilMax)을 붙인다 - 3D 도시 규모 (js/earth-visual.js)
 function computeNature() {
-  FUT.nature = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.natureEmissions });
+  FUT.nature = EarthVisual.annotateCumFossil(EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.natureEmissions }));
 }
 function humanEmissionsFn() {
   return FUT.preset === 'custom' ? EarthSystem.leverEmissions(FUT.levers) : EarthSystem.presetEmissions(FUT.preset);
 }
 function computeHuman() {
-  FUT.human = EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() });
+  FUT.human = EarthVisual.annotateCumFossil(EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: humanEmissionsFn() }));
 }
 
 // 연도 사이 선형 보간. 엔진 배열의 year=y 원소는 "y년 한 해를 적분한 뒤"의 상태다.
-const SAMPLE_KEYS = ['ppm', 'T', 'sst', 'pH', 'omega', 'co2aq', 'hco3', 'co3', 'dic', 'bufferRel'];
+const SAMPLE_KEYS = ['ppm', 'T', 'sst', 'pH', 'omega', 'co2aq', 'hco3', 'co3', 'dic', 'bufferRel', 'cumFossilMax'];
 function sampleAt(arr, year) {
   const f = Math.max(0, Math.min(arr.length - 1, year - arr[0].year));
   const i = Math.floor(f), j = Math.min(arr.length - 1, i + 1), w = f - i;
@@ -532,22 +533,20 @@ function apply3D(S, s) {
 }
 
 // 레버 → 3D. 레버 목표값이 아니라 재생 연도의 실제 레버 값(선형 전환 중의 값)을 보여 준다.
-// 직접 설계가 아닌 시나리오는 전력 구성 같은 세부가 정해져 있지 않으므로, 연기는 그해 화석 배출의
-// 2023년 대비 비율로, 나무는 그해 토지이용 배출로 정하고 나머지는 2023년 값으로 둔다.
-// 2023년까지(역사 구간)도 같은 규칙이다.
+// 직접 설계가 아닌 시나리오는 전력 구성 같은 세부가 정해져 있지 않으므로 EarthVisual.presetSociety가
+// 그해 화석 배출로 전기차·재생·포집을 연출하고(2023년까지는 2023년 값, 그 기술이 없던 시대는 0),
+// 나무는 그해 토지이용 배출로 정한다. 도시 규모·굴뚝은 직접 설계든 시나리오든 그해 엔진 배출을 따른다(2차 개편 D3).
 const ES = EarthSystem;
 // 산림: 토지이용 배출 +L2023(벌채 지속) → 나무 60 %, 0(벌채 중단) → 약 83 %, −1(대규모 조림) → 100 %
 const treeFracFromLuc = luc => Math.min(1, Math.max(0.3, 0.6 + 0.4 * (ES.L2023 - luc) / (ES.L2023 + 1)));
 function applyLevers3D(S, s) {
   const custom = FUT.preset === 'custom' && s.year >= ES.LEVER_START;
-  const l = custom ? ES.leversAt(FUT.levers, s.year) : ES.LEVER_NOW;
-  const fossilNow = s.fossil != null ? s.fossil : 0;
-  S.state.fossil = custom ? 100 * l.fossilShare
-    : Math.min(100, 100 * ES.LEVER_NOW.fossilShare * Math.max(0, fossilNow / ES.E2023));
-  S.state.ev = 100 * l.ev;
-  S.state.carbonRemoval = 100 * l.ccs / ES.LEVER_RANGE.ccs[1];
-  S.state.nuclear = l.nuclearShare;
-  S.state.renew = l.renewShare;
+  const fossil = s.fossil != null ? s.fossil : 0;
+  const l = custom ? ES.leversAt(FUT.levers, s.year) : null;
+  const soc = custom
+    ? { ev: l.ev, renew: l.renewShare, nuclear: l.nuclearShare, removal: l.ccs / ES.LEVER_RANGE.ccs[1] }
+    : EarthVisual.presetSociety(fossil, s.year, ES.LEVER_NOW, ES.E2023, ES.LAST_HIST_YEAR);
+  setEarthVisual(S, s, soc);   // 도시·굴뚝·자동차·전기차·태양광·냉각탑·포집 타워 (common.js)
   S.state.treeFrac = treeFracFromLuc(custom ? l.forest : (s.luc != null ? s.luc : ES.L2023));
 }
 

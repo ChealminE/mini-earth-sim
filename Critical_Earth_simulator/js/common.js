@@ -294,12 +294,13 @@ function applyCity(S, c) {
   if (!C || !c) return;
   const base = S.CITY_BASE, L = c.level, n = C.slots.length;
   if (Math.abs(L - C.last.level) > 1e-4) {
-    // 건물 i는 도시 규모가 i/n을 넘으면 나타나고, 그 뒤 규모가 0.25 더 커질 때까지 최대 높이로 자란다
+    // 건물 i는 도시 규모가 (i+1)/n을 넘으면 나타나고, 그 뒤 규모가 0.25 더 커질 때까지 자란다.
+    // 높이는 도시 전체 규모에도 곱한다 - 일찍 선 건물이 1950년에 벌써 마천루가 되지 않게
     let shown = 0;
     C.slots.forEach((sl, i) => {
-      const g = (L - i / n) / 0.25;
+      const g = (L - (i + 1) / n) / 0.25;
       if (g <= 0) return;
-      const h = sl.hMax * (0.3 + 0.7 * Math.min(1, g));
+      const h = sl.hMax * (0.25 + 0.75 * Math.min(1, g)) * (0.4 + 0.6 * L);
       _cityDummy.position.set(sl.x, base, sl.z); _cityDummy.rotation.set(0, 0, 0); _cityDummy.scale.set(sl.w, h, sl.w * 0.9);
       _cityDummy.updateMatrix();
       C.buildings.setMatrixAt(i, _cityDummy.matrix);
@@ -324,6 +325,19 @@ function applyCity(S, c) {
     C.carBody.instanceColor.needsUpdate = true;
     C.last.cars = nCar; C.last.ev = nEv;
   }
+}
+
+// 엔진 표본 s(EarthSystem.run 원소, cumFossilMax 붙음) + 그해 사회 모습 soc → 종이 탭 씬의 3D 입력 (2차 개편 D)
+// 현재 실태 탭(마지막 역사 연도)과 미래 예측 탭(재생 연도)이 같이 쓴다. soc = { ev, renew, nuclear, removal } (0~1)
+function setEarthVisual(S, s, soc) {
+  const st = S.state, fossil = s.fossil || 0;
+  st.ev = 100 * soc.ev;
+  st.renew = soc.renew;
+  st.nuclear = soc.nuclear;
+  st.carbonRemoval = 100 * soc.removal;
+  const level = EarthVisual.cityLevel(s.cumFossilMax || 0);
+  st.city = { level, stacks: EarthVisual.stackCount(fossil), stackLevel: EarthVisual.stackLevel(fossil),
+              cars: EarthVisual.carFrac(level), ev: soc.ev };
 }
 
 // 3D 보기 토글 (2차 개편 D, 종이 탭 씬에만 적용). 탭·지구(인간활동/자연)를 바꿔도 같은 보기를 유지하도록 전역 하나로 둔다.

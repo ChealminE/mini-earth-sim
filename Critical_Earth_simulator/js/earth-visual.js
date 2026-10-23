@@ -30,11 +30,12 @@ const EarthVisual = (() => {
   //   자동차: 도시 규모를 따라 늘고(석유 시대 전에는 없음), 그중 전기차 비율은 시나리오·레버가 정한다
   // 모양은 로그(포화형) - 1750~1850년의 작은 배출 차이도 보이고, 2023년 이후의 큰 값에서는 더 커지지 않는다.
   const CITY = {
-    C0: 5, CREF: 1500,     // 건물: log(1 + C/C0) / log(1 + CREF/C0). CREF ≈ 현재 정책 2200년 누적(약 1490 GtC)
+    // C0 = 5로 했더니 1950년(누적 63 GtC)에 이미 도시 규모 0.46이라 '자라는' 모습이 안 보였다 → 20으로 늦춤
+    C0: 20, CREF: 1500,    // 건물: log(1 + C/C0) / log(1 + CREF/C0). CREF ≈ 현재 정책 2200년 누적(약 1490 GtC)
     F0: 0.05, FREF: 12,    // 굴뚝: log(1 + F/F0) / log(1 + FREF/F0). F0 ≈ 1850년 배출, FREF ≈ 2023년(10.4)보다 조금 위
     STACKS: 6,             // 굴뚝 최대 개수
-    CAR_START: 0.35,       // 도시 규모가 이만큼(누적 약 30 GtC, 1930년 무렵) 넘어야 자동차가 나온다
-    CAR_FULL: 0.85,
+    CAR_START: 0.25,       // 도시 규모가 이만큼(누적 약 28 GtC, 1930년 무렵) 넘어야 자동차가 나온다
+    CAR_FULL: 0.8,
   };
   const logSat = (x, x0, xref) => (x <= 0 ? 0 : clamp01(Math.log1p(x / x0) / Math.log1p(xref / x0)));
   const cityLevel = cumMax => logSat(cumMax, CITY.C0, CITY.CREF);         // 0(마을) ~ 1(대도시)
@@ -53,10 +54,12 @@ const EarthVisual = (() => {
   // 시나리오(직접 설계가 아닌 SSP)의 미래 사회 모습. SSP 배출 자료에는 전력 구성·전기차 비율이 없으므로
   // "2023년보다 화석 배출이 줄어든 만큼(red) 전기차·재생에너지가 늘었다"고 연출한다. 화석 배출이 음수인 해는
   // 대기에서 탄소를 거둬들인다는 뜻이라 포집 타워를 세운다(−3 GtC/년에서 최대 = 직접 설계 레버 최대).
-  // now = EarthSystem.LEVER_NOW, e2023 = EarthSystem.E2023, 2023년까지(역사)는 now 그대로(전기차는 2010년 전 0).
+  // now = EarthSystem.LEVER_NOW, e2023 = EarthSystem.E2023. 2023년까지(역사)는 now 그대로 두되, 그 기술이 없던
+  // 시대에는 0으로 둔다(예전에는 1750년에도 냉각탑·태양광 패널이 서 있었다): 원자력 1960년 전, 태양광 패널 2000년 전,
+  // 전기차 2010년 전. 이 연도는 '대략 그 무렵부터 보이게' 정한 연출이다(등록부 city_scale).
   function presetSociety(fossil, year, now, e2023, lastHist) {
     if (year <= lastHist) {
-      return { ev: year < 2010 ? 0 : now.ev, renew: now.renewShare, nuclear: now.nuclearShare, removal: 0 };
+      return { ev: year < 2010 ? 0 : now.ev, renew: year < 2000 ? 0 : now.renewShare, nuclear: year < 1960 ? 0 : now.nuclearShare, removal: 0 };
     }
     const red = clamp01(1 - fossil / e2023);
     return {
