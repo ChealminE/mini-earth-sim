@@ -107,13 +107,43 @@
     <div id="hint">미니 지구 모델 · 해양·빙하 / 습지·숲 / 도시<br>드래그로 회전 · 휠로 줌</div>
     <!-- 미래 예측 탭에서만 보임 (js/tab-future.js): 지금 보고 있는 지구 배지 하나(수치 없음), 자연 지구 토글, 전환 막 -->
     <div class="earth-badge readout future-only" id="earthBadge">인간활동 지구 · 현재 정책</div>
-    <button class="btn btn--view nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
     <div class="gl-fade" id="glFade" aria-hidden="true"></div>
     <!-- 3D 보기 토글 (2차 개편 D, 종이 탭에서만 보임): 눈에 보이지 않는 것을 켰을 때만 보이게 한다 (js/common.js VIEW3D) -->
     <div class="view3d paper-only" role="group" aria-label="3D 보기">
+      <!-- 자연 지구 토글도 보기 조작이라 같은 묶음에 둔다 (오른쪽 아래는 범례 자리) -->
+      <button class="btn btn--view btn--sm nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
       <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false"><span data-icon="dots"></span>CO₂ 보기</button>
       <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false"><span data-icon="drop"></span>지시약으로 보기</button>
     </div>
+    <!-- 3D 범례 (2차 개편 D7): 3D의 무엇이 무엇을 나타내는지. 정보 표시라 버튼처럼 보이지 않게 두고, 접기 버튼만 보기 조작이다.
+         줄 표시는 js/main.js updateLegend3D (보기 토글·자연 지구에 따라). 근거 수준(관측·IPCC·연출)은 줄 끝 ⓘ에서 -->
+    <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle">
+      <div class="lg-head">
+        <h3 class="lg-title" id="legend3dTitle">3D 범례</h3>
+        <button class="btn btn--view btn--sm lg-toggle" type="button" id="legend3dToggle" aria-expanded="true" aria-controls="legend3dBody">접기</button>
+      </div>
+      <ul class="lg-body" id="legend3dBody">
+        <li class="lg-row" data-row="co2"><span class="lg-pic" data-icon="dots" data-icon-size="20"></span>
+          <span class="lg-text"><span class="lg-off"><b>CO₂</b> — 눈에 보이지 않음 ([CO₂ 보기])</span><span class="lg-on"><b>점의 밀도</b> — CO₂는 눈에 보이지 않습니다. 점의 밀도로 농도를 나타냈습니다</span></span>
+          <button class="src-i" type="button" data-src="co2_dots" aria-label="출처 보기: CO₂ 보기 점의 밀도">ⓘ</button></li>
+        <li class="lg-row" data-row="city"><span class="lg-pic" data-icon="factory" data-icon-size="20"></span>
+          <span class="lg-text"><b>도시·굴뚝·자동차</b> — 화석연료 배출 (연출)</span>
+          <button class="src-i" type="button" data-src="city_scale" aria-label="출처 보기: 도시 규모 (연출)">ⓘ</button></li>
+        <li class="lg-row"><span class="lg-pic" data-icon="glacier" data-icon-size="20"></span>
+          <span class="lg-text"><b>빙하 크기</b> — 기온 편차 (연출)</span>
+          <button class="src-i" type="button" data-src="glacier_scale" aria-label="출처 보기: 빙하 크기 (연출)">ⓘ</button></li>
+        <li class="lg-row"><span class="lg-pic" data-icon="coral" data-icon-size="20"></span>
+          <span class="lg-text"><b>산호 색</b> — IPCC 1.5 °C 보고서의 산호초 감소 추정</span>
+          <button class="src-i" type="button" data-src="coral_sr15" aria-label="출처 보기: 산호초 감소 추정 (IPCC SR1.5)">ⓘ</button></li>
+        <li class="lg-row"><span class="lg-pic" data-icon="shell" data-icon-size="20"></span>
+          <span class="lg-text"><b>조개 껍데기</b> — 아라고나이트 포화도 Ω</span>
+          <button class="src-i" type="button" data-src="shell_omega" aria-label="출처 보기: 아라고나이트 포화도와 조개 껍데기">ⓘ</button></li>
+        <li class="lg-row" data-row="sea"><span class="lg-pic" data-icon="drop" data-icon-size="20"></span>
+          <span class="lg-text"><span class="lg-off"><b>바다 색</b> — 자연색 (pH로 바뀌지 않음)</span><span class="lg-on"><b>지시약 색</b> — 실제 바다 색이 아니라 지시약처럼 pH를 색으로 나타낸 것, 범위를 확대함
+            <span class="lg-bar" id="legend3dBar" aria-hidden="true"></span><span class="lg-ticks readout"><span>7.6</span><span>7.9</span><span>8.2</span></span></span></span>
+          <button class="src-i" type="button" data-src="ph_indicator" aria-label="출처 보기: 지시약으로 보기 (pH 색)">ⓘ</button></li>
+      </ul>
+    </section>
     <!-- 예측 전환 효과 (C6): 재생 위치가 2023을 넘어 미래로 들어갈 때 한 번 뜨는 띠, 미래 구간 동안의 청사진 격자·배지 -->
     <div class="blueprint future-only" id="blueprint" aria-hidden="true"></div>
     <div class="pred-badge readout future-only" id="predBadge" hidden>예측</div>

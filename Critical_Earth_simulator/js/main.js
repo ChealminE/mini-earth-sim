@@ -80,10 +80,43 @@ function bindView3D(id, key) {
     VIEW3D[key] = !VIEW3D[key];
     btn.setAttribute('aria-pressed', String(VIEW3D[key]));
     applyState(bundles[activeTab]);
+    updateLegend3D();
   });
 }
 bindView3D('view3dCo2', 'co2');
 bindView3D('view3dIndicator', 'indicator');
+
+// ── 3D 범례 (2차 개편 D7) ─────────────────────────────────────────
+// 보기 토글이 켜졌는지에 따라 줄 문구를 바꾸고(.on), 자연 지구를 보는 동안에는 도시 줄을 숨긴다.
+// tab-future.js setNatureView 도 부른다(이 파일이 맨 뒤에 읽히므로 실행 시점에는 있다).
+function updateLegend3D() {
+  const lg = document.getElementById('legend3d');
+  lg.querySelector('[data-row="co2"]').classList.toggle('on', VIEW3D.co2);
+  lg.querySelector('[data-row="sea"]').classList.toggle('on', VIEW3D.indicator);
+  lg.querySelector('[data-row="city"]').hidden = activeTab === 'future' && typeof FUT !== 'undefined' && FUT.showNature;
+}
+{
+  // 색 막대: 7.6 = 0 %, 8.2 = 100 %
+  const P = EarthVisual.PH_IND, pct = v => (100 * (v - P.MIN) / (P.MAX - P.MIN)).toFixed(1) + '%';
+  document.getElementById('legend3dBar').style.background =
+    `linear-gradient(to right, ${P.STOPS.map(([v, c]) => `${c} ${pct(v)}`).join(', ')})`;
+  // 접기: 3D를 가리지 않게 접어 둘 수 있다. 접은 상태는 이 브라우저에만 기억한다(저장이 막힌 환경이면 그냥 펼친 채로)
+  const lg = document.getElementById('legend3d'), btn = document.getElementById('legend3dToggle');
+  const setCollapsed = c => {
+    lg.dataset.collapsed = String(c);
+    btn.setAttribute('aria-expanded', String(!c));
+    btn.textContent = c ? '펼치기' : '접기';
+  };
+  let saved = null;
+  try { saved = localStorage.getItem('legend3dCollapsed'); } catch (e) { /* 저장소를 못 쓰면 기본값 */ }
+  setCollapsed(saved === 'true');
+  btn.addEventListener('click', () => {
+    const c = lg.dataset.collapsed !== 'true';
+    setCollapsed(c);
+    try { localStorage.setItem('legend3dCollapsed', String(c)); } catch (e) { /* 무시 */ }
+  });
+  updateLegend3D();
+}
 
 // ── 밝기 슬라이더 ──────────────────────────────────
 // 같은 씬이라도 화면 밝기·명암비에 따라 톤매핑 결과가 다르게 보여서(어두운 패널일수록

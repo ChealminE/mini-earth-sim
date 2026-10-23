@@ -568,6 +568,7 @@ function updateBadge() {
 function setNatureView(on) {
   FUT.showNature = on;
   $('natureToggle').setAttribute('aria-pressed', String(on));
+  updateLegend3D();   // 자연 지구에는 도시가 없으니 범례의 도시 줄을 숨긴다 (main.js)
   // 같은 정보를 3D와 그래프가 같은 색으로 가리키게: 자연 지구를 보는 동안 그래프의 자연 지구 선을 굵게
   for (const ch of charts) ch.data.datasets[DS.nature].borderWidth = on ? NATURE.widthOn : NATURE.width;
   charts.forEach(c => c.update('none'));

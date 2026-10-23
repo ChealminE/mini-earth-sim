@@ -143,7 +143,7 @@ body.paper .fc-result b { color: var(--ink); }
 body.tab-future.paper .earth-badge { display: block; position: absolute; top: var(--sp-3); left: var(--sp-3);
   padding: var(--sp-1) var(--sp-3); font-size: var(--fs-2); font-weight: 700; color: var(--ink);
   background: color-mix(in srgb, var(--paper) 90%, transparent); border-left: 4px solid var(--ink); }
-body.tab-future.paper .nature-toggle { display: inline-flex; position: absolute; left: 50%; bottom: var(--sp-3); transform: translateX(-50%); }
+body.tab-future.paper .nature-toggle { display: inline-flex; }   /* 자리는 .view3d 묶음 (2차 개편 D7: 오른쪽 아래는 범례) */
 body.tab-future.paper .gl-fade { display: block; position: absolute; inset: 0; pointer-events: none; background: var(--paper);
   opacity: 0; transition: opacity .15s ease; }
 body.tab-future.paper .gl-fade.on { opacity: .9; }
@@ -158,6 +158,28 @@ body.paper .view3d { display: flex; flex-direction: column; align-items: flex-st
 body.tab-current.paper .view3d { bottom: calc(var(--sp-3) + 52px); }
 body.paper .view3d .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); }
 body.paper .view3d .btn[aria-pressed="true"] { background: var(--ctl-view-on); }
+
+/* 3D 범례 (2차 개편 D7): 정보 표시 — 버튼처럼 보이지 않게 그림자·채움 없이 종이 위 얇은 테두리만. 접기 버튼만 보기 조작색 */
+.legend3d { display: none; }
+body.paper .legend3d { display: block; position: absolute; right: var(--sp-3); bottom: var(--sp-3); z-index: 2;
+  width: min(310px, calc(100% - 215px)); box-sizing: border-box; padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  background: color-mix(in srgb, var(--paper) 93%, transparent); border: 1px solid var(--rule); border-radius: var(--radius);
+  color: var(--ink-2); font-size: var(--fs-1); line-height: 1.35; }
+body.paper .legend3d .lg-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+body.paper .legend3d .lg-title { margin: 0; font-size: var(--fs-2); font-weight: 700; color: var(--ink); }
+body.paper .legend3d .lg-body { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 1px; }
+body.paper .legend3d[data-collapsed="true"] .lg-body { display: none; }
+body.paper .legend3d .lg-row { display: grid; grid-template-columns: 22px 1fr auto; align-items: start; gap: var(--sp-1); }
+body.paper .legend3d .lg-row[hidden] { display: none; }
+body.paper .legend3d .lg-pic { color: var(--ink-2); padding-top: 1px; }
+body.paper .legend3d .lg-text b { color: var(--ink); font-weight: 700; }
+body.paper .legend3d .lg-row .lg-on { display: none; }
+body.paper .legend3d .lg-row.on .lg-on { display: inline; }
+body.paper .legend3d .lg-row.on .lg-off { display: none; }
+body.paper .legend3d .src-i { margin: 0; }
+/* 지시약 색 막대: 왼쪽 7.6(노랑) → 오른쪽 8.2(파랑). 색은 js/earth-visual.js PH_IND 정지점에서 만든다 (main.js) */
+body.paper .legend3d .lg-bar { display: block; height: 10px; margin-top: 3px; border: 1px solid var(--ink-3); border-radius: 2px; }
+body.paper .legend3d .lg-ticks { display: flex; justify-content: space-between; color: var(--ink-3); }
 
 /* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
 body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
