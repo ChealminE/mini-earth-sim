@@ -401,7 +401,10 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       ctx.setLineDash([]);
       ctx.font = `700 ${Theme.px('--fs-1')}px ${C('--font-body')}`;
       ctx.fillStyle = C(tint); ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-      ctx.fillText(m.label, x0 + 4, a.top + 3 + i * (Theme.px('--fs-1') + 4));
+      // 맨 윗줄은 '관측 끝 · 예측 시작' 머리표 자리라 한 줄 아래부터, 오른쪽 끝을 넘으면 안쪽으로 당긴다
+      const lw = ctx.measureText(m.label).width;
+      const lx = Math.max(a.left + 2, Math.min(x0 + 4, a.right - lw - 4));
+      ctx.fillText(m.label, lx, a.top + 3 + (i + 1) * (Theme.px('--fs-1') + 4));
     });
     ctx.restore();
   }

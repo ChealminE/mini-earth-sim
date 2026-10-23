@@ -224,7 +224,7 @@ body.paper .spec-table .swatch { display: inline-block; width: 10px; height: 10p
 body.paper .spec-note { color: var(--ink-3); }
 body.paper .buffer-note { margin: 0; padding: var(--sp-2) var(--sp-3); font-size: var(--fs-1); color: var(--ink-2); line-height: 1.55;
   background: var(--paper-2); border-left: 3px solid var(--data-ph); border-radius: 0; }
-body.paper .buffer-note b { color: var(--ink); }
+body.paper .buffer-note b, body.paper .buffer-note b:first-child { color: var(--ink); font-size: inherit; }   /* style.css의 예전 12 px 규칙을 덮는다 */
 
 /* 시간 막대 */
 body.paper .tl-bar { grid-column: 1 / -1; grid-row: 3; position: static; display: flex; align-items: center; gap: var(--sp-3);
