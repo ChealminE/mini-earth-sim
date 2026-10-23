@@ -456,6 +456,44 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     document.querySelectorAll('#inqPanel [data-scen]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scen === FUT.preset)));
   }
 
+  // ── 영향 카드 (impactCards, §5) ──
+  // 3D 위에 뜬다(그래프·왼쪽 패널을 가리지 않고 스크롤도 만들지 않는다). 카드 내용은 INQUIRY_IMPACTS.
+  // levels: 'seen' = 이 경로에서 재생해 본 시나리오의 끝 연도 기온에 가장 가까운 카드를 강조하고 그 시나리오를 카드에 적는다.
+  //         배열 = 그 수준의 카드만 보인다. 생략 = 모든 카드.
+  function showCards(levels) {
+    const D = INQUIRY_IMPACTS, box = el('inqCards');
+    const seen = [...seenScenarios().values()];
+    const all = D.levels.map(c => c.level);
+    const near = T => [...all, ...(D.missingLevels || [])].reduce((b, l) => (Math.abs(l - T) < Math.abs(b - T) ? l : b), all[0]);
+    const tags = new Map();   // 카드 수준 → 그 수준에 가까운 학생 결과들
+    const missing = [];
+    for (const r of seen) {
+      const l = near(r.T), t = `${PRESET_KO[r.preset]} ${r.year}년 ${fmtSigned(r.T, 1)} °C`;
+      if (all.includes(l)) tags.set(l, [...(tags.get(l) || []), t]); else missing.push(`${t} → ${l} °C 카드는 근거 자료(발췌)가 없어 만들지 않았습니다. 앞뒤 카드를 함께 보세요.`);
+    }
+    const shown = Array.isArray(levels) ? D.levels.filter(c => levels.includes(c.level)) : D.levels;
+    const focus = levels === 'seen' && tags.size > 0;
+    box.innerHTML = `
+      <div class="ic-head"><h3>기온이 오르면 — 기온 수준별 영향 <span class="readout">IPCC</span></h3>
+        <button class="btn btn--view btn--sm" type="button" data-ic="close"><span data-icon="close"></span>닫기</button></div>
+      <p class="ic-basis">${esc(D.basis)}</p>
+      <div class="ic-grid">${shown.map(c => `
+        <section class="ic-card${focus && !tags.has(c.level) ? ' dim' : ''}${tags.has(c.level) ? ' hit' : ''}">
+          <h4>${esc(c.title)}</h4>
+          ${(tags.get(c.level) || []).map(t => `<p class="ic-tag">${esc(t)}</p>`).join('')}
+          <ul>${c.items.map(it => `<li><span class="ic-what">${esc(it.what)}${srcButton(it.src)}</span>
+            <b class="ic-val">${esc(it.value)}</b><span class="ic-detail">${esc(it.detail)}</span></li>`).join('')}</ul>
+        </section>`).join('')}</div>
+      ${missing.map(t => `<p class="ic-missing">${esc(t)}</p>`).join('')}
+      ${D.seaLevel ? `<div class="ic-sea"><b>${esc(D.seaLevel.title)}</b>${srcButton(D.seaLevel.src)}
+        <ul>${InquiryCore.PRESETS.filter(p => D.seaLevel.rows[p]).map(p => `<li class="${seen.some(r => r.preset === p) ? 'hit' : ''}">
+          ${esc(PRESET_KO[p])}: <b>${esc(D.seaLevel.rows[p])}</b></li>`).join('')}</ul>
+        <span class="inq-sub">${esc(D.seaLevel.note)}</span></div>` : ''}`;
+    Icons.fill(box);
+    box.hidden = false;
+  }
+  el('inqCards').addEventListener('click', e => { if (e.target.closest('[data-ic="close"]')) el('inqCards').hidden = true; });
+
   // ── 동작 ── (TASK_2차_E §2. 이름과 필수 필드는 InquiryCore.ACTION_SPEC)
   const ACTIONS = {
     showCharts(a) {
@@ -551,7 +589,11 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       w.querySelector('button').addEventListener('click', () => doRecord(ctx.step, a.value));
       showRecordNote();
     },
-    impactCards() { /* E4 */ },
+    impactCards(a, ctx) {
+      const b = widget(ctx, `<button class="btn btn--view btn--sm" type="button"><span data-icon="list"></span>영향 카드 보기</button>`);
+      b.querySelector('button').addEventListener('click', () => showCards(a.levels));
+      showCards(a.levels);
+    },
   };
 
   // ── 이벤트 ──

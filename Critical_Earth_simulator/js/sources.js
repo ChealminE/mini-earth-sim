@@ -662,6 +662,59 @@ const SOURCES = {
     related: ['co2_noaa_gl', 'co2_cmip6_hist', 'emis_gcp'],
   },
 
+  // ── 영향 카드 (2차 개편 E4, 탐구 모드 impactCards) ────────────────────────
+  impact_extremes_ar6: {
+    label: '영향 카드: 극한 고온·호우·가뭄 빈도 (IPCC AR6 그림 SPM.6)',
+    summary: '사람의 영향이 거의 없던 1850~1900년에 10년에 한 번 일어나던 극한 사건이, 지구 평균기온이 1 / 1.5 / 2 / 4 °C 오른 세계에서 10년에 몇 번 일어날지 IPCC가 정리한 값입니다. 극한 고온·호우는 육지, 가뭄은 건조해지는 지역 기준입니다.',
+    kind: 'param',
+    org: 'IPCC',
+    dataset: 'AR6 WG1 Summary for Policymakers, Figure SPM.6',
+    version: '2021',
+    cite: 'IPCC (2021) AR6 WG1 SPM, Figure SPM.6 "Projected changes in the intensity and frequency of hot temperature extremes over land, extreme precipitation over land, and agricultural and ecological droughts in drying regions", PDF 18쪽',
+    citeChecked: false,
+    url: 'https://www.ipcc.ch/report/ar6/wg1/chapter/summary-for-policymakers/',
+    page: 'PDF 18쪽 (인쇄 18) 그림 — docs/refs/발췌/IPCC_AR6_WG1_SPM_p18.jpg 이미지로 값 대조, 정의는 같은 쪽·19쪽 캡션',
+    license: '확인 필요',
+    status: 'verified',
+    note: '10년 빈도, 중앙값 (범위), 1 / 1.5 / 2 / 4 °C 순: 극한 고온(육지) 2.8 (1.8~3.2) / 4.1 (2.8~4.7) / 5.6 (3.8~6.0) / 9.4 (8.3~9.6)배, 강도 +1.2 / +1.9 / +2.6 / +5.1 °C. ' +
+      '호우(육지, 하루 강수량) 1.3 (1.2~1.4) / 1.5 (1.4~1.7) / 1.7 (1.6~2.0) / 2.7 (2.3~3.6)배, 강도 +6.7 / +10.5 / +14.0 / +30.2 %. ' +
+      '농업·생태 가뭄(건조해지는 지역) 1.7 (0.7~4.1) / 2.0 (1.0~5.1) / 2.4 (1.3~5.8) / 4.1 (1.7~7.2)배. 기준은 1850~1900년(사람 영향이 없는 기후). ' +
+      '그림에는 3 °C 열이 없다 → 3 °C 카드는 만들지 않았다(발췌 추가 필요: AR6 WG1 11장 등 3 °C 값이 있는 쪽).',
+    related: ['ar6_spm'],
+  },
+  impact_coral_sr15: {
+    label: '영향 카드: 산호초 감소 (IPCC 1.5 °C 특별보고서)',
+    summary: '산호초는 1.5 °C 온난화에서 (보고서 무렵보다) 70~90 % 더 줄고, 2 °C에서는 99 % 넘게 사라질 것으로 추정됩니다.',
+    kind: 'param',
+    org: 'IPCC',
+    dataset: 'Global Warming of 1.5°C, Summary for Policymakers, B.4.2',
+    version: '2018',
+    cite: 'IPCC (2018) SR1.5 SPM B.4.2, PDF 8쪽: "Coral reefs, for example, are projected to decline by a further 70–90% at 1.5°C (high confidence) with larger losses (>99%) at 2°C (very high confidence)."',
+    url: 'https://www.ipcc.ch/sr15/chapter/spm/',
+    page: 'PDF 8쪽 (인쇄 8) B.4.2 (텍스트)',
+    license: '확인 필요',
+    status: 'verified',
+    note: '"a further"는 보고서 무렵(2018년, 약 1 °C 온난화)보다 더 줄어든다는 뜻이다. 4 °C 값은 원문에 없다(2 °C에서 이미 99 % 넘게 손실).',
+    related: ['sr15_spm', 'coral_sr15'],
+  },
+  impact_sealevel_ar6: {
+    label: '영향 카드: 2100년 해수면 상승 (IPCC AR6, 시나리오별)',
+    summary: '1995~2014년 평균보다 2100년 전 지구 평균 해수면이 얼마나 오를지, 시나리오별 가능성 높은 범위입니다.',
+    kind: 'param',
+    org: 'IPCC',
+    dataset: 'AR6 WG1 Summary for Policymakers, B.5.3',
+    version: '2021',
+    cite: 'IPCC (2021) AR6 WG1 SPM B.5.3, PDF 21쪽: "Relative to 1995–2014, the likely global mean sea level rise by 2100 is 0.28–0.55 m under … (SSP1-1.9); 0.32–0.62 m under … (SSP1-2.6); 0.44–0.76 m under … (SSP2-4.5)"',
+    citeChecked: false,
+    url: 'https://www.ipcc.ch/report/ar6/wg1/chapter/summary-for-policymakers/',
+    page: 'PDF 21쪽 (인쇄 21) B.5.3과 각주 35 (텍스트), 그림 SPM.8은 22쪽',
+    license: '확인 필요',
+    status: 'verified',
+    note: '기준 기간 1995~2014년, 신뢰도 중간(medium confidence). 각주 35: 1900년 기준으로 바꾸려면 0.16 m, AR5·SROCC의 1986~2005년 기준으로 바꾸려면 0.03 m를 더한다. ' +
+      'SR1.5(1986~2005년 기준)의 해수면 값과는 기준이 달라 같은 카드에 섞지 않았다. 해수면은 기온 수준이 아니라 시나리오별 값이라 기온 수준 카드와 따로 보인다.',
+    related: ['ar6_spm', 'scen_ssp119', 'scen_ssp126', 'scen_ssp245'],
+  },
+
   // ── IPCC 문서 (E 단계 영향 카드·A4 비교용) ───────────────────────────────
   ar6_spm: {
     label: 'IPCC AR6 제1실무그룹 정책결정자 요약',

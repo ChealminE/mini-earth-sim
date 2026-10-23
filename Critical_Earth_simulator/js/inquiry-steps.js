@@ -57,8 +57,40 @@ const INQUIRY_MARKERS = {
   great_acceleration: { label: '1950년 이후 급증 (대가속)', from: 1950, to: 2023, range: '1950년~', src: 'great_acceleration' },
 };
 
-// 영향 카드 (§5): E4에서 채운다
+// 영향 카드 (§5). 수치는 IPCC 발췌본과 그 쪽 이미지(docs/refs/발췌/)에서 직접 확인한 것만 넣는다.
+// 카드에 없는 수준(3 °C)은 근거 쪽이 발췌본에 없어서 만들지 않았다 — 생기면 levels에 카드를 하나 더 넣으면 된다.
+//   levels[].level  지구 평균기온 상승(1850~1900 대비, °C).  items[] { what 무엇이, value 큰 숫자, detail 한 줄 설명, src 출처 키 }
+//   seaLevel       시나리오별 값(기온 수준이 아님) — 기준 기간이 다르니 기온 수준 카드와 섞지 않는다
 const INQUIRY_IMPACTS = {
+  basis: '기준: 사람의 영향이 거의 없던 1850~1900년에 10년에 한 번 일어나던 사건. 극한 고온·호우는 육지, 가뭄은 건조해지는 지역 기준입니다.',
+  levels: [
+    { level: 1, title: '지금 (약 1 °C)', items: [
+      { what: '극한 고온 (육지)', value: '2.8번', detail: '10년에 1번 → 지금은 10년에 약 2.8번 (1.8~3.2)', src: 'impact_extremes_ar6' },
+      { what: '호우 (육지)', value: '1.3번', detail: '10년에 1번 → 약 1.3번 (1.2~1.4)', src: 'impact_extremes_ar6' },
+    ] },
+    { level: 1.5, title: '+1.5 °C', items: [
+      { what: '극한 고온 (육지)', value: '4.1번', detail: '10년에 1번 → 약 4.1번 (2.8~4.7), 더 뜨거움 +1.9 °C', src: 'impact_extremes_ar6' },
+      { what: '호우 (육지)', value: '1.5번', detail: '10년에 1번 → 약 1.5번 (1.4~1.7), 비의 양 +10.5 %', src: 'impact_extremes_ar6' },
+      { what: '산호초', value: '70~90 % 더 감소', detail: '보고서가 나온 2018년 무렵보다 더 줄어듦', src: 'impact_coral_sr15' },
+    ] },
+    { level: 2, title: '+2 °C', items: [
+      { what: '극한 고온 (육지)', value: '5.6번', detail: '10년에 1번 → 약 5.6번 (3.8~6.0), 더 뜨거움 +2.6 °C', src: 'impact_extremes_ar6' },
+      { what: '호우 (육지)', value: '1.7번', detail: '10년에 1번 → 약 1.7번 (1.6~2.0), 비의 양 +14.0 %', src: 'impact_extremes_ar6' },
+      { what: '산호초', value: '99 % 넘게 손실', detail: '거의 모든 산호초가 사라짐', src: 'impact_coral_sr15' },
+    ] },
+    { level: 4, title: '+4 °C', items: [
+      { what: '극한 고온 (육지)', value: '9.4번', detail: '10년에 1번 → 약 9.4번 (8.3~9.6), 더 뜨거움 +5.1 °C', src: 'impact_extremes_ar6' },
+      { what: '호우 (육지)', value: '2.7번', detail: '10년에 1번 → 약 2.7번 (2.3~3.6), 비의 양 +30.2 %', src: 'impact_extremes_ar6' },
+      { what: '가뭄 (건조해지는 지역)', value: '4.1번', detail: '10년에 1번 → 약 4.1번 (1.7~7.2)', src: 'impact_extremes_ar6' },
+    ] },
+  ],
+  missingLevels: [3],   // 근거 발췌가 없어 카드를 만들지 않은 수준 (가까운 학생 결과가 있으면 안내 문구를 보인다)
+  seaLevel: {
+    title: '2100년 해수면 상승 (1995~2014년 평균 대비, 가능성 높은 범위)',
+    rows: { ssp119: '0.28~0.55 m', ssp126: '0.32~0.62 m', ssp245: '0.44~0.76 m' },
+    note: '1900년 기준으로는 0.16 m를 더합니다.',
+    src: 'impact_sealevel_ar6',
+  },
 };
 
 // node(검사 도구 tools/test_inquiry.js)에서도 같은 파일을 읽는다
