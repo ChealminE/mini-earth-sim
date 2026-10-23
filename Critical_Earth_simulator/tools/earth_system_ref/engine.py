@@ -8,7 +8,8 @@
   (원자료: Global Carbon Project), CC BY 4.0
   https://github.com/owid/co2-data  -> data/historical_emissions_gtc.csv (MtCO2 -> GtC 변환)
   1750~1849 토지이용 배출은 원자료에 없어 선형으로 추정 (luc_estimated=1)
-- 검증용 CO2: NOAA GML 마우나로아 연평균 (datasets/co2-ppm 경유) -> data/mlo_annual.csv
+- 검증용 CO2: NOAA GML 원본(data/raw/noaa) -> tools/gen_earth_data.py -> data/co2_noaa_mlo_annual.csv,
+  data/co2_noaa_gl_annual.csv (출처 전체는 js/sources.js 등록부)
 
 실행: python engine.py  (경로는 이 파일 위치 기준 ../../data/)
 """
@@ -52,7 +53,11 @@ import os
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data')
 em = {int(r['year']): [float(r['fossil_gtc']), float(r['luc_gtc'])]
       for r in csv.DictReader(open(os.path.join(DATA, 'historical_emissions_gtc.csv')))}
-mlo = {int(r['Year']): float(r['Mean']) for r in csv.DictReader(open(os.path.join(DATA, 'mlo_annual.csv')))}
+def read_clean(name):
+    # 정리 CSV는 첫 줄들이 '#' 주석(원본 파일명·버전)이다
+    with open(os.path.join(DATA, name), encoding='utf-8') as f:
+        return list(csv.DictReader(l for l in f if not l.startswith('#')))
+mlo = {int(r['year']): float(r['ppm']) for r in read_clean('co2_noaa_mlo_annual.csv')}
 
 # ---------- 엔진 ----------
 PPM2GTC = 2.124

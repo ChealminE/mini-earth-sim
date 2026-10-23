@@ -106,11 +106,11 @@ function tlChart(id, datasets, scales) {
     plugins: [playheadPlugin],
   });
 }
-const mloPoints = EARTH_DATA.mlo.ppm.map((v, i) => ({ x: EARTH_DATA.mlo.startYear + i, y: v }));
+const obsCo2Points = EARTH_DATA.co2Noaa.ppm.map((v, i) => ({ x: EARTH_DATA.co2Noaa.startYear + i, y: v }));
 const futChartCo2 = tlChart('futChartCo2', [
   lineDs('인간활동 지구', '#85B7EB'),
   lineDs('자연만 있는 지구', NATURE_COLOR, NATURE_STYLE),
-  { label: '마우나로아 관측', data: mloPoints, showLine: false, pointRadius: 1.6, borderColor: '#e7e9ec', backgroundColor: '#e7e9ec' },
+  { label: '관측 (NOAA 지구 평균)', data: obsCo2Points, showLine: false, pointRadius: 1.6, borderColor: '#e7e9ec', backgroundColor: '#e7e9ec' },
 ], { y: yAxis('ppm') });
 const futChartT = tlChart('futChartT', [
   lineDs('인간활동 지구', '#E24B4A'),
@@ -145,7 +145,7 @@ function refreshCharts() {
   const H = FUT.human, N = FUT.nature;
   futChartCo2.data.datasets[0].data = toXY(H, 'ppm');
   futChartCo2.data.datasets[1].data = toXY(N, 'ppm');
-  Object.assign(futChartCo2.options.scales.y, niceRange([...H.map(o => o.ppm), 278, ...EARTH_DATA.mlo.ppm], 0.05, 40));
+  Object.assign(futChartCo2.options.scales.y, niceRange([...H.map(o => o.ppm), 278, ...EARTH_DATA.co2Noaa.ppm], 0.05, 40));
   futChartT.data.datasets[0].data = toXY(H, 'T');
   futChartT.data.datasets[1].data = toXY(N, 'T');
   Object.assign(futChartT.options.scales.y, niceRange([...H.map(o => o.T), 0], 0.06, 0.5));

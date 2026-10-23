@@ -1,4 +1,7 @@
-Year,Mean,Uncertainty
+# 원본: data/raw/noaa/co2_annmean_mlo.csv (NOAA GML, Mauna Loa annual mean)
+# 원본 버전: File Creation: Fri Oct  9 13:08:13 2026
+# 완전한 해만: 파일 생성 해(2026) 이후 값 제외. 단위 ppm (건조 공기 몰분율)
+year,ppm,unc
 1959,315.98,0.12
 1960,316.91,0.12
 1961,317.64,0.12
