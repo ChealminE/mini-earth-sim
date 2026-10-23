@@ -71,7 +71,8 @@ P = dict(h_mix=100.0, h_deep=2000.0, k_gas=0.25, tau_mix=6.0,    # 해양
          lam=1.2, Cs=8.0, Cd=100.0, gamma=0.7,                     # 2층 기온 (W, yr, m2, K)
          sst0=18.0, c0=278.0)
 
-# 지구 평균 CO2 1988~2023 - js/tab-current.js의 histCo2를 그대로 옮긴 것 (검증용)
+# 지구 평균 CO2 1988~2023 - 2차 개편 전 js/tab-current.js의 histCo2(출처 불명, NOAA 지구 평균보다 평균 0.9 ppm 낮음).
+# 위 P를 고를 때 쓴 기준이라 기록용으로 남긴다. 새 관측 대조는 tools/test_earth_system.js의 A4 게이트.
 GLOBAL_CO2_START = 1988
 GLOBAL_CO2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24]
 
@@ -171,3 +172,7 @@ if __name__ == '__main__':
     R = {o['y']: o for o in r}
     rmse_g = math.sqrt(np.mean([(R[GLOBAL_CO2_START+i]['ppm']-v)**2 for i, v in enumerate(GLOBAL_CO2)]))
     print('RMSE vs global mean 1988-2023: %.2f ppm' % rmse_g)
+    gl = {int(r['year']): float(r['ppm']) for r in read_clean('co2_noaa_gl_annual.csv')}
+    r = {o['y']: o for o in run(range(1750, max(em) + 1), hist)}
+    yrs = [y for y in gl if y in r]
+    print('RMSE vs NOAA global mean %d-%d: %.2f ppm' % (min(yrs), max(yrs), math.sqrt(np.mean([(r[y]['ppm']-gl[y])**2 for y in yrs]))))

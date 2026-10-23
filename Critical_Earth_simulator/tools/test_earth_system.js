@@ -84,9 +84,7 @@ compare('자연(배출 0)', natRun, REF.runs.nature);
 // ── 2) 1단계 기대값 표 재현 ─────────────────────────────────────────────────
 {
   const H = byYear(ES.run({ fromYear: 1750, toYear: 2023 }));
-  const histCo2 = [350.06,352.12,353.48,354.85,355.76,356.46,357.61,359.28,361.20,362.49,364.33,367.01,368.42,369.80,371.61,373.99,376.21,377.97,380.23,382.05,384.10,385.83,387.62,389.82,391.67,394.14,396.49,398.55,401.48,404.31,406.50,408.89,411.39,413.65,416.02,418.24];
-  const rmse = Math.sqrt(histCo2.reduce((s, v, i) => s + (H[1988 + i].ppm - v) ** 2, 0) / histCo2.length);
-  check('RMSE vs 지구 평균 1988~2023 = 2.82', r1(rmse, 2) === 2.82, rmse.toFixed(3) + ' ppm');
+  // 옛 'RMSE vs 지구 평균 1988~2023 = 2.82'는 출처 불명 배열 기준이라 지웠다. 새 관측 대조는 아래 5) 게이트.
   let so = 0, sl = 0;
   for (let y = 2014; y <= 2023; y++) { so += H[y].oceanFlux; sl += H[y].landFlux; }
   so /= 10; sl /= 10;
@@ -119,6 +117,110 @@ compare('자연(배출 0)', natRun, REF.runs.nature);
   for (const k of Object.keys(ES.PRESETS)) {
     const js = ES.run({ fromYear: 1750, toYear: 2200, emissionsFn: ES.presetEmissions(k) });
     compare(`프리셋 ${ES.PRESETS[k].ko} (${ES.PRESETS[k].ssp})`, js, REF.runs[k]);
+  }
+}
+
+// ═══════════════════════════ 2차 A4 게이트 ═════════════════════════════════
+// 파라미터는 그대로 두고 새 관측(원본 data/raw → 정리 CSV)과 대조한다. 통과 기준은 지시서 A §4.
+// '보고' 줄은 기준이 없는 표(실패가 아님)다. PR에 그대로 옮긴다.
+function readClean(name) {
+  const lines = fs.readFileSync(path.join(ROOT, 'data', name), 'utf8').split(/\r?\n/).filter(l => l && !l.startsWith('#'));
+  const head = lines[0].split(',');
+  return lines.slice(1).map(l => Object.fromEntries(l.split(',').map((v, i) => [head[i], Number(v)])));
+}
+const report = (name, detail) => console.log(`보고  ${name}${detail ? '  ' + detail : ''}`);
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const slope = (xs, ys) => {           // 최소제곱 기울기
+  const mx = mean(xs), my = mean(ys);
+  return xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0) / xs.reduce((s, x) => s + (x - mx) ** 2, 0);
+};
+const ED = vm.runInContext('EARTH_DATA', ctx);
+const LAST_EMIS = ED.emissions.startYear + ED.emissions.fossil.length - 1;
+{
+  // 역사 배출이 있는 마지막 해까지만 돌린다(그 뒤는 배출 0이 되어 비교가 무의미하다)
+  const H = byYear(ES.run({ fromYear: 1750, toYear: LAST_EMIS }));
+  // (a-1) CO2 vs NOAA 지구 평균
+  const gl = readClean('co2_noaa_gl_annual.csv').filter(r => r.year <= LAST_EMIS);
+  const rmse = Math.sqrt(mean(gl.map(r => (H[r.year].ppm - r.ppm) ** 2)));
+  const bias = mean(gl.map(r => H[r.year].ppm - r.ppm));
+  check(`A4 CO₂ vs NOAA 지구 평균 ${gl[0].year}~${gl[gl.length - 1].year} RMSE ≤ 4 ppm`, rmse <= 4,
+    `RMSE ${rmse.toFixed(2)} ppm, 평균 편차(모형−관측) ${bias.toFixed(2)} ppm`);
+  // (a-2) CO2 vs CMIP6 역사 농도 1850~1978
+  const cm = readClean('co2_cmip6_hist.csv').filter(r => r.year >= 1850 && r.year <= 1978);
+  let mx = 0, at = 0;
+  for (const r of cm) { const d = H[r.year].ppm - r.ppm; if (Math.abs(d) > Math.abs(mx)) { mx = d; at = r.year; } }
+  // 2026-10 첫 실행에서 실패: 최대 −10.57 ppm(1941년), 1937~1943년이 10 ppm을 넘는다. 기준 옆 설명의 '6~8 ppm'은
+  // 1900(−6.67)·1950(−8.12)년 값과 같고, CMIP6(Law Dome)의 1930~40년대 빠른 상승을 이 모형이 따라가지 못해 생긴 차이다.
+  // 지시서대로 파라미터·기준을 바꾸지 않고 실패로 둔다(사람이 기준을 정할 때까지 C3·C4는 진행하지 않음).
+  const over = cm.filter(r => Math.abs(H[r.year].ppm - r.ppm) > 10).map(r => r.year);
+  check('A4 CO₂ vs CMIP6 역사 농도 1850~1978 최대 오차 ≤ 10 ppm', Math.abs(mx) <= 10,
+    `최대 ${mx.toFixed(2)} ppm (${at}년)` + (over.length ? `, 10 ppm 초과 ${over[0]}~${over[over.length - 1]} (${over.length}개 해)` : ''));
+  report('  CO₂ 모형−CMIP6 (ppm)', [1850, 1900, 1950, 1978].map(y => `${y} ${(H[y].ppm - cm.find(r => r.year === y).ppm).toFixed(2)}`).join(' / '));
+  // (a-3) 기온 vs HadCRUT5 2014~2023 평균
+  const hc = Object.fromEntries(readClean('temp_hadcrut5_annual.csv').map(r => [r.year, r.anom]));
+  const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  const dT = mean(span(2014, 2023).map(y => H[y].T)) - mean(span(2014, 2023).map(y => hc[y]));
+  check('A4 기온 vs HadCRUT5 2014~2023 평균 차이 ≤ 0.2 °C', Math.abs(dT) <= 0.2,
+    `모형 ${mean(span(2014, 2023).map(y => H[y].T)).toFixed(3)} − 관측 ${mean(span(2014, 2023).map(y => hc[y])).toFixed(3)} = ${dT >= 0 ? '+' : ''}${dT.toFixed(3)} °C`);
+  // (a-4) 10년 평균 표 (기준 없음)
+  const dec = [];
+  for (let d = 1900; d <= 2010; d += 10) {
+    const ys = span(d, d + 9), m = mean(ys.map(y => H[y].T)), o = mean(ys.map(y => hc[y]));
+    dec.push(`${d}s 모형 ${m.toFixed(2)} 관측 ${o.toFixed(2)} 차 ${(m - o >= 0 ? '+' : '')}${(m - o).toFixed(2)}`);
+  }
+  report('A4 기온 10년 평균 (°C, 1850~1900 기준)', '\n      ' + dec.join('\n      '));
+  // (a-5) pH 추세 vs HOT
+  const ph = readClean('ph_hot_annual.csv').filter(r => r.year <= LAST_EMIS);
+  const xs = ph.map(r => r.year);
+  const sObs = slope(xs, ph.map(r => r.ph)), sMod = slope(xs, xs.map(y => H[y].pH));
+  report(`A4 pH 선형 추세 ${xs[0]}~${xs[xs.length - 1]} (pH/년)`,
+    `모형 ${sMod.toExponential(3)}  HOT ${sObs.toExponential(3)}  비 ${(sMod / sObs).toFixed(2)}  |  절댓값(참고) 모형 ${H[xs[0]].pH.toFixed(3)}→${H[xs[xs.length - 1]].pH.toFixed(3)}, HOT ${ph[0].ph.toFixed(3)}→${ph[ph.length - 1].ph.toFixed(3)}`);
+}
+
+// ── (b) SSP: 조화 규칙 + 결과표 + RCMIP·AR6 비교 ─────────────────────────────
+{
+  // 조화: 조화식을 2023년에 대면 GCP 값과 정확히 같고(이음매에 계단 없음), 2050년부터는 SSP 원값과 같다.
+  // 2023→2024 변화량은 SSP 경로 자체의 감소분이 섞이므로(SSP1-1.9는 2024년부터 빠르게 준다) 기준 없이 보고만 한다.
+  let okEnd = true, okSeam = true, maxJump = 0;
+  for (const k of Object.keys(ES.PRESETS)) {
+    const fn = ES.presetEmissions(k), d = ED.ssp;
+    for (let y = ES.HARMONIZE_END; y <= 2200; y++) {
+      const e = fn(y), i = y - d.startYear;
+      okEnd = okEnd && Math.abs(e.fossil - d[k].fossil[i]) < 1e-12 && Math.abs(e.luc - d[k].luc[i]) < 1e-12;
+    }
+    const seam = ES.PRESETS[k].fn(2023), h23 = ES.historicalEmissions(2023);
+    okSeam = okSeam && Math.abs(seam.fossil - h23.fossil) < 1e-12 && Math.abs(seam.luc - h23.luc) < 1e-12;
+    const e23 = fn(2023), e24 = fn(2024);
+    maxJump = Math.max(maxJump, Math.abs(e24.fossil + e24.luc - e23.fossil - e23.luc));
+    report(`  조화 ${k}`, `2023 SSP 원값 화석 ${(ES.E2023 - ES.PRESETS[k].offset2023.fossil).toFixed(3)} · 토지 ${(ES.L2023 - ES.PRESETS[k].offset2023.luc).toFixed(3)} / GCP ${ES.E2023.toFixed(3)} · ${ES.L2023.toFixed(3)} → 차이 ${ES.PRESETS[k].offset2023.fossil.toFixed(3)} · ${ES.PRESETS[k].offset2023.luc.toFixed(3)} GtC/yr, 2024 배출 ${(e24.fossil + e24.luc).toFixed(3)}`);
+  }
+  check('조화: 조화식(2023) = GCP 2023, 2050년 이후 = SSP 원값', okSeam && okEnd, `2023→2024 배출 변화 최대 ${maxJump.toFixed(3)} GtC/yr`);
+
+  const conc = Object.fromEntries(readClean('ssp_concentrations.csv').map(r => [r.year, r]));
+  // IPCC AR6 WG1 SPM Table SPM.1 (PDF 14쪽, docs/refs/발췌/IPCC_AR6_WG1_SPM_p14.jpg에서 확인), 2081~2100, 1850~1900 대비
+  const AR6 = { ssp119: [1.4, 1.0, 1.8], ssp126: [1.8, 1.3, 2.4], ssp245: [2.7, 2.1, 3.5] };
+  // SSP 기대값 (A4에서 처음 정한 값. 엔진·자료·조화 규칙이 바뀌면 이 표가 먼저 깨진다)
+  const exp = {
+    ssp245: { 2050: [486, 1.69], 2100: [548, 2.26], 2200: [576, 2.68] },
+    ssp126: { 2050: [450, 1.52], 2100: [407, 1.39], 2200: [378, 1.24] },
+    ssp119: { 2050: [419, 1.36], 2100: [357, 1.00], 2200: [323, 0.67] },
+  };
+  for (const k of Object.keys(ES.PRESETS)) {
+    const R = byYear(ES.run({ fromYear: 1750, toYear: 2200, emissionsFn: ES.presetEmissions(k) }));
+    const name = `${ES.PRESETS[k].ko} (${ES.PRESETS[k].ssp})`;
+    for (const [y, [ppm, T]] of Object.entries(exp[k])) {
+      const o = R[y];
+      check(`  ${name} ${y} = ${ppm} ppm, +${T.toFixed(2)} °C`, Math.round(o.ppm) === ppm && r1(o.T, 2) === T,
+        `${o.ppm.toFixed(1)} ppm, T ${o.T >= 0 ? '+' : ''}${o.T.toFixed(3)}, pH ${o.pH.toFixed(3)}, Ω ${o.omega.toFixed(2)}`);
+    }
+    const pct = y => 100 * (R[y].ppm - conc[y][k]) / conc[y][k];
+    report(`  ${name} vs RCMIP SSP 농도`, [2050, 2100].map(y => `${y} 모형 ${R[y].ppm.toFixed(1)} / RCMIP ${conc[y][k].toFixed(1)} ppm (${pct(y) >= 0 ? '+' : ''}${pct(y).toFixed(1)} %)`).join('  |  ')
+      + (Math.abs(pct(2100)) > 10 ? '  ← 10 % 초과' : ''));
+    let t = 0;
+    for (let y = 2081; y <= 2100; y++) t += R[y].T;
+    t /= 20;
+    const [best, lo, hi] = AR6[k];
+    report(`  ${name} 2081~2100 평균 기온 vs AR6`, `모형 +${t.toFixed(2)} °C / AR6 ${best} (${lo}~${hi}) °C → ${t >= lo && t <= hi ? '범위 안' : '범위 밖'}`);
   }
 }
 
