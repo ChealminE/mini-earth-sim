@@ -148,6 +148,8 @@
     <div class="blueprint future-only" id="blueprint" aria-hidden="true"></div>
     <div class="pred-badge readout future-only" id="predBadge" hidden>예측</div>
     <div class="pred-band future-only" id="predBand" role="status" aria-live="polite" hidden><b>여기서부터는 예측입니다</b><span>관측이 아니라, 고른 시나리오로 모형이 계산한 미래</span></div>
+    <!-- 탐구 모드 영향 카드 (2차 개편 E4): 3D 위에 뜬다. 내용은 js/inquiry-steps.js INQUIRY_IMPACTS, 그리기는 js/inquiry.js -->
+    <section class="inq-cards future-only" id="inqCards" aria-label="기온 수준별 영향" hidden></section>
     <div id="brightnessControl">
       <label for="brightnessSlider">밝기</label>
       <input type="range" class="range range--view" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.1">
@@ -162,6 +164,13 @@
     <!-- 미래 예측 탭에서만 보임: 인간활동 지구의 배출 조작 (js/tab-future.js).
          2024년부터의 배출을 정한다. 시나리오 목록 ↔ 직접 설계(레버) 패널을 바꿔 가며 보여 준다 -->
     <div class="future-only fc" id="futureControls">
+      <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
+      <div class="inq-mode" role="group" aria-label="조작 방식">
+        <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
+        <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
+      </div>
+      <div class="inq-panel" id="inqPanel" hidden></div>
+      <div id="fcFree">
       <div id="fcScenarioView">
         <h3 class="fc-h">시나리오 <span>2024년부터의 배출</span></h3>
         <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
@@ -222,6 +231,7 @@
           <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
         </div>
         <div class="fc-result readout" id="lvResult"></div>
+      </div>
       </div>
     </div>
   </div>
@@ -314,7 +324,7 @@
       <aside class="rec-drawer" id="recDrawer" aria-label="기록" hidden>
         <div class="rec-head">
           <b class="readout">기록 <span id="recCount2">0</span>줄</b>
-          <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>CSV 내보내기</button>
+          <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>측정 기록 CSV</button>
           <button class="btn btn--rec" type="button" id="recClear"><span data-icon="trash"></span>기록 지우기</button>
           <button class="btn btn--nav" type="button" id="recClose"><span data-icon="close"></span>닫기</button>
         </div>
@@ -326,6 +336,18 @@
             <th>ph<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH">ⓘ</button></th></tr></thead>
           <tbody id="recLog"></tbody>
         </table></div>
+        <!-- 탐구 기록 묶음 (2차 개편 E5): 탐구 모드에서 고른 점·글·보기·기록 줄. js/inquiry.js 가 채운다 -->
+        <section class="rec-inq" id="recInq" hidden>
+          <div class="rec-head">
+            <b class="readout">탐구 기록 <span id="inqLogCount">0</span>줄</b>
+            <button class="btn btn--rec" type="button" id="inqCsv"><span data-icon="download"></span>탐구 기록 CSV</button>
+            <button class="btn btn--rec" type="button" id="inqClear"><span data-icon="trash"></span>탐구 기록 지우기</button>
+          </div>
+          <div class="rec-table-wrap"><table class="spec-table rec-table">
+            <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
+            <tbody id="inqLog"></tbody>
+          </table></div>
+        </section>
       </aside>
     </div>
 
@@ -650,7 +672,9 @@
 <script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
 <script src="js/tab-current.js?v=5"></script>
-<script src="js/tab-future.js?v=5"></script>
+<script src="js/tab-future.js?v=6"></script>
+<script src="js/inquiry-steps.js?v=1"></script>
+<script src="js/inquiry.js?v=1"></script>
 <script src="js/live-fit.js?v=4"></script>
 <script src="js/xlsx-lite.js?v=4"></script>
 <script src="js/tab-live.js?v=4"></script>

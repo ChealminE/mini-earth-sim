@@ -133,7 +133,7 @@ const predZonePlugin = {
       ctx.fillStyle = C('--ink-2'); ctx.textAlign = 'right';
       ctx.fillText('관측 끝 · 예측 시작', px - 4, a.top + 2);
     }
-    if (FUT.frontier <= LAST_OBS_YEAR && chart.$first) {
+    if (FUT.frontier <= LAST_OBS_YEAR && chart.$first && a.right - px > 60) {   // x축이 2023에서 끝나면(탐구 timeRange) 칸이 없다
       ctx.fillStyle = C('--ink-3'); ctx.textAlign = 'center';
       // 아래쪽에 두 줄로 둔다 - 가운데는 재생 위치의 데이터 레이블 자리이고, 1280 폭에서는 빗금 칸이 100 px 남짓이다
       const cx = (px + a.right) / 2, lh = Theme.px('--fs-1') + 2;
@@ -231,6 +231,15 @@ const valueLabelPlugin = {
   },
 };
 
+// 4) 탐구 모드 층 (2차 개편 E): 겹친 자료·사건 표지·학생이 고른 점을 그리고, 그래프 클릭(pickPoint)을 받는다.
+//    내용은 js/inquiry.js 가 정한다. 이 파일보다 뒤에 읽히므로 그릴 때 있는지 확인만 한다.
+const inquiryLayerPlugin = {
+  id: 'inquiryLayer',
+  beforeDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined') Inquiry.drawUnder(chart); },
+  afterDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined') Inquiry.drawOver(chart); },
+  afterEvent(chart, args) { if (typeof Inquiry !== 'undefined') Inquiry.chartEvent(chart, args.event); },
+};
+
 const lineDs = (label, color, extra = {}) => ({ label, data: [], borderColor: color, backgroundColor: color,
   borderWidth: 2.2, pointRadius: 0, tension: 0, ...extra });
 const Y_AXIS_W = 46, Y1_AXIS_W = 40;
@@ -268,10 +277,10 @@ const charts = SERIES.map((spec, i) => {
   const chart = new Chart($(spec.id), {
     type: 'line', data: { datasets: ds },
     options: { responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
-      events: ['mousemove', 'mouseout'],
+      events: ['mousemove', 'mouseout', 'click'],   // click: 탐구 모드에서 학생이 연도를 고를 때 (inquiryLayerPlugin)
       layout: { padding: { right: Y1_AXIS_W + 4 } },   // Ω 축 자리를 모든 그래프가 비워 둔다(x축 정렬)
       scales, plugins: { legend: { display: false }, tooltip: { enabled: false } } },
-    plugins: [predZonePlugin, frontierClipPlugin, valueLabelPlugin],
+    plugins: [predZonePlugin, frontierClipPlugin, inquiryLayerPlugin, valueLabelPlugin],
   });
   chart.$spec = spec;
   chart.$first = i === 0;
@@ -300,6 +309,7 @@ const PREV = { run: null, label: '' };   // 직전 시나리오의 궤적 (이�
 // 궤적이 바뀌었을 때만 부른다 (선 데이터와 축 범위). 재생 중에는 draw()만 한다.
 function refreshCharts() {
   const H = FUT.human, N = FUT.nature;
+  if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.refresh();   // 탐구 모드가 겹친 자료(예측 CO₂ 등)도 새 궤적으로
   for (const ch of charts) {
     const sp = ch.$spec, d = ch.data.datasets;
     d[DS.pred].data = toXY(H, sp.key, LAST_OBS_YEAR);
@@ -308,9 +318,11 @@ function refreshCharts() {
     d[DS.prev].data = PREV.run ? toXY(PREV.run, sp.key, LAST_OBS_YEAR) : [];
     d[DS.prev].hidden = !PREV.run;
     d[DS.prev].label = PREV.run ? `이전 선택: ${PREV.label}` : '이전 선택';
-    const vals = [...H.map(o => o[sp.key]), ...N.map(o => o[sp.key])];
-    if (PREV.run) vals.push(...PREV.run.map(o => o[sp.key]));
-    if (sp.obs) vals.push(...OBS_PTS[sp.obs].map(p => p.y));
+    // y축 범위는 보이는 연도(LIMIT, 평소 1750~2200)의 값으로만 — 탐구에서 1750~2023만 볼 때 2200년 예측값에 눌리지 않게
+    const vis = o => o.year >= LIMIT.from && o.year <= LIMIT.to;
+    const vals = [...H.filter(vis).map(o => o[sp.key]), ...N.filter(vis).map(o => o[sp.key])];
+    if (PREV.run) vals.push(...PREV.run.filter(vis).map(o => o[sp.key]));
+    if (sp.obs) vals.push(...OBS_PTS[sp.obs].filter(p => p.x >= LIMIT.from && p.x <= LIMIT.to).map(p => p.y));
     Object.assign(ch.options.scales.y, niceRange(vals, 0.06, sp.minSpan));
     if (sp.key === 'pH') {
       d[d.length - 2].data = toXY(H, 'omega', LAST_OBS_YEAR);
@@ -360,21 +372,24 @@ function updateLegend() {
   $('futPrevName').textContent = PREV.label;
 }
 function setViewToggle(btn, on) { btn.setAttribute('aria-pressed', String(on)); }
-$('futValidateBtn').addEventListener('click', e => {
-  VIEW.validate = !VIEW.validate;
-  setViewToggle(e.currentTarget, VIEW.validate);
-  for (const ch of charts) ch.data.datasets[DS.past].hidden = !VIEW.validate;
+// 보기 토글은 함수로 둔다 - 탐구 모드(js/inquiry.js)가 단계에서 켜고, 끝나면 원래대로 되돌린다
+function setValidateView(on) {
+  VIEW.validate = on;
+  setViewToggle($('futValidateBtn'), on);
+  for (const ch of charts) ch.data.datasets[DS.past].hidden = !on;
   charts.forEach(c => c.update('none'));
-});
-$('futOmegaBtn').addEventListener('click', e => {
-  VIEW.omega = !VIEW.omega;
-  setViewToggle(e.currentTarget, VIEW.omega);
+}
+$('futValidateBtn').addEventListener('click', () => setValidateView(!VIEW.validate));
+$('futOmegaBtn').addEventListener('click', () => setOmegaView(!VIEW.omega));
+function setOmegaView(on) {
+  VIEW.omega = on;
+  setViewToggle($('futOmegaBtn'), on);
   const d = futChartPh.data.datasets;
   d[d.length - 2].hidden = d[d.length - 1].hidden = !VIEW.omega;
   futChartPh.options.scales.y1.display = VIEW.omega;
   futChartPh.options.layout.padding.right = VIEW.omega ? 4 : Y1_AXIS_W + 4;   // Ω 축이 비워 둔 자리를 쓴다
   futChartPh.update('none');
-});
+}
 
 // ── 탄산 화학종 분포 (팝오버 "바다 속 탄소") ──────────────────────────────
 // pH 숫자 하나로는 "평형이 어느 쪽으로 이동했는지"가 안 보이므로 화학종 비율을 그대로 그린다.
@@ -507,13 +522,18 @@ $('recClear').addEventListener('click', () => {
   $('recLog').innerHTML = '';
   setRecCount();
 });
+// 내보낸 파일 이름에 날짜·시각을 넣는다(수업 시간마다 같은 이름으로 덮어쓰지 않게): 20261023_1405
+function fileStamp(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
 $('recCsv').addEventListener('click', () => {
   if (!measRecords.length) return;
   const cols = ['year', 'scenario', 'earth', ...MEAS.map(m => m.key)];
   const esc = v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   const csv = [cols.join(','), ...measRecords.map(r => cols.map(c => esc(r[c])).join(','))].join('\r\n');
   // BOM: 엑셀에서 한글이 깨지지 않게 (직접 실험 탭 CSV와 같은 방식, downloadBlob은 js/xlsx-lite.js)
-  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), '미래예측_측정기록.csv');
+  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `미래예측_측정기록_${fileStamp()}.csv`);
 });
 
 // ── 3D ────────────────────────────────────────────────────────────────
@@ -713,13 +733,24 @@ showLeverValues();
 
 // ── 재생 ──────────────────────────────────────────────────────────────
 const tlPlay = $('tlPlay'), tlScrub = $('tlScrub'), tlYearEl = $('tlYear');
+// 재생·끌기로 갈 수 있는 범위. 평소에는 1750~2200 전체이고, 탐구 모드의 timeRange 동작이 좁힌다(js/inquiry.js).
+const LIMIT = { from: TL_START, to: TL_END };
 function setYear(y) {
-  FUT.year = Math.max(TL_START, Math.min(TL_END, y));
+  FUT.year = Math.max(LIMIT.from, Math.min(LIMIT.to, y));
   FUT.dirty = true;
+}
+// 범위를 바꾸면 슬라이더 끝과 그래프 x축도 같이 맞춘다(1750~2023만 볼 때 그래프가 그 구간으로 넓어진다)
+function setTimeLimit(from = TL_START, to = TL_END) {
+  LIMIT.from = from; LIMIT.to = to;
+  tlScrub.min = from; tlScrub.max = to;
+  for (const ch of charts) { ch.options.scales.x.min = from; ch.options.scales.x.max = to; }
+  refreshCharts();   // y축 범위도 보이는 연도에 맞춘다 (update 포함)
+  setYear(FUT.year);
 }
 function setPlaying(on) {
   FUT.playing = on;
-  if (on && FUT.year >= TL_END) FUT.year = LAST_OBS_YEAR;   // 끝에서 누르면 예측 시작(2023)부터 다시
+  // 끝에서 누르면 처음부터 다시: 범위가 예측까지 가면 예측 시작(2023)부터, 과거만이면 범위 처음부터
+  if (on && FUT.year >= LIMIT.to - 1e-9) FUT.year = LIMIT.to > LAST_OBS_YEAR ? Math.max(LIMIT.from, LAST_OBS_YEAR) : LIMIT.from;
   tlPlay.setAttribute('aria-pressed', String(on));
   $('tlPlayIcon').innerHTML = Icons.svg(on ? 'pause' : 'play');
   $('tlPlayLabel').textContent = on ? '일시정지' : '재생';
@@ -775,7 +806,7 @@ function updatePredState() {
 }
 // 시간 막대 슬라이더 트랙: 1750~2023 실선 채움, 2023~2200 빗금, 전선까지는 빗금 위에 옅은 채움 (css/paper.css 가 변수를 쓴다)
 function updateTrack() {
-  const at = y => (100 * (y - TL_START) / (TL_END - TL_START)).toFixed(2) + '%';
+  const at = y => (100 * Math.max(0, Math.min(1, (y - LIMIT.from) / (LIMIT.to - LIMIT.from)))).toFixed(2) + '%';
   tlScrub.style.setProperty('--p-obs', at(LAST_OBS_YEAR));
   tlScrub.style.setProperty('--p-front', at(FUT.frontier));
 }
@@ -819,7 +850,10 @@ setInterval(() => {
   if (FUT.playing) {
     setYear(FUT.year + FUT.speed * dt);
     advanceFrontier(FUT.year);
-    if (FUT.year >= TL_END) setPlaying(false);
+    if (FUT.year >= LIMIT.to) {
+      setPlaying(false);
+      if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.playEnded();   // 탐구 단계의 '재생 후 기록'
+    }
   }
   if (!FUT.dirty) return;
   FUT.dirty = false;
@@ -827,6 +861,43 @@ setInterval(() => {
   apply3D(sceneFuture, h);
   apply3D(sceneNature, sampleAt(FUT.nature, FUT.year));
 }, FUT_TICK_MS);
+
+// ── 자유 조작 상태 저장·복원 (2차 개편 E) ─────────────────────────────
+// 탐구 모드를 켜면 지금 상태를 저장해 두고, 끄면 그대로 되돌린다(시나리오·레버·재생 위치·전선·토글·팝오버).
+// setPreset을 거치지 않고 직접 넣는다 - setPreset은 '이전 선택' 선을 바꾸기 때문이다.
+function futSnapshot() {
+  const open = [...document.querySelectorAll('#futCharts .fut-pop')].find(p => !p.hidden);
+  return {
+    preset: FUT.preset, levers: { ...FUT.levers }, year: FUT.year, frontier: FUT.frontier, speed: FUT.speed,
+    showNature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, popover: open ? open.id : null,
+    prev: { run: PREV.run, label: PREV.label }, leverPanel: !$('fcLevers').hidden,
+  };
+}
+function futRestore(s) {
+  setPlaying(false);
+  FUT.preset = s.preset;
+  FUT.levers = { ...s.levers };
+  leversToInputs(FUT.levers);
+  showLeverValues();
+  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
+  $('fcPresetDesc').textContent = PRESET_DESC[s.preset];
+  showLeverPanel(s.leverPanel);
+  PREV.run = s.prev.run; PREV.label = s.prev.label;
+  computeHuman();
+  refreshCharts();
+  cancelAnimationFrame(redrawAnim);
+  FUT.frontier = s.frontier;
+  VIEW.drawFrontier = s.frontier;
+  FUT.speed = s.speed;
+  $('tlSpeed').value = String(s.speed);
+  setYear(s.year);
+  if (FUT.showNature !== s.showNature) setNatureView(s.showNature);
+  if (VIEW.omega !== s.omega) setOmegaView(s.omega);
+  if (VIEW.validate !== s.validate) setValidateView(s.validate);
+  setPopover(s.popover);
+  updateBadge();
+  renderFuture();
+}
 
 // 탭을 열 때 main.js가 부른다
 function activateFutureTab() {
