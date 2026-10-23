@@ -70,7 +70,27 @@ const EarthVisual = (() => {
     };
   }
 
-  return { CO2_DOTS, co2DotCount, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
+  // ── 빙하 (D4) ─ 등록부 glacier_scale (연출) ───────────────────────────────
+  // 빙하의 길이(크기)를 기온 편차에 묶는다: 0 °C에서 1(기준), T_GONE °C에서 0. 실제 빙하 질량과 기온의 관계식이 아니다.
+  const GLACIER = { T_GONE: 5 };
+  const glacierFrac = T => clamp01(1 - (T || 0) / GLACIER.T_GONE);
+
+  // ── 산호 백화 (D4) ─ 등록부 coral_sr15 (IPCC SR1.5 SPM B.4.2, PDF 8쪽) ──────────────
+  // 원문: "Coral reefs, for example, are projected to decline by a further 70–90% at 1.5°C (high confidence)
+  //        with larger losses (>99%) at 2°C (very high confidence)."
+  // 'a further' = 보고서 당시 산호초에서 더 줄어든다는 뜻이다. 그래서 0 °C가 아니라 '보고서 무렵의 온난화'를 100 %로 둔다:
+  //   T_NOW = 1.09 °C (AR6 WG1 SPM A.1.2, PDF 5쪽: 2011–2020년이 1850–1900년보다 1.09 °C 높음)
+  //   1.5 °C → 남는 비율 10~30 %의 가운데 20 %,  2 °C → 1 % (99 % 넘게 손실), 2 °C 위는 2 °C 값 유지.
+  //   사이는 선형 보간. T_NOW를 0으로 바꾸면 지시서 원안(0 °C → 1.5 °C → 2 °C 보간)이 된다.
+  const CORAL = { T_NOW: 1.09, T15: 1.5, H15: 0.2, T20: 2.0, H20: 0.01 };
+  function coralHealthy(T) {
+    if (T <= CORAL.T_NOW) return 1;
+    if (T <= CORAL.T15) return 1 + (CORAL.H15 - 1) * (T - CORAL.T_NOW) / (CORAL.T15 - CORAL.T_NOW);
+    if (T <= CORAL.T20) return CORAL.H15 + (CORAL.H20 - CORAL.H15) * (T - CORAL.T15) / (CORAL.T20 - CORAL.T15);
+    return CORAL.H20;
+  }
+
+  return { CO2_DOTS, co2DotCount, GLACIER, glacierFrac, CORAL, coralHealthy, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
 })();
 
 if (typeof module !== 'undefined') module.exports = { EarthVisual };

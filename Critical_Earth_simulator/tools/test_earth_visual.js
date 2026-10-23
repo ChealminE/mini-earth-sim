@@ -60,5 +60,18 @@ check('CO₂ 점: 상한에서 멈춤', V.co2DotCount(5000) === V.CO2_DOTS.MAX);
   check('자연 지구: 누적 0 → 도시 규모 0', RUNS.nature.every(o => V.cityLevel(o.cumFossilMax) === 0));
 }
 
+// ── D4 빙하·산호 ──
+check('빙하: 0 °C 기준 1, 기온이 오르면 줄어듦', V.glacierFrac(0) === 1 && V.glacierFrac(1) < 1 && V.glacierFrac(2.5) < V.glacierFrac(1) && V.glacierFrac(9) === 0);
+check('산호: 보고서 무렵(1.09 °C)까지 100 %', V.coralHealthy(0) === 1 && V.coralHealthy(1.09) === 1);
+check('산호: 1.5 °C 20 % (SR1.5 추가 70~90 % 감소의 가운데)', Math.abs(V.coralHealthy(1.5) - 0.2) < 1e-12);
+check('산호: 2 °C 1 % (99 % 넘게 손실), 그 위는 유지', Math.abs(V.coralHealthy(2) - 0.01) < 1e-12 && V.coralHealthy(4) === 0.01);
+{
+  let mono = true;
+  for (let T = 0; T <= 3; T += 0.01) if (V.coralHealthy(T + 0.01) > V.coralHealthy(T) + 1e-12) mono = false;
+  check('산호: 기온에 단조감소', mono);
+  const row = p => [2023, 2100, 2200].map(y => `${y} ${(100 * V.coralHealthy(at(RUNS[p], y).T)).toFixed(0)}%`).join(' ');
+  console.log(`      산호 건강 비율  현재 정책: ${row('ssp245')} | 2 °C: ${row('ssp126')} | 1.5 °C: ${row('ssp119')} | 자연: ${row('nature')}`);
+}
+
 console.log(fails ? `\n${fails}개 실패` : '\n전부 통과');
 process.exit(fails ? 1 : 0);

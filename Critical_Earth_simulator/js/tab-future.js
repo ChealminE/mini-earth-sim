@@ -519,16 +519,13 @@ $('recCsv').addEventListener('click', () => {
 // ── 3D ────────────────────────────────────────────────────────────────
 // 기존 매핑 상수(CO2_MIN/MAX, PH_MIN/MAX)를 그대로 쓴다. CO2_MAX(1000)는 1인칭과 공유하므로
 // 바꾸지 않는다 - 1000 ppm을 넘는 구간은 3D 효과만 포화된다(그래프는 그대로 그린다).
-// 빙하는 기온 편차 T로 줄인다 (T = 5 °C에서 최대 축소).
+// 빙하·산호·조개·도시는 common.js setEarthVisual → applyState가 엔진 값으로 정한다(2차 개편 D, js/earth-visual.js).
 // CO₂는 무색이라 뚜껑·안개 색에 묶지 않는다(피드백 2번). 종이 탭 씬은 applyState가 [CO₂ 보기] 점 구름으로만 보인다(2차 개편 D2).
-const ICE_MELT_T = 5;
 function apply3D(S, s) {
   if (S.dormant) return;
   S.state.co2 = s.ppm;
-  S.state.ph = s.pH;
-  S.state.iceMelt = Math.min(1, Math.max(0, s.T / ICE_MELT_T));
   if (S === sceneFuture) applyLevers3D(S, s);
-  else S.state.treeFrac = 1;            // 자연 지구: 벌채가 없으니 나무가 다 있다
+  else { setEarthVisual(S, s, null); S.state.treeFrac = 1; }   // 자연 지구: 도시 없음, 벌채가 없으니 나무가 다 있다
   applyState(S);
 }
 

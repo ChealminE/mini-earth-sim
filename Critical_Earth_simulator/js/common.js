@@ -331,6 +331,10 @@ function applyCity(S, c) {
 // 현재 실태 탭(마지막 역사 연도)과 미래 예측 탭(재생 연도)이 같이 쓴다. soc = { ev, renew, nuclear, removal } (0~1)
 function setEarthVisual(S, s, soc) {
   const st = S.state, fossil = s.fossil || 0;
+  st.T = s.T;          // 기온 편차 → 빙하(연출)·산호(SR1.5)
+  st.omega = s.omega;  // 아라고나이트 포화도 → 조개 껍데기 (D5)
+  st.ph = s.pH;        // [지시약으로 보기] (D5)
+  if (!soc) return;    // 자연 지구: 도시가 없다
   st.ev = 100 * soc.ev;
   st.renew = soc.renew;
   st.nuclear = soc.nuclear;
@@ -338,6 +342,36 @@ function setEarthVisual(S, s, soc) {
   const level = EarthVisual.cityLevel(s.cumFossilMax || 0);
   st.city = { level, stacks: EarthVisual.stackCount(fossil), stackLevel: EarthVisual.stackLevel(fossil),
               cars: EarthVisual.carFrac(level), ev: soc.ev };
+}
+
+// 종이 탭의 바다 (2차 개편 D4·D5). 바다 색은 자연색으로 고정한다 - pH에 따라 물색을 바꾸던 예전 표현은
+// "산성화되면 바다 색이 변한다"는 오개념을 만든다. 기온 → 빙하·산호, Ω → 조개 껍데기, pH → [지시약으로 보기]에서만 색.
+const SEA_BODY = new THREE.Color(0x1f6d8a), SEA_SURFACE = new THREE.Color(0x2f84a8);
+const CORAL_BLEACHED = new THREE.Color(0xf4f1ea);
+function applyOceanPaper(S) {
+  const st = S.state;
+  S.waterBody.material.color.copy(SEA_BODY);
+  S.waterBody.material.opacity = 0.32;         // 바닥의 산호·조개가 비쳐 보이게 예전(0.82~0.98)보다 투명하게
+  S.waterBody.material.roughness = 0.15;
+  S.waveMat.color.copy(SEA_SURFACE);
+  S.waveMat.opacity = 0.45;
+  S.waveMat.transmission = 0.15;
+  S.waveMat.roughness = 0.1;
+  S.waveMat.clearcoat = 0.9;
+
+  // 빙하 (연출): 모서리 기준으로 길이 ∝ glacierFrac. 떠 있는 얼음 조각도 같은 비율
+  const f = EarthVisual.glacierFrac(st.T);
+  S.glacier.visible = f > 0.02;
+  S.glacier.scale.set(f, Math.sqrt(f), f);      // 높이는 덜 줄여 마지막까지 '빙하'로 읽히게
+  S.iceMeshes.forEach(o => { o.mesh.scale.setScalar(Math.max(0.01, f)); o.mesh.visible = f > 0.02; o.shrinkY = -(1 - f) * 0.04; });
+
+  // 산호 (IPCC SR1.5 B.4.2): 건강한 군락 수가 바뀔 때만 색을 다시 칠한다
+  const C = S.coral, k = Math.round(EarthVisual.coralHealthy(st.T || 0) * C.colonies.length);
+  if (k !== C.healthy) {
+    C.colonies.forEach((c, i) => c.mesh.setColorAt(c.idx, i < k ? c.color : CORAL_BLEACHED));
+    C.meshes.forEach(m => { m.instanceColor.needsUpdate = true; });
+    C.healthy = k;
+  }
 }
 
 // 3D 보기 토글 (2차 개편 D, 종이 탭 씬에만 적용). 탭·지구(인간활동/자연)를 바꿔도 같은 보기를 유지하도록 전역 하나로 둔다.
@@ -728,6 +762,63 @@ const iceMeshes = [];
   iceMeshes.push({ mesh: ice, baseY: ice.position.y, shrinkY: 0 });
 });
 
+// ── 종이 탭(2차 개편 D4): 빙하 · 산호 ──
+// 빙하: 예전 얼음 조각 4개(지름 0.1 남짓)는 줄어드는 게 거의 안 보였다. 바다 구역 뒤쪽 왼편 모서리에 빙하 덩어리를 두고
+// 그 모서리를 기준으로 줄인다(EarthVisual.glacierFrac, 연출). 덩어리 여러 개를 한 지오메트리로 합쳐 드로우콜 1번.
+let glacier = null, coral = null;
+if (PAPER) {
+  const rnd = seededRandom(1850);
+  const parts = [];
+  for (let i = 0; i < 11; i++) {
+    const u = rnd(), v = rnd();
+    const x = u * 0.75, z = v * 0.65;
+    const near = 1 - Math.min(1, Math.hypot(u, v) / 1.2);          // 모서리에 가까울수록 두껍다
+    const r = 0.1 + 0.1 * near + rnd() * 0.04;
+    const g = rnd() < 0.5 ? new THREE.DodecahedronGeometry(r, 0) : new THREE.IcosahedronGeometry(r, 0);
+    parts.push([g, new THREE.Matrix4().compose(new THREE.Vector3(x, 0.06 + 0.22 * near, z),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(rnd(), rnd() * 3, rnd())), new THREE.Vector3(1.3, 0.8 + near * 0.6, 1.1))]);
+  }
+  glacier = new THREE.Mesh(mergeGeos(parts), new THREE.MeshStandardMaterial({ color: 0xe6f2f8, roughness: 0.35, flatShading: true }));
+  glacier.position.set(-waveW / 2 + 0.03, OCEAN_BASE, -waveD / 2 + 0.03);   // 뒤쪽 왼편 모서리 = 줄어드는 기준점
+  glacier.castShadow = true;
+  oceanGroup.add(glacier);
+
+  // 산호: 바다 바닥 앞쪽에 가지 산호·둥근(뇌) 산호 군락. 인스턴스 색으로 건강(분홍·주황·보라·노랑) / 백화(흰색)를 나눈다.
+  // 건강한 군락 수 = 전체 × EarthVisual.coralHealthy(T) (IPCC SR1.5 B.4.2). 순서를 섞어 두어 백화가 한쪽에 몰리지 않는다.
+  const floorY = (x, z) => OCEAN_BASE + 0.001 + terrainNoise(x, -z, OCEAN_TERRAIN_AMP, OCEAN_TERRAIN_SEED);
+  const branch = [];
+  for (let k = 0; k < 6; k++) {
+    const a = k / 6 * Math.PI * 2, tilt = 0.25 + rnd() * 0.35, len = 0.085 + rnd() * 0.04;
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * 0.012, len / 2 * Math.cos(tilt), Math.sin(a) * 0.012),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(a) * tilt, 0, -Math.cos(a) * tilt)), new THREE.Vector3(1, 1, 1));
+    branch.push([new THREE.CylinderGeometry(0.008, 0.013, len, 5), m]);
+  }
+  const branchGeo = mergeGeos(branch);
+  const brainGeo = new THREE.SphereGeometry(0.05, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+  const spots = [];
+  for (let i = 0; i < 40 && spots.length < 30; i++) {
+    const x = -0.8 + rnd() * 1.65, z = 0.1 + rnd() * 1.2;
+    if (spots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.12)) continue;
+    spots.push([x, z]);
+  }
+  const nBranch = Math.ceil(spots.length * 0.6);
+  const coralMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const branches = new THREE.InstancedMesh(branchGeo, coralMat, nBranch);
+  const brains = new THREE.InstancedMesh(brainGeo, coralMat, spots.length - nBranch);
+  const d = new THREE.Object3D();
+  spots.forEach(([x, z], i) => {
+    const s = 0.8 + rnd() * 0.6;
+    d.position.set(x, floorY(x, z), z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(s, s * (i < nBranch ? 1 : 0.7), s); d.updateMatrix();
+    if (i < nBranch) branches.setMatrixAt(i, d.matrix); else brains.setMatrixAt(i - nBranch, d.matrix);
+  });
+  const HEALTHY = [0xe0705a, 0xef9a3c, 0xa65aa8, 0xe2bd45, 0xd9566e].map(h => new THREE.Color(h));
+  // 군락 하나 = (메시, 번호, 건강할 때 색). 순서를 섞어 '앞에서부터 k개 건강'이 공간적으로 고르게 퍼지게
+  const colonies = spots.map((_, i) => ({ mesh: i < nBranch ? branches : brains, idx: i < nBranch ? i : i - nBranch, color: HEALTHY[i % HEALTHY.length] }));
+  for (let i = colonies.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [colonies[i], colonies[j]] = [colonies[j], colonies[i]]; }
+  oceanGroup.add(branches, brains);
+  coral = { colonies, meshes: [branches, brains], healthy: -1 };
+}
+
 // --- 습지·숲 ---
 const forestGroup = new THREE.Group();
 box.add(forestGroup);
@@ -1079,7 +1170,7 @@ if (city) {
 }
 
 return {
-  paper: PAPER, city, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, glacier, coral, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -1146,6 +1237,9 @@ function applyState(S) {
     S.hazeMat.opacity = 0.04 + intensity * 0.18;
   }
 
+  if (S.paper) {
+    applyOceanPaper(S);
+  } else {
   // 실측 pH → 해양 산성화 시각화: 낮을수록 물이 탁하고 어두운 색으로, 투명도(transmission)도 낮아짐
   const phIntensity = Math.min(1, Math.max(0, (PH_MAX - S.state.ph) / (PH_MAX - PH_MIN)));
   S.waterBody.material.color.lerpColors(S.WATER_CLEAR, S.WATER_MURKY, phIntensity);
@@ -1167,6 +1261,7 @@ function applyState(S) {
     // 실제 y좌표는 매 프레임 animate()에서 shrinkY + 파도 높이를 합쳐 계산하므로 여기선 오프셋만 저장
     o.shrinkY = -(1 - shrink) * 0.1;
   });
+  }   // 직접 실험 탭 바다·빙하 끝
 
   // 실측 습도 → 응결 물방울 농도·낙하 속도 (역시 co2 강도와 더 강한 쪽 반영)
   const humIntensity = Math.min(1, Math.max(0, (S.state.hum - HUM_MIN) / (HUM_MAX - HUM_MIN)));
