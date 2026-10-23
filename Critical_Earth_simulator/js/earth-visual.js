@@ -90,7 +90,21 @@ const EarthVisual = (() => {
     return CORAL.H20;
   }
 
-  return { CO2_DOTS, co2DotCount, GLACIER, glacierFrac, CORAL, coralHealthy, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
+  // ── 조개·익족류 껍데기 (D5) ─ 등록부 shell_omega(Ω = 1 경계, param) · shell_fade(Ω > 1의 옅어짐, 연출) ──
+  //   Ω ≥ 1 : 껍데기는 온전하다. Ω가 산업화 이전 값(OMEGA_REF)에서 1로 내려갈수록 색만 조금씩 옅게 (fade 0 → 1, 연출)
+  //   Ω < 1 : 열역학적으로 아라고나이트가 녹는 조건(Ω = [Ca²⁺][CO₃²⁻]/Ksp). 반투명·구멍 (dissolve 0 → 1, Ω = 0.5에서 최대)
+  // 엔진의 전 지구 평균 표층 Ω는 현재 정책 2200년에도 약 2.4라 1 아래로 내려가지 않는다. 억지로 녹이지 않는다 —
+  // 차가운 극지 바다는 Ω가 더 낮다는 설명을 범례 ⓘ(shell_omega)로 단다.
+  const SHELL = { OMEGA_REF: 3.66, DISSOLVE_SPAN: 0.5 };   // OMEGA_REF = 엔진 1750년(자연 지구) 표층 Ω
+  function shellState(omega) {
+    const w = omega == null ? SHELL.OMEGA_REF : omega;
+    return {
+      fade: clamp01((SHELL.OMEGA_REF - w) / (SHELL.OMEGA_REF - 1)),
+      dissolve: clamp01((1 - w) / SHELL.DISSOLVE_SPAN),
+    };
+  }
+
+  return { CO2_DOTS, co2DotCount, GLACIER, glacierFrac, CORAL, coralHealthy, SHELL, shellState, CITY, cityLevel, stackLevel, stackCount, carFrac, annotateCumFossil, presetSociety, clamp01 };
 })();
 
 if (typeof module !== 'undefined') module.exports = { EarthVisual };

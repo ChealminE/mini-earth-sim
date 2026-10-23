@@ -73,5 +73,15 @@ check('산호: 2 °C 1 % (99 % 넘게 손실), 그 위는 유지', Math.abs(V.co
   console.log(`      산호 건강 비율  현재 정책: ${row('ssp245')} | 2 °C: ${row('ssp126')} | 1.5 °C: ${row('ssp119')} | 자연: ${row('nature')}`);
 }
 
+// ── D5 조개 껍데기 ──
+{
+  const omegaMin = Math.min(...['ssp245', 'ssp126', 'ssp119'].flatMap(p => RUNS[p].map(o => o.omega)));
+  check('조개: 자연 지구 1750년 Ω = OMEGA_REF → 옅어짐 0', Math.abs(at(RUNS.nature, 1750).omega - V.SHELL.OMEGA_REF) < 0.01 && V.shellState(at(RUNS.nature, 1750).omega).fade < 0.01,
+    `Ω ${at(RUNS.nature, 1750).omega.toFixed(3)}`);
+  check('조개: Ω ≥ 1이면 녹지 않음 (경계는 Ω = 1)', V.shellState(1).dissolve === 0 && V.shellState(0.99).dissolve > 0 && V.shellState(0.5).dissolve === 1);
+  check('조개: SSP 3개 전 구간 Ω > 1 → 억지로 녹이지 않음', omegaMin > 1 && V.shellState(omegaMin).dissolve === 0, `최소 Ω ${omegaMin.toFixed(2)}`);
+  console.log(`      현재 정책 껍데기 옅어짐 2023 ${V.shellState(at(RUNS.ssp245, 2023).omega).fade.toFixed(2)} · 2100 ${V.shellState(at(RUNS.ssp245, 2100).omega).fade.toFixed(2)} · 2200 ${V.shellState(at(RUNS.ssp245, 2200).omega).fade.toFixed(2)}`);
+}
+
 console.log(fails ? `\n${fails}개 실패` : '\n전부 통과');
 process.exit(fails ? 1 : 0);

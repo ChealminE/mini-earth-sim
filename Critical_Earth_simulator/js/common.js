@@ -154,18 +154,22 @@ function seededRandom(seed) {
 }
 // 여러 지오메트리를 하나로 합친다(위치·법선만). 자동차처럼 부품이 여러 개인 모형을 InstancedMesh 하나로 그리려고
 // 쓴다 - three.js 코어(r160)에는 BufferGeometryUtils.mergeGeometries가 없다(예제 모듈이라 전역 스크립트 구조에서 못 씀).
+// 모든 부품에 uv가 있으면 uv도 합친다(조개 껍데기의 구멍 무늬 alphaMap에 필요).
 function mergeGeos(parts) {
-  const pos = [], nor = [];
+  const pos = [], nor = [], uv = [];
+  const withUv = parts.every(([g]) => g.attributes.uv);
   for (const [g, m] of parts) {
     const ng = g.index ? g.toNonIndexed() : g.clone();
     if (m) ng.applyMatrix4(m);
     if (!ng.attributes.normal) ng.computeVertexNormals();
     pos.push(...ng.attributes.position.array);
     nor.push(...ng.attributes.normal.array);
+    if (withUv) uv.push(...ng.attributes.uv.array);
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  if (withUv) out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   return out;
 }
 const mat4 = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(
@@ -348,13 +352,29 @@ function setEarthVisual(S, s, soc) {
 // "산성화되면 바다 색이 변한다"는 오개념을 만든다. 기온 → 빙하·산호, Ω → 조개 껍데기, pH → [지시약으로 보기]에서만 색.
 const SEA_BODY = new THREE.Color(0x1f6d8a), SEA_SURFACE = new THREE.Color(0x2f84a8);
 const CORAL_BLEACHED = new THREE.Color(0xf4f1ea);
+const SHELL_INTACT = new THREE.Color(0xd9822b), SHELL_PALE = new THREE.Color(0xf3ece0);
+// 껍데기 구멍 무늬: 흰 바탕에 어두운 얼룩. alphaTest를 올릴수록 어두운 얼룩부터 투명해져 구멍이 커진다
+let _holeTex = null;
+function holeTexture() {
+  if (_holeTex) return _holeTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), rnd = seededRandom(1983);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 40; i++) {
+    const v = Math.floor(40 + rnd() * 150);
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.beginPath(); g.arc(rnd() * 64, rnd() * 64, 2 + rnd() * 6, 0, Math.PI * 2); g.fill();
+  }
+  _holeTex = new THREE.CanvasTexture(c);
+  return _holeTex;
+}
 function applyOceanPaper(S) {
   const st = S.state;
   S.waterBody.material.color.copy(SEA_BODY);
-  S.waterBody.material.opacity = 0.32;         // 바닥의 산호·조개가 비쳐 보이게 예전(0.82~0.98)보다 투명하게
+  S.waterBody.material.opacity = 0.24;         // 바닥의 산호·조개가 비쳐 보이게 예전(0.82~0.98)보다 투명하게
   S.waterBody.material.roughness = 0.15;
   S.waveMat.color.copy(SEA_SURFACE);
-  S.waveMat.opacity = 0.45;
+  S.waveMat.opacity = 0.36;
   S.waveMat.transmission = 0.15;
   S.waveMat.roughness = 0.1;
   S.waveMat.clearcoat = 0.9;
@@ -364,6 +384,14 @@ function applyOceanPaper(S) {
   S.glacier.visible = f > 0.02;
   S.glacier.scale.set(f, Math.sqrt(f), f);      // 높이는 덜 줄여 마지막까지 '빙하'로 읽히게
   S.iceMeshes.forEach(o => { o.mesh.scale.setScalar(Math.max(0.01, f)); o.mesh.visible = f > 0.02; o.shrinkY = -(1 - f) * 0.04; });
+
+  // 조개 껍데기 (Ω): Ω > 1 동안 색만 조금씩 옅게(연출), Ω < 1이면 분필처럼 하얗게 바래며 구멍이 커진다(아라고나이트가 녹는 조건).
+  // 반투명(transparent)으로 하면 깊이를 쓰는 바닷물 몸통(waterBody)에 가려 껍데기가 통째로 사라졌다 - 불투명 + alphaTest 구멍으로 한다.
+  const sh = EarthVisual.shellState(st.omega), m = S.shells.mat;
+  m.color.lerpColors(SHELL_INTACT, SHELL_PALE, Math.min(1, 0.7 * sh.fade + 0.3 * sh.dissolve));
+  const dissolving = sh.dissolve > 0;
+  if (dissolving !== S.shells.dissolving) { m.needsUpdate = true; S.shells.dissolving = dissolving; }   // alphaTest 0 ↔ 양수는 셰이더를 다시 만든다
+  m.alphaTest = dissolving ? 0.25 + 0.6 * sh.dissolve : 0;
 
   // 산호 (IPCC SR1.5 B.4.2): 건강한 군락 수가 바뀔 때만 색을 다시 칠한다
   const C = S.coral, k = Math.round(EarthVisual.coralHealthy(st.T || 0) * C.colonies.length);
@@ -765,7 +793,7 @@ const iceMeshes = [];
 // ── 종이 탭(2차 개편 D4): 빙하 · 산호 ──
 // 빙하: 예전 얼음 조각 4개(지름 0.1 남짓)는 줄어드는 게 거의 안 보였다. 바다 구역 뒤쪽 왼편 모서리에 빙하 덩어리를 두고
 // 그 모서리를 기준으로 줄인다(EarthVisual.glacierFrac, 연출). 덩어리 여러 개를 한 지오메트리로 합쳐 드로우콜 1번.
-let glacier = null, coral = null;
+let glacier = null, coral = null, shells = null;
 if (PAPER) {
   const rnd = seededRandom(1850);
   const parts = [];
@@ -817,6 +845,31 @@ if (PAPER) {
   for (let i = colonies.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [colonies[i], colonies[j]] = [colonies[j], colonies[i]]; }
   oceanGroup.add(branches, brains);
   coral = { colonies, meshes: [branches, brains], healthy: -1 };
+
+  // 조개(바닥)·익족류(물속에 떠 있는 작은 껍데기 생물): 껍데기 상태를 Ω에 묶는다 (EarthVisual.shellState, D5).
+  // 모든 개체가 같은 Ω(전 지구 평균)를 받으므로 재질 하나를 바꾼다. 구멍은 alphaMap(얼룩 무늬) + alphaTest로 낸다.
+  const shellMat = new THREE.MeshStandardMaterial({ color: SHELL_INTACT.clone(), roughness: 0.55, alphaMap: holeTexture(), side: THREE.DoubleSide });
+  // 조개: 경첩(x축)에서 V자로 벌어진 껍데기 두 장 - 둥근 뇌 산호와 모양으로 구별되게
+  const clamGeo = mergeGeos([0.45, -0.45].map(a => [new THREE.CircleGeometry(0.05, 12, 0, Math.PI), mat4(0, 0, 0, Math.PI / 2 - a, 0, 0)]));
+  const pteroGeo = new THREE.ConeGeometry(0.018, 0.05, 8, 1, true);
+  const clamSpots = [], pteroSpots = [];
+  while (clamSpots.length < 16) {
+    const x = -0.35 + rnd() * 1.2, z = -0.85 + rnd() * 0.9;
+    if (!clamSpots.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < 0.1)) clamSpots.push([x, z]);
+  }
+  for (let i = 0; i < 14; i++) pteroSpots.push([-0.7 + rnd() * 1.5, -0.6 + rnd() * 1.6]);
+  const clams = new THREE.InstancedMesh(clamGeo, shellMat, clamSpots.length);
+  const pteros = new THREE.InstancedMesh(pteroGeo, shellMat, pteroSpots.length);
+  clamSpots.forEach(([x, z], i) => {
+    d.position.set(x, floorY(x, z) + 0.004, z); d.rotation.set(0, rnd() * 6.28, 0); d.scale.set(1, 1, 1); d.updateMatrix();
+    clams.setMatrixAt(i, d.matrix);
+  });
+  pteroSpots.forEach(([x, z], i) => {
+    d.position.set(x, OCEAN_BASE + 0.03 + rnd() * 0.06, z); d.rotation.set(rnd() * 2, rnd() * 6.28, rnd() * 2); d.scale.set(1, 1, 1); d.updateMatrix();
+    pteros.setMatrixAt(i, d.matrix);
+  });
+  oceanGroup.add(clams, pteros);
+  shells = { mat: shellMat, dissolving: false };
 }
 
 // --- 습지·숲 ---
@@ -1170,7 +1223,7 @@ if (city) {
 }
 
 return {
-  paper: PAPER, city, glacier, coral, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
