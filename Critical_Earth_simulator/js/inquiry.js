@@ -88,7 +88,25 @@ const InquiryCore = (() => {
     return errs;
   }
 
-  return { CHART_IDS, PRESETS, ACTION_SPEC, stepOrder, validate };
+  // ── 탐구 기록 (E5) ──
+  // 저장한 응답(saveAs별 하나, 고쳐 쓰면 바뀜)과 record 줄을 시간 순서로 한 표에. 빈 글 응답은 뺀다.
+  const LOG_COLS = ['path', 'step', 'question', 'answer', 'year', 'value', 'time'];
+  function logRows(answers, records) {
+    return [...Object.values(answers).filter(r => String(r.answer).trim() !== ''), ...records]
+      .sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  }
+  // 시각은 ISO(UTC)로 저장하고, 내보낼 때는 수업한 곳의 시각으로 읽기 쉽게(2026-10-23 14:05:09)
+  function localTime(iso) {
+    const d = new Date(iso), p = n => String(n).padStart(2, '0');
+    if (isNaN(d)) return '';
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  function toCsv(rows) {
+    const esc = v => (/[",\r\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    return [LOG_COLS.join(','), ...rows.map(r => LOG_COLS.map(c => esc(c === 'time' ? localTime(r.time) : (r[c] == null ? '' : r[c]))).join(','))].join('\r\n');
+  }
+
+  return { CHART_IDS, PRESETS, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
 })();
 
 if (typeof module !== 'undefined') module.exports = InquiryCore;
@@ -143,6 +161,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       setCameraView(INQ.cam);
       INQ.snap = INQ.cam = null;
     }
+    save();
   }
 
   // 탐구를 시작할 때의 화면: 재생 멈춤, 예측 지움(2023), 보기 토글·팝오버 끔
@@ -160,6 +179,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // ── 경로 고르기 ──
   function showPicker() {
     INQ.pathId = null;
+    save();
     resetStepView();
     const box = el('inqPanel');
     box.innerHTML = `<h3 class="fc-h">탐구 <span>질문을 따라가며 알아보기</span></h3>
@@ -232,6 +252,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     }
     ctx.after.forEach(f => f());   // 다른 동작이 다 적용된 뒤에 보여야 하는 것 (예: 재생 결과 목록)
     renderFuture();
+    save();
   }
 
   function go(delta) {
@@ -246,7 +267,54 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     const step = curOrder()[INQ.idx];
     INQ.answers[saveAs] = { path: INQ.pathId, step: step.id, question: rec.question || step.question,
       answer: '', year: '', value: '', ...rec, time: new Date().toISOString() };
+    logChanged();
   }
+
+  // ── 탐구 기록: 기록 서랍 묶음 · CSV · 브라우저 저장 (E5) ──
+  // 저장소는 localStorage. file:// 로 연 단일 HTML 등에서 막히는 브라우저가 있어 실패해도 조용히 넘어간다
+  // (그 경우 새로 고치면 응답이 사라질 뿐 탐구는 그대로 된다).
+  const STORE_KEY = 'inquiry.v1';
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({ on: INQ.on, pathId: INQ.pathId, idx: INQ.idx, answers: INQ.answers, records: INQ.records }));
+    } catch (e) { /* 저장소를 못 쓰는 환경 */ }
+  }
+  function load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (!d) return null;
+      INQ.answers = d.answers || {};
+      INQ.records = d.records || [];
+      if (d.pathId && pathById(d.pathId)) { INQ.pathId = d.pathId; INQ.idx = d.idx || 0; }
+      return d;
+    } catch (e) { return null; }
+  }
+  let logTimer = 0;
+  function logChanged() {   // 글자를 칠 때마다 표를 다시 그리지 않게 0.3초 모아서
+    clearTimeout(logTimer);
+    logTimer = setTimeout(() => { renderLog(); save(); }, 300);
+  }
+  function renderLog() {
+    const rows = InquiryCore.logRows(INQ.answers, INQ.records);
+    el('recInq').hidden = rows.length === 0;
+    el('inqLogCount').textContent = rows.length;
+    el('inqLog').innerHTML = rows.map(r => `<tr><td>${esc(r.path)}</td><td>${esc(r.step)}</td><td>${esc(r.question)}</td>`
+      + `<td>${esc(r.answer)}</td><td>${esc(r.year)}</td><td>${esc(r.value)}</td></tr>`).join('');
+  }
+  el('inqCsv').addEventListener('click', () => {
+    const rows = InquiryCore.logRows(INQ.answers, INQ.records);
+    if (!rows.length) return;
+    // BOM: 엑셀에서 한글이 깨지지 않게 (측정 기록 CSV와 같은 방식)
+    downloadBlob(new Blob(['\ufeff' + InquiryCore.toCsv(rows)], { type: 'text/csv;charset=utf-8;' }), `미래예측_탐구기록_${fileStamp()}.csv`);
+  });
+  el('inqClear').addEventListener('click', () => {
+    if (!confirm('탐구 기록(고른 점·쓴 글·고른 보기·기록 줄)을 모두 지울까요?')) return;
+    INQ.answers = {};
+    INQ.records = [];
+    renderLog();
+    save();
+    if (INQ.on && INQ.pathId) showStep();
+  });
 
   // 단계 패널에 넣는 작은 안내 줄 (출처 ⓘ 포함 가능)
   function widget(ctx, html, cls = '') {
@@ -411,6 +479,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       year: y, value: Number(h[vk.key].toFixed(4)), valueKey: vk.key, valueName: vk.name, preset: nature ? 'nature' : FUT.preset, T: h.T,
       time: new Date().toISOString() });
     showRecordNote();
+    logChanged();
   }
   function showRecordNote() {
     const w = el('inqRecNote');
@@ -608,6 +677,11 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     else if (b.dataset.inq === 'prev') go(-1);
     else if (b.dataset.inq === 'next') go(1);
   });
+
+  // 새로 고친 뒤: 저장된 응답을 되살리고, 탐구 중이었으면 그 단계로 다시 들어간다
+  const saved = load();
+  renderLog();
+  if (saved && saved.on) setMode(true);
 
   return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();

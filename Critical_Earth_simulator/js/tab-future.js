@@ -520,13 +520,18 @@ $('recClear').addEventListener('click', () => {
   $('recLog').innerHTML = '';
   setRecCount();
 });
+// 내보낸 파일 이름에 날짜·시각을 넣는다(수업 시간마다 같은 이름으로 덮어쓰지 않게): 20261023_1405
+function fileStamp(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
 $('recCsv').addEventListener('click', () => {
   if (!measRecords.length) return;
   const cols = ['year', 'scenario', 'earth', ...MEAS.map(m => m.key)];
   const esc = v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
   const csv = [cols.join(','), ...measRecords.map(r => cols.map(c => esc(r[c])).join(','))].join('\r\n');
   // BOM: 엑셀에서 한글이 깨지지 않게 (직접 실험 탭 CSV와 같은 방식, downloadBlob은 js/xlsx-lite.js)
-  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), '미래예측_측정기록.csv');
+  downloadBlob(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `미래예측_측정기록_${fileStamp()}.csv`);
 });
 
 // ── 3D ────────────────────────────────────────────────────────────────

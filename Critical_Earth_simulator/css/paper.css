@@ -441,3 +441,8 @@ body.paper .ic-missing { margin: 0; font-size: var(--fs-1); color: var(--warn); 
 body.paper .ic-sea { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--rule); border-radius: var(--radius); font-size: var(--fs-2); color: var(--ink); }
 body.paper .ic-sea ul { display: flex; flex-wrap: wrap; gap: 2px var(--sp-4); margin: var(--sp-1) 0; }
 body.paper .ic-sea li.hit b { color: var(--data-temp); }
+/* 기록 서랍의 탐구 기록 묶음 (E5): 측정 기록 표 아래에 같은 모양으로 */
+body.paper .rec-inq { display: flex; flex-direction: column; gap: var(--sp-2); flex: 1; min-height: 0; padding-top: var(--sp-2); border-top: 2px solid var(--ctl-rec); }
+body.paper .rec-inq[hidden] { display: none; }
+body.paper .rec-inq td:nth-child(-n+4), body.paper .rec-inq th:nth-child(-n+4) { text-align: left; }
+body.paper .rec-inq td:nth-child(3), body.paper .rec-inq td:nth-child(4) { white-space: normal; min-width: 8em; }
