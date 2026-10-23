@@ -149,12 +149,16 @@ const LAST_EMIS = ED.emissions.startYear + ED.emissions.fossil.length - 1;
   const cm = readClean('co2_cmip6_hist.csv').filter(r => r.year >= 1850 && r.year <= 1978);
   let mx = 0, at = 0;
   for (const r of cm) { const d = H[r.year].ppm - r.ppm; if (Math.abs(d) > Math.abs(mx)) { mx = d; at = r.year; } }
-  // 2026-10 첫 실행에서 실패: 최대 −10.57 ppm(1941년), 1937~1943년이 10 ppm을 넘는다. 기준 옆 설명의 '6~8 ppm'은
-  // 1900(−6.67)·1950(−8.12)년 값과 같고, CMIP6(Law Dome)의 1930~40년대 빠른 상승을 이 모형이 따라가지 못해 생긴 차이다.
-  // 지시서대로 파라미터·기준을 바꾸지 않고 실패로 둔다(사람이 기준을 정할 때까지 C3·C4는 진행하지 않음).
+  // 기준 12 ppm (2026-10-23 사람 결정으로 10 → 12 완화). 처음 10 ppm은 1900(−6.67)·1950(−8.12)년 두 점만 보고 정해서
+  // CMIP6(Law Dome)의 1930~40년대 급상승을 고려하지 못했다(1941년 −10.57, 1937~1943년이 10 ppm 초과).
+  // 과거 구간 그래프는 모형이 아니라 관측(CMIP6·NOAA)을 기본으로 보여 주므로 학습 내용에 미치는 영향이 작다.
+  // PARAMS는 그대로다. 원인 추정은 등록부 carbon_params note.
+  const CMIP6_MAX_ERR = 12;
   const over = cm.filter(r => Math.abs(H[r.year].ppm - r.ppm) > 10).map(r => r.year);
-  check('A4 CO₂ vs CMIP6 역사 농도 1850~1978 최대 오차 ≤ 10 ppm', Math.abs(mx) <= 10,
-    `최대 ${mx.toFixed(2)} ppm (${at}년)` + (over.length ? `, 10 ppm 초과 ${over[0]}~${over[over.length - 1]} (${over.length}개 해)` : ''));
+  const rmseCm = Math.sqrt(mean(cm.map(r => (H[r.year].ppm - r.ppm) ** 2)));
+  check(`A4 CO₂ vs CMIP6 역사 농도 1850~1978 최대 오차 ≤ ${CMIP6_MAX_ERR} ppm`, Math.abs(mx) <= CMIP6_MAX_ERR,
+    `최대 ${mx.toFixed(2)} ppm (${at}년), RMSE ${rmseCm.toFixed(2)} ppm, 평균 편차 ${mean(cm.map(r => H[r.year].ppm - r.ppm)).toFixed(2)} ppm`
+    + (over.length ? `, 10 ppm 초과 ${over[0]}~${over[over.length - 1]} (${over.length}개 해)` : ''));
   report('  CO₂ 모형−CMIP6 (ppm)', [1850, 1900, 1950, 1978].map(y => `${y} ${(H[y].ppm - cm.find(r => r.year === y).ppm).toFixed(2)}`).join(' / '));
   // (a-3) 기온 vs HadCRUT5 2014~2023 평균
   const hc = Object.fromEntries(readClean('temp_hadcrut5_annual.csv').map(r => [r.year, r.anom]));
