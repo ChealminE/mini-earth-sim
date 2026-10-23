@@ -174,6 +174,51 @@ const INQUIRY_PATHS = [
         ] },
     ] },
 
+  // ── 경로 C — 지구의 대기 기온은 어떻게 변하고 있을까? (랩미팅 학습 과정 3) ──
+  { id: 'C', title: '지구의 대기 기온은 어떻게 변하고 있을까?', summary: '관측한 기온을 보고, 시나리오별 미래 기온과 그 영향을 비교합니다',
+    steps: [
+      { id: 'C1', title: '기온은 어떻게 변하고 있을까?',
+        question: '기온은 어떻게 변하고 있나요?',
+        text: '검은 선은 1850년부터 관측한 지구 평균 기온 편차(산업화 이전 1850~1900년 대비)이고, 회색 띠는 관측의 불확도(95 %)입니다. 대기 CO₂를 겹쳤습니다(오른쪽 축).',
+        hint: '해마다 오르내림이 있지만, 수십 년 단위로 보면 어느 쪽으로 가나요? CO₂와 함께 보세요.',
+        actions: [
+          { do: 'showCharts', charts: ['T'] },
+          PAST_ONLY,
+          { do: 'overlay', chart: 'T', series: 'co2' },
+          { do: 'askText', saveAs: 'C_change' },
+        ] },
+      { id: 'C2', title: 'CO₂가 더 높아지면?',
+        question: 'CO₂가 더 높아지면 기온은 어떻게 될까요? 세 시나리오를 차례로 해 보세요.',
+        text: '시나리오를 고르면 2023년부터 2100년까지 재생됩니다. 2100년에 도착하면 그 값이 기록 서랍에 저장되어 비교 표가 쌓입니다.',
+        hint: '세 시나리오의 2100년 기온을 아래 목록에서 비교해 보세요. CO₂ 선(오른쪽 축)도 함께 보세요.',
+        actions: [
+          { do: 'showCharts', charts: ['T'] },
+          { do: 'timeRange', from: 1750, to: 2100 },
+          { do: 'overlay', chart: 'T', series: 'co2' },
+          { do: 'setScenario', wait: true },
+          { do: 'play', from: 2023, to: 2100, recordAtEnd: true, value: 'T' },
+        ] },
+      { id: 'C3', title: '기온이 오르면 우리 삶은?',
+        question: '지구 평균기온이 오르면 인류의 삶은 어떻게 될까요?',
+        text: '내가 재생해 본 시나리오들이 2100년에 닿은 기온에 가까운 영향 카드를 강조했습니다. 카드의 수치는 IPCC 보고서에서 가져왔습니다(ⓘ).',
+        hint: '같은 극한 고온이 10년에 몇 번 일어나는지, 기온 수준마다 비교해 보세요.',
+        actions: [
+          { do: 'showCharts', charts: ['T'] },
+          { do: 'timeRange', from: 1750, to: 2100 },
+          { do: 'impactCards', levels: 'seen' },
+          { do: 'askText', saveAs: 'C_life' },
+        ] },
+      { id: 'C4', title: '함께 생각해 보기',
+        question: '우리는 어떤 미래를 고를 수 있을까요?',
+        text: '친구들과 토론해 보고 생각을 정리하세요.',
+        actions: [
+          { do: 'showCharts', charts: ['T'] },
+          { do: 'timeRange', from: 1750, to: 2100 },
+          { do: 'askText', saveAs: 'C_discuss', prompt: '세 시나리오의 2100년 기온은 왜 달랐을까요?' },
+          { do: 'askText', saveAs: 'C_action', prompt: '기온 상승을 줄이려면 사회와 내가 무엇을 바꿀 수 있을까요?' },
+          { do: 'record', value: 'T' },
+        ] },
+    ] },
 ];
 
 // 사건 표지 (§4): 처음에는 숨기고 revealMarkers 로만 공개한다(학생이 먼저 판단하게). src = js/sources.js 키

@@ -549,6 +549,10 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       <div class="ic-head"><h3>기온이 오르면 — 기온 수준별 영향 <span class="readout">IPCC</span></h3>
         <button class="btn btn--view btn--sm" type="button" data-ic="close"><span data-icon="close"></span>닫기</button></div>
       <p class="ic-basis">${esc(D.basis)}</p>
+      ${D.seaLevel ? `<div class="ic-sea"><b>${esc(D.seaLevel.title)}</b>${srcButton(D.seaLevel.src)}
+        <ul>${InquiryCore.PRESETS.filter(p => D.seaLevel.rows[p]).map(p => `<li class="${seen.some(r => r.preset === p) ? 'hit' : ''}">
+          ${esc(PRESET_KO[p])}: <b>${esc(D.seaLevel.rows[p])}</b></li>`).join('')}</ul>
+        <span class="inq-sub">${esc(D.seaLevel.note)}</span></div>` : ''}
       <div class="ic-grid">${shown.map(c => `
         <section class="ic-card${focus && !tags.has(c.level) ? ' dim' : ''}${tags.has(c.level) ? ' hit' : ''}">
           <h4>${esc(c.title)}</h4>
@@ -557,10 +561,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
             <b class="ic-val">${esc(it.value)}</b><span class="ic-detail">${esc(it.detail)}</span></li>`).join('')}</ul>
         </section>`).join('')}</div>
       ${missing.map(t => `<p class="ic-missing">${esc(t)}</p>`).join('')}
-      ${D.seaLevel ? `<div class="ic-sea"><b>${esc(D.seaLevel.title)}</b>${srcButton(D.seaLevel.src)}
-        <ul>${InquiryCore.PRESETS.filter(p => D.seaLevel.rows[p]).map(p => `<li class="${seen.some(r => r.preset === p) ? 'hit' : ''}">
-          ${esc(PRESET_KO[p])}: <b>${esc(D.seaLevel.rows[p])}</b></li>`).join('')}</ul>
-        <span class="inq-sub">${esc(D.seaLevel.note)}</span></div>` : ''}`;
+`;
     Icons.fill(box);
     box.hidden = false;
   }
