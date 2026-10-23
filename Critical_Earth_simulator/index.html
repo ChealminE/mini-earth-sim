@@ -104,7 +104,7 @@
   <div id="tab-header-panel">
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
-    <div class="sub" id="tabHeaderDesc">1988~2023 전지구 연간 데이터 (Our World in Data: NOAA / Copernicus-ERA5 / 하와이 HOT-ALOHA / Global Carbon Project)</div>
+    <div class="sub" id="tabHeaderDesc"></div>
 
     <!-- 미래 예측 탭에서만 보임: 오른쪽(인간활동) 지구의 배출 조작 (js/tab-future.js) -->
     <div class="future-only fc" id="futureControls">
@@ -173,16 +173,17 @@
 
     <div class="tab-panel active" id="tab-current">
       <div class="stat-grid">
-        <div class="stat-box"><div class="label">CO₂ 농도 (2023)</div><div class="value">418.2 ppm</div><div class="delta">1988년 대비 +68.2ppm</div></div>
-        <div class="stat-box"><div class="label">기온편차 (2023)</div><div class="value temp">+0.84°C</div><div class="delta">1988년 대비 +1.21°C</div></div>
-        <div class="stat-box"><div class="label">해양 pH (2023)</div><div class="value ph">8.040</div><div class="delta">1989년 대비 -0.069</div></div>
-        <div class="stat-box"><div class="label">화석연료배출 (2023)</div><div class="value">38,094백만톤</div><div class="delta">1988년 대비 +16,175백만톤</div></div>
+        <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다 -->
+        <div class="stat-box"><div class="label" id="statCo2Label">CO₂ 농도</div><div class="value" id="statCo2">-</div><div class="delta" id="statCo2Delta"></div></div>
+        <div class="stat-box"><div class="label" id="statTempLabel">기온편차</div><div class="value temp" id="statTemp">-</div><div class="delta" id="statTempDelta"></div></div>
+        <div class="stat-box"><div class="label" id="statPhLabel">해양 pH</div><div class="value ph" id="statPh">-</div><div class="delta" id="statPhDelta"></div></div>
+        <div class="stat-box"><div class="label" id="statFossilLabel">화석연료배출</div><div class="value" id="statFossil">-</div><div class="delta" id="statFossilDelta"></div></div>
       </div>
       <div class="charts-2col">
-        <div class="chart-block"><div class="chart-title">CO₂농도 추이</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">기온편차 추이</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해양pH 추이</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">화석연료배출량 추이</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">대기 CO₂ 농도 (지구 평균)</div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비)</div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해양 pH (하와이 Station ALOHA)</div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">화석연료 배출량</div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
       </div>
     </div>
 

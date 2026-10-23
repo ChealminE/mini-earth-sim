@@ -106,10 +106,15 @@ function tlChart(id, datasets, scales) {
     plugins: [playheadPlugin],
   });
 }
-const obsCo2Points = EARTH_DATA.co2Noaa.ppm.map((v, i) => ({ x: EARTH_DATA.co2Noaa.startYear + i, y: v }));
+// 관측 CO2는 두 자료를 잇는다: 1750~1978은 얼음 코어 기반 재구성(CMIP6 역사 농도), 1979~는 NOAA 지구 평균.
+// 이음매(1978→1979)의 차이는 1.84 ppm으로 그해 증가량과 같은 크기다(겹치는 1979~2014 두 자료 차이 평균 −0.03 ppm).
+const toPoints = (d, key) => d[key].map((v, i) => ({ x: d.startYear + i, y: v }));
+const cmip6Points = toPoints(EARTH_DATA.co2Cmip6, 'ppm');
+const obsCo2Points = toPoints(EARTH_DATA.co2Noaa, 'ppm');
 const futChartCo2 = tlChart('futChartCo2', [
   lineDs('인간활동 지구', '#85B7EB'),
   lineDs('자연만 있는 지구', NATURE_COLOR, NATURE_STYLE),
+  { label: '얼음 코어 기반 재구성 (CMIP6)', data: cmip6Points, borderWidth: 1.2, pointRadius: 0, borderColor: '#b9bec6', backgroundColor: '#b9bec6' },
   { label: '관측 (NOAA 지구 평균)', data: obsCo2Points, showLine: false, pointRadius: 1.6, borderColor: '#e7e9ec', backgroundColor: '#e7e9ec' },
 ], { y: yAxis('ppm') });
 const futChartT = tlChart('futChartT', [
@@ -145,7 +150,7 @@ function refreshCharts() {
   const H = FUT.human, N = FUT.nature;
   futChartCo2.data.datasets[0].data = toXY(H, 'ppm');
   futChartCo2.data.datasets[1].data = toXY(N, 'ppm');
-  Object.assign(futChartCo2.options.scales.y, niceRange([...H.map(o => o.ppm), 278, ...EARTH_DATA.co2Noaa.ppm], 0.05, 40));
+  Object.assign(futChartCo2.options.scales.y, niceRange([...H.map(o => o.ppm), 278, ...EARTH_DATA.co2Cmip6.ppm, ...EARTH_DATA.co2Noaa.ppm], 0.05, 40));
   futChartT.data.datasets[0].data = toXY(H, 'T');
   futChartT.data.datasets[1].data = toXY(N, 'T');
   Object.assign(futChartT.options.scales.y, niceRange([...H.map(o => o.T), 0], 0.06, 0.5));

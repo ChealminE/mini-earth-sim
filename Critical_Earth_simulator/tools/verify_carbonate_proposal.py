@@ -48,11 +48,16 @@ for ppm in range(280, 1001):
     if d > dmax: dmax, where = d, ppm
 print(f"   최대 차이 {dmax:.5f} @ {where}ppm  ->  {'통과' if dmax <= 0.002 else '실패'}")
 
-print("\n■ 체크 2: HOT 관측 35점 RMSE (기존 0.007 유지되는가)")
-src = io.open('Critical_Earth_simulator/js/tab-current.js', encoding='utf-8').read()
-co2 = [float(x) for x in re.search(r'histCo2\s*=\s*\[(.*?)\]', src, re.S).group(1).split(',')]
-phs = [None if x.strip() == 'null' else float(x)
-       for x in re.search(r'histPh\s*=\s*\[(.*?)\]', src, re.S).group(1).split(',')]
+print("\n■ 체크 2: HOT 관측 연평균 RMSE (기존 0.007 유지되는가)")
+# 관측점은 정리 자료(tools/gen_earth_data.py 가 원본에서 만든 것)에서 읽는다.
+# 예전엔 js/tab-current.js의 histCo2/histPh 배열을 읽었으나 2차 개편에서 그 배열이 정리 자료로 바뀌었다.
+def _clean(name):
+    import csv
+    with io.open('Critical_Earth_simulator/data/' + name, encoding='utf-8') as f:
+        return {int(r['year']): r for r in csv.DictReader(l for l in f if not l.startswith('#'))}
+_gl, _hot = _clean('co2_noaa_gl_annual.csv'), _clean('ph_hot_annual.csv')
+co2 = [float(_gl[y]['ppm']) for y in sorted(_hot) if y in _gl]
+phs = [float(_hot[y]['ph']) for y in sorted(_hot) if y in _gl]
 pairs = [(c, p) for c, p in zip(co2, phs) if p is not None]
 def rmse(f):
     return math.sqrt(sum((f(c)-p)**2 for c, p in pairs)/len(pairs))
