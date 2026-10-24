@@ -30,10 +30,6 @@ body.paper #gl-container { background: var(--paper); border: 0; border-right: 1p
   aspect-ratio: auto; max-height: none; min-height: 0; }
 body.paper #hint { top: var(--sp-3); left: var(--sp-3); right: auto; bottom: auto; color: var(--ink-2); font-size: var(--fs-1);
   background: color-mix(in srgb, var(--paper) 86%, transparent); border: 1px solid var(--rule); line-height: 1.5; }
-body.paper #brightnessControl { left: var(--sp-3); bottom: var(--sp-3); color: var(--ctl-view); font-size: var(--fs-1); font-weight: 600;
-  background: color-mix(in srgb, var(--paper) 90%, transparent); border: 1.5px solid var(--ctl-view); border-radius: var(--radius);
-  padding: var(--sp-1) var(--sp-3); }
-body.paper #brightnessControl input[type="range"] { accent-color: var(--ctl-view); width: 130px; }
 
 /* ── 현재 실태 ───────────────────────────────────────────────────────────
    왼쪽 열 = 3D 모형 + 그 아래 요약 숫자 2×2, 오른쪽 열 = 그래프 2×2.
@@ -154,8 +150,6 @@ body.tab-future.paper #hint { left: auto; right: var(--sp-3); }
 .view3d { display: none; }
 body.paper .view3d { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
   position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 2; }
-/* 현재 실태 탭은 왼쪽 아래에 밝기 조절이 있다 - 그 위로 올린다 */
-body.tab-current.paper .view3d { bottom: calc(var(--sp-3) + 52px); }
 body.paper .view3d .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); }
 body.paper .view3d .btn[aria-pressed="true"] { background: var(--ctl-view-on); }
 
@@ -266,9 +260,7 @@ body.paper .tl-bar input[type=range] { accent-color: var(--ctl-time); }
 
 /* 레버 슬라이더는 시나리오·정책 영역색 (style.css .lv input 의 예전 초록을 덮는다) */
 body.paper .lv input[type=range] { accent-color: var(--ctl-scen); }
-/* 미래 예측 3D: 아래 가운데는 자연 지구 토글 자리라 밝기 조절을 오른쪽 위로 옮긴다.
-   조작 안내(#hint)는 같은 자리를 다투므로 이 탭에서는 숨긴다(끌어서 돌리기는 다른 탭과 같다). */
-body.tab-future.paper #brightnessControl { left: auto; right: var(--sp-3); top: var(--sp-3); bottom: auto; }
+/* 미래 예측 3D: 조작 안내(#hint)는 오른쪽 위로 옮겨 두었는데 그 자리는 예측 배지(#predBadge)·전환 막이 쓴다. 이 탭에서는 숨긴다(끌어서 돌리기는 다른 탭과 같다). */
 body.tab-future.paper #hint { display: none; }
 
 @media (max-height: 760px) {
