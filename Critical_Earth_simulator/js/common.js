@@ -318,6 +318,54 @@ function buildCityGrowth(group, base, stackTex) {
            last: { level: -1, stacks: -1, cars: -1, ev: -1 } };
 }
 
+// 종이 탭의 구름 (2차 F5): 예전 얼음 덩어리 구름은 빙하와 재질이 거의 같아 구름으로 읽히지 않았다.
+// 둥근 구 여러 개를 겹친 뭉게구름 몇 덩이를 InstancedMesh 하나(드로우콜 1)로 그리고, x로 천천히 흐르게 한다.
+// 변수와 묶이지 않은 장식이라 3D 범례에 넣지 않는다. 그림자는 끈다(움직이는 어두운 얼룩이 연기·오염으로 보일 수 있다).
+const CLOUD_PUFFS = [   // 덩이 하나의 구: [dx, dy, dz, r]. 가운데 큰 구 + 양옆·위 작은 구, 아래는 y를 눌러 납작하게
+  [0, 0, 0, 0.15], [0.15, -0.025, 0.02, 0.105], [-0.15, -0.025, -0.01, 0.11],
+  [0.06, 0.07, -0.02, 0.1], [-0.07, 0.055, 0.03, 0.09], [0.24, -0.04, -0.01, 0.07], [-0.25, -0.04, 0.02, 0.065],
+];
+function buildClouds(box, boxW, boxH) {
+  const rnd = seededRandom(2410);
+  const clumps = [[-2.0, -0.55], [-0.45, 0.35], [1.0, -0.75], [2.2, 0.1]].map(([x, z], i) => ({
+    x0: x, z, y: boxH - 0.26 - rnd() * 0.06,
+    speed: 0.03 + rnd() * 0.03,             // 0.03~0.06 /초 (t 단위), 덩이마다 조금씩 다르게
+    size: 1.1 + rnd() * 0.4,
+    puffs: CLOUD_PUFFS.slice(0, 5 + (i % 3)),   // 덩이마다 구 5~7개
+  }));
+  const n = clumps.reduce((a, c) => a + c.puffs.length, 0);
+  // 흰색이 ACES 톤매핑에서 회색으로 눌리므로 emissive 를 조금 준다(마스터 §6-3: 틴트로는 밝아지지 않는다).
+  // 빙하(0xe6f2f8, 푸른 기)보다 더 희고 부드럽게: 채도 0, 거칠기 1, 텍스처·투과 없음.
+  // 불투명으로 둔다: 뚜껑(lidMat)은 transmission 재질이라 불투명 물체만 담은 화면을 비춰 보이고 깊이도 쓴다.
+  // transparent 로 두면 위에서 내려다볼 때 뚜껑 뒤에서 깊이 검사에 걸려 구름이 통째로 사라졌다(실측).
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.32,
+    envMapIntensity: 0.4 });
+  const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 18, 12), mat, n);
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.frustumCulled = false;   // 인스턴스가 흘러다녀 기본 경계구가 맞지 않는다
+  box.add(mesh);
+  // 감아 돌기: 벽 안쪽 ±xMax 사이를 흐르고, 벽에서 fade 거리 안이면 크기를 줄여 사라졌다 반대쪽에서 커지며 나타난다
+  return { mesh, clumps, xMax: boxW / 2 - 0.12, fade: 0.55, d: new THREE.Object3D() };
+}
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+function stepClouds(C) {
+  const span = 2 * C.xMax, still = reducedMotion.matches;
+  let k = 0;
+  for (const c of C.clumps) {
+    const x = still ? c.x0 : ((c.x0 + c.speed * t + C.xMax) % span + span) % span - C.xMax;
+    const edge = Math.min(1, Math.max(0, (C.xMax - Math.abs(x)) / C.fade));
+    const s = c.size * edge * edge * (3 - 2 * edge);   // smoothstep: 벽 쪽에서 부드럽게 줄어든다
+    for (const [dx, dy, dz, r] of c.puffs) {
+      C.d.position.set(x + dx * s, c.y + dy * s, c.z + dz * s);
+      C.d.scale.set(r * s, r * s * 0.72, r * s);
+      C.d.updateMatrix();
+      C.mesh.setMatrixAt(k++, C.d.matrix);
+    }
+  }
+  C.mesh.instanceMatrix.needsUpdate = true;
+}
+
 // 자연 지구의 도시 구역 자리: 나무(줄기·잎 덩어리)·풀을 인스턴싱으로. 드로우콜 3번(그림자 별도)
 function buildWilderness(group, groundY) {
   const rnd = seededRandom(1492), d = new THREE.Object3D();
@@ -715,16 +763,19 @@ if (PAPER) {
   box.add(co2Dots);
 }
 
-// 4) 박스 위쪽 가장자리에 얹힌 얼음(구름 역할) 덩어리 클러스터
-const cloudIceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
-const cloudIcePositions = [[-1.6, -0.5], [-1.3, -0.15], [-1.0, -0.6], [-1.75, -0.1], [-1.15, -0.35]];
-cloudIcePositions.forEach(([x, z]) => {
-  const s = 0.08 + Math.random() * 0.05;
-  const chunk = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), cloudIceMat);
-  chunk.position.set(x, BOX_H - 0.06 - s * 0.3, z);
-  chunk.castShadow = true;
-  box.add(chunk);
-});
+// 4) 구름. 종이 탭은 흐르는 뭉게구름(buildClouds, 2차 F5), 직접 실험 탭은 예전 얼음 덩어리 클러스터 그대로
+const clouds = PAPER ? buildClouds(box, BOX_W, BOX_H) : null;
+if (!PAPER) {
+  const cloudIceMat = new THREE.MeshPhysicalMaterial({ map: sharedTex.iceCrack, color: 0xffffff, roughness: 0.1, transmission: 0.5, clearcoat: 1, flatShading: true });
+  const cloudIcePositions = [[-1.6, -0.5], [-1.3, -0.15], [-1.0, -0.6], [-1.75, -0.1], [-1.15, -0.35]];
+  cloudIcePositions.forEach(([x, z]) => {
+    const s = 0.08 + Math.random() * 0.05;
+    const chunk = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), cloudIceMat);
+    chunk.position.set(x, BOX_H - 0.06 - s * 0.3, z);
+    chunk.castShadow = true;
+    box.add(chunk);
+  });
+}
 
 // 5) 응결 물방울: 벽 안쪽에서 맺혔다가 아래로 흘러내리는 파티클
 const dropCount = 26;
@@ -1303,7 +1354,7 @@ if (city) {
 }
 
 return {
-  paper: PAPER, city, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, clouds, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -1514,6 +1565,7 @@ function animate() {
 // 씬 하나의 한 프레임 움직임 (파도·입자·연기 등). 그리기는 animate()가 한다.
 function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
+  if (S.clouds) stepClouds(S.clouds);   // 구름 흐름은 연출 움직임이라 렌더 루프에서 (상태 계산 아님)
 
   // [CO₂ 보기] 점 구름: 보일 때만, 보이는 개수만 천천히 떠다니게
   if (S.co2Dots && S.co2Dots.visible) {
