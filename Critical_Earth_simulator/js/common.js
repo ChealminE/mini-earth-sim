@@ -366,6 +366,81 @@ function stepClouds(C) {
   C.mesh.instanceMatrix.needsUpdate = true;
 }
 
+// 받침대 연산 효과 (2차 F6, 미래 예측 씬만): "미래는 관측이 아니라 지금 계산 중"이라는 느낌을 지구와 무관한 회전판에서 보인다.
+// 회전판 윗면 바로 위에 원판 하나(드로우콜 1)를 깔고, 셰이더가 극좌표를 칸으로 나눠 각도 칸마다 한 줄기씩
+// 숫자가 바깥에서 상자 쪽으로 흘러들게 그린다(머리 글자 진하게, 꼬리 옅게, 글자는 일정 간격으로 바뀜).
+// 상자 바닥이 가운데를 덮으므로 실제로 보이는 건 상자 둘레의 띠다. 글자 모양은 처음 한 번 캔버스로 만든 아틀라스 텍스처.
+const PFX_GLYPHS = '0123456789.+\u2212';   // 숫자 0~9, 소수점, +, −
+let pfxAtlas = null;
+function predictFxAtlas() {
+  if (pfxAtlas) return pfxAtlas;
+  const cw = 32, ch = 48, c = document.createElement('canvas');
+  c.width = cw * 16; c.height = ch;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '700 38px ui-monospace, Menlo, Consolas, monospace';
+  [...PFX_GLYPHS].forEach((ch_, i) => g.fillText(ch_, cw * i + cw / 2, ch / 2 + 2));
+  pfxAtlas = new THREE.CanvasTexture(c);
+  pfxAtlas.generateMipmaps = false;
+  pfxAtlas.minFilter = THREE.LinearFilter;
+  return pfxAtlas;
+}
+function buildPredictFx(scene) {
+  const col = new THREE.Color(Theme.color('--ctl-time') || '#1c4fbf');   // 시간 영역색(파랑). 매트릭스 녹색은 쓰지 않는다
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { uTime: { value: 0 }, uFade: { value: 0 }, uStill: { value: 0 }, uColor: { value: col }, uAtlas: { value: predictFxAtlas() },
+      uR: { value: 3.6 }, uGlyphs: { value: PFX_GLYPHS.length } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `
+      varying vec2 vUv;
+      uniform float uTime, uFade, uStill, uR, uGlyphs;
+      uniform vec3 uColor;
+      uniform sampler2D uAtlas;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      void main() {
+        vec2 p = (vUv - 0.5) * 2.0 * uR;              // 원판 위 좌표 (회전판 반지름 단위)
+        float r = length(p);
+        float cols = 112.0, cellH = 0.17;             // 각도 칸 112줄기, 반지름 방향 글자 높이
+        float a = atan(p.y, p.x) / 6.2831853 + 0.5;
+        float col = floor(a * cols), rowF = (uR - r) / cellH, row = floor(rowF);
+        float h1 = hash(vec2(col, 1.7)), h2 = hash(vec2(col, 9.3));
+        float len = 22.0, tail = 7.0 + 6.0 * h2;       // 한 바퀴 길이(칸), 꼬리 길이
+        float head = mod(uTime * (2.2 + 3.0 * h1) + h1 * len, len);   // 머리가 바깥(row 0)에서 안쪽으로 내려간다
+        float d = head - row;
+        if (d < 0.0) d += len;
+        float k = (d < tail) ? 1.0 - d / tail : 0.0;
+        if (uStill > 0.5) k = step(0.62, hash(vec2(col, row))) * 0.45;   // 움직임 줄이기: 옅은 정지 무늬
+        float gi = floor(mod(hash(vec2(col, row)) * uGlyphs + floor(uTime * (1.5 + h2 * 2.0) * (1.0 - uStill)), uGlyphs));
+        vec2 l = vec2(fract(a * cols), fract(rowF));
+        l = (l - 0.5) * vec2(1.25, 1.1) + 0.5;        // 칸 안에 여백
+        float g = 0.0;
+        if (l.x > 0.0 && l.x < 1.0 && l.y > 0.0 && l.y < 1.0) g = texture2D(uAtlas, vec2((gi + l.x) / 16.0, l.y)).a;
+        float edge = smoothstep(uR, uR - 0.18, r);      // 판 가장자리에서 잘리지 않게
+        float alpha = g * (0.18 + 0.62 * k * k) * step(0.001, k) * edge * uFade;
+        vec3 c = mix(uColor, vec3(1.0), 0.35 * step(d, 0.9));   // 머리 글자는 조금 밝게
+        gl_FragColor = vec4(c, alpha);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(3.6, 96), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = -0.003;      // 회전판 윗면(y ≈ −0.005) 바로 위
+  mesh.visible = false;
+  scene.add(mesh);
+  return { mesh, mat, fade: 0 };
+}
+// 켜고 끄기: tab-future.js updatePredState 가 부른다. 아직 만들지 않은 씬(dormant)도 값을 들고 있다가 만들 때 이어받는다.
+function setPredictFx(S, on) { if (S) S.predictOn = !!on; }
+function stepPredictFx(P, on) {
+  P.fade = Math.min(1, Math.max(0, P.fade + (on ? 1 : -1) * 0.016 / 0.4));   // 0.4초에 걸쳐 0 ↔ 1 (t와 같은 한 프레임 0.016)
+  P.mesh.visible = P.fade > 0;            // 꺼져 있으면 드로우콜 0
+  if (!P.mesh.visible) return;
+  P.mat.uniforms.uFade.value = P.fade;
+  P.mat.uniforms.uTime.value = t;
+  P.mat.uniforms.uStill.value = reducedMotion.matches ? 1 : 0;
+}
+
 // 자연 지구의 도시 구역 자리: 나무(줄기·잎 덩어리)·풀을 인스턴싱으로. 드로우콜 3번(그림자 별도)
 function buildWilderness(group, groundY) {
   const rnd = seededRandom(1492), d = new THREE.Object3D();
@@ -762,6 +837,9 @@ if (PAPER) {
   co2Dots.userData = { base, seed };
   box.add(co2Dots);
 }
+
+// 받침대 연산 효과 (2차 F6): 미래 예측 탭 씬(인간활동·자연 지구)에만
+const predictFx = PAPER && opts.predictFx ? buildPredictFx(scene) : null;
 
 // 4) 구름. 종이 탭은 흐르는 뭉게구름(buildClouds, 2차 F5), 직접 실험 탭은 예전 얼음 덩어리 클러스터 그대로
 const clouds = PAPER ? buildClouds(box, BOX_W, BOX_H) : null;
@@ -1354,7 +1432,7 @@ if (city) {
 }
 
 return {
-  paper: PAPER, city, clouds, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, clouds, predictFx, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -1566,6 +1644,7 @@ function animate() {
 function stepScene(S) {
   S.towerFan.rotation.z = t * (0.5 + S.state.carbonRemoval / 100 * 1.5);
   if (S.clouds) stepClouds(S.clouds);   // 구름 흐름은 연출 움직임이라 렌더 루프에서 (상태 계산 아님)
+  if (S.predictFx) stepPredictFx(S.predictFx, !!S.predictOn);
 
   // [CO₂ 보기] 점 구름: 보일 때만, 보이는 개수만 천천히 떠다니게
   if (S.co2Dots && S.co2Dots.visible) {
@@ -1682,8 +1761,9 @@ function stepScene(S) {
 // 변수가 그대로 같은 객체를 가리키므로 탭 코드는 고칠 필요가 없다.
 const DASHBOARD_TAB = new URLSearchParams(location.search).get('tab') || 'current';
 // paper: 종이 테마 탭(현재 실태·미래 예측)의 씬인가 - 2차 개편 D의 새 3D 표현은 이 씬에서만 만든다
+// predictFx: 받침대 연산 효과(2차 F6)를 만들 씬인가 - 미래 예측 탭만
 function sceneFor(tab) {
-  const opts = { paper: tab !== 'live' };
+  const opts = { paper: tab !== 'live', predictFx: tab === 'future' };
   return tab === DASHBOARD_TAB ? Object.assign(buildAcrylicScene(opts), { opts }) : { dormant: true, opts, state: {} };
 }
 function ensureSceneBuilt(S) {

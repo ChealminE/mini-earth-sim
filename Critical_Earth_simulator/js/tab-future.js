@@ -9,7 +9,7 @@
 const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 // 자연만 있는 지구: 같은 엔진을 배출 0으로 돌린 지구. 예전처럼 화면을 반으로 나누지 않고(피드백: "변하는 게 없는
 // 죽은 공간") 토글로 바꿔 본다. 씬은 토글을 처음 켤 때 만든다(ensureSceneBuilt) - 대부분은 켜 보지 않는다.
-const sceneNature = { dormant: true, opts: { paper: true, nature: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
+const sceneNature = { dormant: true, opts: { paper: true, nature: true, predictFx: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
@@ -806,7 +806,8 @@ $('tlClear').addEventListener('click', () => {
 
 // ── 예측 전환 효과 (C6) ───────────────────────────────────────────────
 // 재생 위치가 과거(≤ 2023)에서 미래로 넘어가는 순간 한 번: 3D 위쪽 띠(0.4초 나타남 → 2초 → 0.6초 사라짐, css/paper.css).
-// 미래 구간에 있는 동안: 3D에 청사진 격자 + '예측' 배지, 시간 막대 손잡이 점선 테두리. 과거로 돌아오면 걷힌다.
+// 미래 구간에 있는 동안: 3D 칸 파란 테두리(도는 빛) + '예측' 배지 + 받침대 위 숫자 흐름("지금 계산 중", 인간활동·자연 지구 둘 다),
+// 시간 막대 손잡이 점선 테두리. 과거로 돌아오면 걷힌다.
 // 넘나들 때마다 한 번씩만 띄우고, 슬라이더를 끄는 중에는 띄우지 않는다(놓은 뒤에 판단, 위 change).
 let inFuture = false;
 function showPredBand() {
@@ -822,6 +823,8 @@ function updatePredState() {
   if (now === inFuture) return;
   inFuture = now;
   $('blueprint').classList.toggle('on', now);
+  setPredictFx(sceneFuture, now);   // 자연 지구 토글 중에도 같아야 하므로 두 씬 모두 (아직 안 만든 씬은 만들 때 이어받음)
+  setPredictFx(sceneNature, now);
   $('predBadge').hidden = !now;
   tlScrub.classList.toggle('is-future', now);
   if (now && !SCRUB.active) showPredBand();
