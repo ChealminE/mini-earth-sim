@@ -87,16 +87,18 @@ const OBS_PTS = {
   co2: [...toPoints(EARTH_DATA.co2Cmip6, 'ppm'), ...toPoints(EARTH_DATA.co2Noaa, 'ppm')],
   T: toPoints(EARTH_DATA.tempHadcrut, 'anom'),
   pH: toPoints(EARTH_DATA.phHot, 'ph'),
+  // 해수온 관측은 편차(1850~1900 기준)로 들어 있다. 모형 해수온이 sst0 + T 이므로 같은 기준점에 얹어 절대값으로 그린다.
+  sst: toPoints(EARTH_DATA.sstHadsst, 'anom').map(p => ({ x: p.x, y: EarthSystem.PARAMS.sst0 + p.y })),
 };
 const OBS_BY_YEAR = Object.fromEntries(Object.entries(OBS_PTS).map(([k, pts]) => [k, new Map(pts.map(p => [p.x, p.y]))]));
 
-// 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(없으면 해수온처럼 관측 비교 없음)
+// 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(OBS_PTS 키)
 const fmtSigned = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
 const SERIES = [
   { id: 'futChartCo2', key: 'ppm', obs: 'co2', color: '--data-co2', fmt: v => `${v.toFixed(0)} ppm`, minSpan: 40 },
   { id: 'futChartT', key: 'T', obs: 'T', color: '--data-temp', fmt: v => `${fmtSigned(v, 2)} °C`, minSpan: 0.5 },
   { id: 'futChartPh', key: 'pH', obs: 'pH', color: '--data-ph', fmt: v => v.toFixed(3), minSpan: 0.1 },
-  { id: 'futChartSst', key: 'sst', obs: null, color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
+  { id: 'futChartSst', key: 'sst', obs: 'sst', color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
 ];
 // 계열 순서(데이터셋 번호). Chart.js는 앞 번호를 위에 그린다 → 예측선을 맨 위에.
 const DS = { pred: 0, prev: 1, past: 2, nature: 3, obs: 4 };
@@ -261,6 +263,9 @@ const charts = SERIES.map((spec, i) => {
     ds.push(lineDs('_띠 아래', C('--data-band'), { data: toPoints(EARTH_DATA.tempHadcrut, 'lo'), borderWidth: 0 }));
   } else if (spec.obs === 'pH') {
     ds.push(lineDs('관측 (HOT)', obsC, { data: OBS_PTS.pH, borderWidth: 1.4, pointRadius: 1.6 }));
+  } else if (spec.obs === 'sst') {
+    // 띠 없음: 원본의 95 % 열은 편향 불확실성만의 범위라 전체 불확실성으로 오해된다 (tools/gen_earth_data.py hadsst)
+    ds.push(lineDs('관측 (HadSST4)', obsC, { data: OBS_PTS.sst, borderWidth: 1.4 }));
   }
   const scales = {
     x: Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
