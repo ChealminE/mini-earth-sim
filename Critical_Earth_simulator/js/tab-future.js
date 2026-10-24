@@ -498,8 +498,23 @@ function setRecCount() {
   $('recCount').textContent = measRecords.length;
   $('recCount2').textContent = measRecords.length;
 }
+// 기록 효과 (2차 F4): 3D를 "찍었다"는 느낌. full = 셔터 플래시 + 붉은 테두리 + 가운데 녹화 표시, soft = 테두리만
+// (재생 끝 자동 기록처럼 학생이 누르지 않은 기록은 눈에 덜 띄게). 3D 렌더러는 건드리지 않고 CSS 애니메이션만 쓴다.
+function playRecordFx(fx, year) {
+  if (fx === 'none') return;
+  const el = $('recFx');
+  $('recFxText').textContent = `기록 · ${year}년`;
+  el.classList.remove('full', 'soft');
+  void el.offsetWidth;              // 효과 도중 다시 누르면 처음부터 (showPredBand 와 같은 방식)
+  el.classList.add(fx === 'soft' ? 'soft' : 'full');
+}
+$('recFx').addEventListener('animationend', e => {
+  // 테두리(가장 긴 애니메이션)가 끝나면 정리. ::before 플래시도 같은 요소의 이벤트로 오므로 pseudoElement 로 거른다
+  if (e.target === e.currentTarget && !e.pseudoElement) e.currentTarget.classList.remove('full', 'soft');
+});
 // 지금 연도 · 시나리오(또는 직접 설계) · 보고 있는 지구 · 측정 요소 4개를 한 줄로 저장
-function addRecord() {
+// fx: 'full' | 'soft' | 'none' — 기록 효과 세기 (기본 full)
+function addRecord({ fx = 'full' } = {}) {
   const nature = FUT.showNature;
   const o = observe(sampleAt(nature ? FUT.nature : FUT.human, FUT.year));
   const rec = { year: Math.round(FUT.year), scenario: nature ? '배출 0' : humanLabel(), earth: nature ? '자연' : '인간활동' };
@@ -510,13 +525,15 @@ function addRecord() {
     .map(v => `<td>${v}</td>`).join('');
   $('recLog').appendChild(tr);
   setRecCount();
+  playRecordFx(fx, rec.year);
+  $('recStatus').textContent = `${rec.year}년 기록됨`;
 }
 function setDrawer(open) {
   $('recDrawer').hidden = !open;
   $('recOpen').setAttribute('aria-expanded', String(open));
   if (open) $('recClose').focus();
 }
-$('recAdd').addEventListener('click', addRecord);
+$('recAdd').addEventListener('click', () => addRecord({ fx: 'full' }));
 $('recOpen').addEventListener('click', () => setDrawer($('recDrawer').hidden));
 $('recClose').addEventListener('click', () => { setDrawer(false); $('recOpen').focus(); });
 document.addEventListener('keydown', e => {
