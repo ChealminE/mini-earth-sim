@@ -9,7 +9,7 @@
 const sceneFuture = sceneFor('future'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 // 자연만 있는 지구: 같은 엔진을 배출 0으로 돌린 지구. 예전처럼 화면을 반으로 나누지 않고(피드백: "변하는 게 없는
 // 죽은 공간") 토글로 바꿔 본다. 씬은 토글을 처음 켤 때 만든다(ensureSceneBuilt) - 대부분은 켜 보지 않는다.
-const sceneNature = { dormant: true, opts: { paper: true, nature: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
+const sceneNature = { dormant: true, opts: { paper: true, nature: true, predictFx: true }, state: { nature: true } };   // 도시 구역의 인공물을 숨김 (common.js applyState)
 
 const TL_START = 1750, TL_END = 2200;
 const FUT = {
@@ -87,23 +87,25 @@ const OBS_PTS = {
   co2: [...toPoints(EARTH_DATA.co2Cmip6, 'ppm'), ...toPoints(EARTH_DATA.co2Noaa, 'ppm')],
   T: toPoints(EARTH_DATA.tempHadcrut, 'anom'),
   pH: toPoints(EARTH_DATA.phHot, 'ph'),
+  // 해수온 관측은 편차(1850~1900 기준)로 들어 있다. 모형 해수온이 sst0 + T 이므로 같은 기준점에 얹어 절대값으로 그린다.
+  sst: toPoints(EARTH_DATA.sstHadsst, 'anom').map(p => ({ x: p.x, y: EarthSystem.PARAMS.sst0 + p.y })),
 };
 const OBS_BY_YEAR = Object.fromEntries(Object.entries(OBS_PTS).map(([k, pts]) => [k, new Map(pts.map(p => [p.x, p.y]))]));
 
-// 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(없으면 해수온처럼 관측 비교 없음)
+// 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(OBS_PTS 키)
 const fmtSigned = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
 const SERIES = [
   { id: 'futChartCo2', key: 'ppm', obs: 'co2', color: '--data-co2', fmt: v => `${v.toFixed(0)} ppm`, minSpan: 40 },
   { id: 'futChartT', key: 'T', obs: 'T', color: '--data-temp', fmt: v => `${fmtSigned(v, 2)} °C`, minSpan: 0.5 },
   { id: 'futChartPh', key: 'pH', obs: 'pH', color: '--data-ph', fmt: v => v.toFixed(3), minSpan: 0.1 },
-  { id: 'futChartSst', key: 'sst', obs: null, color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
+  { id: 'futChartSst', key: 'sst', obs: 'sst', color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
 ];
 // 계열 순서(데이터셋 번호). Chart.js는 앞 번호를 위에 그린다 → 예측선을 맨 위에.
 const DS = { pred: 0, prev: 1, past: 2, nature: 3, obs: 4 };
 
 // ── 플러그인 ──
 // 1) 과거와 예측 구분: 2023 오른쪽에 아주 옅은 바탕 + 빗금, 2023 세로선, 첫 그래프에만 머리표.
-//    예측이 비어 있으면(frontier = 2023) 빗금 위에 안내 글씨. 시간 막대 슬라이더도 같은 빗금을 쓴다(css/paper.css).
+//    예측이 비어 있으면(frontier = 2023) 빗금 위에 안내 글씨. 시간 막대 슬라이더는 미래를 예측선과 같은 파란 점선으로 그린다(css/paper.css).
 const hatchCache = new WeakMap();
 function hatchPattern(ctx) {
   if (hatchCache.has(ctx)) return hatchCache.get(ctx);
@@ -261,6 +263,9 @@ const charts = SERIES.map((spec, i) => {
     ds.push(lineDs('_띠 아래', C('--data-band'), { data: toPoints(EARTH_DATA.tempHadcrut, 'lo'), borderWidth: 0 }));
   } else if (spec.obs === 'pH') {
     ds.push(lineDs('관측 (HOT)', obsC, { data: OBS_PTS.pH, borderWidth: 1.4, pointRadius: 1.6 }));
+  } else if (spec.obs === 'sst') {
+    // 띠 없음: 원본의 95 % 열은 편향 불확실성만의 범위라 전체 불확실성으로 오해된다 (tools/gen_earth_data.py hadsst)
+    ds.push(lineDs('관측 (HadSST4)', obsC, { data: OBS_PTS.sst, borderWidth: 1.4 }));
   }
   const scales = {
     x: Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
@@ -493,8 +498,23 @@ function setRecCount() {
   $('recCount').textContent = measRecords.length;
   $('recCount2').textContent = measRecords.length;
 }
+// 기록 효과 (2차 F4): 3D를 "찍었다"는 느낌. full = 셔터 플래시 + 붉은 테두리 + 가운데 녹화 표시, soft = 테두리만
+// (재생 끝 자동 기록처럼 학생이 누르지 않은 기록은 눈에 덜 띄게). 3D 렌더러는 건드리지 않고 CSS 애니메이션만 쓴다.
+function playRecordFx(fx, year) {
+  if (fx === 'none') return;
+  const el = $('recFx');
+  $('recFxText').textContent = `기록 · ${year}년`;
+  el.classList.remove('full', 'soft');
+  void el.offsetWidth;              // 효과 도중 다시 누르면 처음부터 (showPredBand 와 같은 방식)
+  el.classList.add(fx === 'soft' ? 'soft' : 'full');
+}
+$('recFx').addEventListener('animationend', e => {
+  // 테두리(가장 긴 애니메이션)가 끝나면 정리. ::before 플래시도 같은 요소의 이벤트로 오므로 pseudoElement 로 거른다
+  if (e.target === e.currentTarget && !e.pseudoElement) e.currentTarget.classList.remove('full', 'soft');
+});
 // 지금 연도 · 시나리오(또는 직접 설계) · 보고 있는 지구 · 측정 요소 4개를 한 줄로 저장
-function addRecord() {
+// fx: 'full' | 'soft' | 'none' — 기록 효과 세기 (기본 full)
+function addRecord({ fx = 'full' } = {}) {
   const nature = FUT.showNature;
   const o = observe(sampleAt(nature ? FUT.nature : FUT.human, FUT.year));
   const rec = { year: Math.round(FUT.year), scenario: nature ? '배출 0' : humanLabel(), earth: nature ? '자연' : '인간활동' };
@@ -505,13 +525,15 @@ function addRecord() {
     .map(v => `<td>${v}</td>`).join('');
   $('recLog').appendChild(tr);
   setRecCount();
+  playRecordFx(fx, rec.year);
+  $('recStatus').textContent = `${rec.year}년 기록됨`;
 }
 function setDrawer(open) {
   $('recDrawer').hidden = !open;
   $('recOpen').setAttribute('aria-expanded', String(open));
   if (open) $('recClose').focus();
 }
-$('recAdd').addEventListener('click', addRecord);
+$('recAdd').addEventListener('click', () => addRecord({ fx: 'full' }));
 $('recOpen').addEventListener('click', () => setDrawer($('recDrawer').hidden));
 $('recClose').addEventListener('click', () => { setDrawer(false); $('recOpen').focus(); });
 document.addEventListener('keydown', e => {
@@ -784,7 +806,8 @@ $('tlClear').addEventListener('click', () => {
 
 // ── 예측 전환 효과 (C6) ───────────────────────────────────────────────
 // 재생 위치가 과거(≤ 2023)에서 미래로 넘어가는 순간 한 번: 3D 위쪽 띠(0.4초 나타남 → 2초 → 0.6초 사라짐, css/paper.css).
-// 미래 구간에 있는 동안: 3D에 청사진 격자 + '예측' 배지, 시간 막대 손잡이 점선 테두리. 과거로 돌아오면 걷힌다.
+// 미래 구간에 있는 동안: 3D 칸 파란 테두리(도는 빛) + '예측' 배지 + 받침대 위 숫자 흐름("지금 계산 중", 인간활동·자연 지구 둘 다),
+// 시간 막대 손잡이 점선 테두리. 과거로 돌아오면 걷힌다.
 // 넘나들 때마다 한 번씩만 띄우고, 슬라이더를 끄는 중에는 띄우지 않는다(놓은 뒤에 판단, 위 change).
 let inFuture = false;
 function showPredBand() {
@@ -800,11 +823,13 @@ function updatePredState() {
   if (now === inFuture) return;
   inFuture = now;
   $('blueprint').classList.toggle('on', now);
+  setPredictFx(sceneFuture, now);   // 자연 지구 토글 중에도 같아야 하므로 두 씬 모두 (아직 안 만든 씬은 만들 때 이어받음)
+  setPredictFx(sceneNature, now);
   $('predBadge').hidden = !now;
   tlScrub.classList.toggle('is-future', now);
   if (now && !SCRUB.active) showPredBand();
 }
-// 시간 막대 슬라이더 트랙: 1750~2023 실선 채움, 2023~2200 빗금, 전선까지는 빗금 위에 옅은 채움 (css/paper.css 가 변수를 쓴다)
+// 시간 막대 슬라이더 트랙: 1750~2023 회색 채움, 2023~2200 파란 점선(전선까지 진하게, 그 뒤 옅게) (css/paper.css 가 변수를 쓴다)
 function updateTrack() {
   const at = y => (100 * Math.max(0, Math.min(1, (y - LIMIT.from) / (LIMIT.to - LIMIT.from)))).toFixed(2) + '%';
   tlScrub.style.setProperty('--p-obs', at(LAST_OBS_YEAR));

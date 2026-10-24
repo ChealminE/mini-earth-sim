@@ -474,7 +474,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     pH: { key: 'pH', name: 'pH', fmt: v => v.toFixed(3) },
   };
   function doRecord(step, valueKey = 'T', extra = {}) {
-    addRecord();
+    addRecord({ fx: extra.auto ? 'soft' : 'full' });   // 재생 끝 자동 기록은 약한 효과(테두리만)
     const nature = FUT.showNature;
     const h = sampleAt(nature ? FUT.nature : FUT.human, FUT.year), y = Math.round(FUT.year);
     const scen = nature ? '자연만 있는 지구' : humanLabel();

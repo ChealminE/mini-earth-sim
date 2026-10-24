@@ -40,6 +40,7 @@
   --ctl-scen: #175e31;  --ctl-scen-bg: #e2efe4;  --ctl-scen-on: #175e31;
   --ctl-view: #6a2ea6;  --ctl-view-bg: #efe6f7;  --ctl-view-on: #6a2ea6;
   --ctl-rec: #963805;   --ctl-rec-bg: #fbebe0;   --ctl-rec-on: #963805;
+  --rec-flash: #e3222b;   /* 기록 효과의 붉은 테두리·녹화 점 (장식, 글자에는 쓰지 않음) */
   --focus: #1c4fbf;
 
   /* ── 출처 종류 배지 (ⓘ 상자) ── */
