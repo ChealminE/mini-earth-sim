@@ -333,13 +333,16 @@ body.tab-future.paper .pred-band.show { animation: pred-band 3s ease forwards; }
 }
 @keyframes pred-band-plain { 0% { opacity: 1; transform: translateX(-50%); } 100% { opacity: 0; transform: translateX(-50%); } }
 
-/* 시간 막대 슬라이더: 1750~2023 실선 채움 / 2023~2200 빗금 / 전선까지 빗금 위 옅은 채움 (그래프와 같은 표현).
+/* 시간 막대 슬라이더 (2차 F3): 1750~2023 = 회색 채움(그래프의 먹색 관측선과 같은 계열), 2023~2200 = 가운데 파란 점선
+   (그래프의 예측 점선과 같은 표현). 전선까지는 점선이 진하고, 아직 계산하지 않은 뒤쪽은 종이색 막을 덮어 옅게 한다.
+   배경 레이어는 앞에 쓴 것이 위다: ① 과거 회색 채움 ② 전선 뒤 옅게 덮는 막 ③ 전체 폭 점선 ④ 바탕색.
+   점선을 전체 폭에 깔고 ①②로 범위를 자르는 방식이라 레이어마다 위치/크기/반복을 따로 준다.
    --p-obs, --p-front 는 js/tab-future.js updateTrack 이 넣는다. 손잡이는 예측 구간에서 점선 테두리로 바뀐다. */
 body.paper #tlScrub { -webkit-appearance: none; appearance: none; height: 30px; background: transparent; cursor: pointer;
   --p-obs: 60.67%; --p-front: 60.67%;
-  --track: linear-gradient(to right, var(--ctl-time) 0 var(--p-obs), transparent var(--p-obs)),
-           linear-gradient(to right, transparent var(--p-obs), color-mix(in srgb, var(--ctl-time) 28%, transparent) var(--p-obs) var(--p-front), transparent var(--p-front)),
-           repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink-3) 45%, transparent) 0 1.5px, transparent 1.5px 6px),
+  --track: linear-gradient(to right, color-mix(in srgb, var(--ink-3) 62%, var(--paper-3)) 0 var(--p-obs), transparent var(--p-obs)) 0 0 / 100% 100% no-repeat,
+           linear-gradient(to right, transparent var(--p-front), color-mix(in srgb, var(--paper-3) 62%, transparent) var(--p-front)) 0 0 / 100% 100% no-repeat,
+           linear-gradient(to right, var(--ctl-time) 0 6px, transparent 6px) 0 50% / 10px 3px repeat-x,
            var(--paper-3); }
 body.paper #tlScrub::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }
 body.paper #tlScrub::-moz-range-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }

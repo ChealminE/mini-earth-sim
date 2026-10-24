@@ -105,7 +105,7 @@ const DS = { pred: 0, prev: 1, past: 2, nature: 3, obs: 4 };
 
 // ── 플러그인 ──
 // 1) 과거와 예측 구분: 2023 오른쪽에 아주 옅은 바탕 + 빗금, 2023 세로선, 첫 그래프에만 머리표.
-//    예측이 비어 있으면(frontier = 2023) 빗금 위에 안내 글씨. 시간 막대 슬라이더도 같은 빗금을 쓴다(css/paper.css).
+//    예측이 비어 있으면(frontier = 2023) 빗금 위에 안내 글씨. 시간 막대 슬라이더는 미래를 예측선과 같은 파란 점선으로 그린다(css/paper.css).
 const hatchCache = new WeakMap();
 function hatchPattern(ctx) {
   if (hatchCache.has(ctx)) return hatchCache.get(ctx);
@@ -809,7 +809,7 @@ function updatePredState() {
   tlScrub.classList.toggle('is-future', now);
   if (now && !SCRUB.active) showPredBand();
 }
-// 시간 막대 슬라이더 트랙: 1750~2023 실선 채움, 2023~2200 빗금, 전선까지는 빗금 위에 옅은 채움 (css/paper.css 가 변수를 쓴다)
+// 시간 막대 슬라이더 트랙: 1750~2023 회색 채움, 2023~2200 파란 점선(전선까지 진하게, 그 뒤 옅게) (css/paper.css 가 변수를 쓴다)
 function updateTrack() {
   const at = y => (100 * Math.max(0, Math.min(1, (y - LIMIT.from) / (LIMIT.to - LIMIT.from)))).toFixed(2) + '%';
   tlScrub.style.setProperty('--p-obs', at(LAST_OBS_YEAR));
