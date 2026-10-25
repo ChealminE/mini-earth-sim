@@ -215,6 +215,36 @@ def hadcrut():
     return ver, off, rows
 
 
+# ── 3b) HadSST4 ──────────────────────────────────────────────────────────────
+def hadsst():
+    files = sorted((RAW / "hadsst").glob("HadSST.4.*_annual_GLOBE.csv"))
+    if len(files) != 1:
+        fail("HadSST4 연평균 원본이 정확히 하나여야 함: %s" % [f.name for f in files])
+    path = files[0]
+    ver = re.match(r"HadSST\.(4(?:\.\d+)+)_annual", path.name).group(1)
+    with open(path, encoding="utf-8", newline="") as f:
+        rd = csv.reader(f)
+        head = next(rd)
+        # 머리줄(4.2.0.0): year,anomaly,total_uncertainty,...,lower/upper_bound_95pct_bias_uncertainty_range
+        # 95 % 열은 '편향(bias) 불확실성만'의 범위라 전체 불확실성 띠로 쓰면 띠가 실제보다 좁아 보인다.
+        # total_uncertainty 가 1σ인지 원본 안내서로 확인하지 못했으므로 띠는 그리지 않고 편차만 쓴다.
+        if "year" not in head or "anomaly" not in head:
+            fail("HadSST4 머리가 예상과 다름: %s" % head)
+        iy, ia = head.index("year"), head.index("anomaly")
+        raw = [(int(r[iy]), float(r[ia])) for r in rd if r]
+    base = [a for y, a in raw if HADCRUT_BASE[0] <= y <= HADCRUT_BASE[1]]
+    if len(base) != HADCRUT_BASE[1] - HADCRUT_BASE[0] + 1:
+        fail("HadSST4 기준 기간 자료가 모자람")
+    off = sum(base) / len(base)
+    rows = [[y, fmt(a - off, 4)] for y, a in raw if y < HADCRUT_DOWNLOAD_YEAR]
+    write_clean("sst_hadsst4_annual.csv", [
+        "원본: data/raw/hadsst/%s (Met Office Hadley Centre, HadSST %s)" % (path.name, ver),
+        "원본 기준 1961~1990 -> 1850~1900 평균(%.4f °C)을 빼서 산업화 이전 기준으로 변환 (HadCRUT5와 같은 방법)" % off,
+        "anom = 전 지구 표층 해수온 편차. 화면은 EarthSystem.PARAMS.sst0 + anom 으로 그린다. %d년(받은 해) 제외" % HADCRUT_DOWNLOAD_YEAR,
+    ], ["year", "anom"], rows)
+    return ver, off, rows
+
+
 # ── 4) HOT Station ALOHA ─────────────────────────────────────────────────────
 def hot():
     path = RAW / "hot" / "HOT_surface_CO2.txt"
@@ -297,6 +327,10 @@ def build_js(versions):
     hc_years = [int(r["year"]) for r in hc]
     consecutive_years(hc_years, "temp_hadcrut5_annual.csv")
 
+    hs = read_clean("sst_hadsst4_annual.csv")
+    hs_years = [int(r["year"]) for r in hs]
+    consecutive_years(hs_years, "sst_hadsst4_annual.csv")
+
     ph = read_clean("ph_hot_annual.csv")
     ph_years = [int(r["year"]) for r in ph]
     consecutive_years(ph_years, "ph_hot_annual.csv")
@@ -322,6 +356,7 @@ def build_js(versions):
         "// co2Noaa: NOAA GML 지구 평균 CO2 [ppm], unc = 불확도  (%s)\n"
         "// co2Cmip6: CMIP6 역사 농도 [ppm], NOAA가 시작하는 %d년 앞까지만 (RCMIP %s)\n"
         "// tempHadcrut: HadCRUT %s 기온 편차 [°C], 1850~1900 기준으로 변환, lo/hi = 95%% 범위\n"
+        "// sstHadsst: HadSST %s 표층 해수온 편차 [°C], 1850~1900 기준으로 변환 (그래프는 sst0 + anom)\n"
         "// phHot: HOT Station ALOHA 표층 pH 연평균 (pHcalc_insitu, total scale)  (%s)\n"
         "// ssp: RCMIP SSP 배출 [GtC/yr], 조화 전 원값, 연 단위로 보간 (RCMIP %s)\n"
         "// ============================================================================\n"
@@ -335,6 +370,7 @@ def build_js(versions):
         "  co2Noaa: { startYear: %d, ppm: %s, unc: %s },\n"
         "  co2Cmip6: { startYear: %d, ppm: %s },\n"
         "  tempHadcrut: { startYear: %d, anom: %s, lo: %s, hi: %s },\n"
+        "  sstHadsst: { startYear: %d, anom: %s },\n"
         "  phHot: { startYear: %d, ph: %s },\n"
         "  ssp: {\n"
         "    startYear: %d,\n"
@@ -342,7 +378,7 @@ def build_js(versions):
         "  },\n"
         "};\n"
     ) % (
-        versions["noaa_gl"], CO2_SPLICE_YEAR, versions["rcmip"], versions["hadcrut"], versions["hot"],
+        versions["noaa_gl"], CO2_SPLICE_YEAR, versions["rcmip"], versions["hadcrut"], versions["hadsst"], versions["hot"],
         versions["rcmip"],
         em_years[0],
         arr(check_num(r["fossil_gtc"]) for r in em),
@@ -352,12 +388,13 @@ def build_js(versions):
         int(cm[0]["year"]), arr(check_num(r["ppm"]) for r in cm),
         hc_years[0], arr(check_num(r["anom"]) for r in hc), arr(check_num(r["lo"]) for r in hc),
         arr(check_num(r["hi"]) for r in hc),
+        hs_years[0], arr(check_num(r["anom"]) for r in hs),
         ph_years[0], arr(check_num(r["ph"]) for r in ph),
         ssp_years[0], ssp_js,
     )
     OUT.write_text(js, encoding="utf-8")
     return dict(em=(em_years[0], em_years[-1]), gl=(gl_years[0], gl_years[-1]), cm=(int(cm[0]["year"]), int(cm[-1]["year"])),
-                hc=(hc_years[0], hc_years[-1]), ph=(ph_years[0], ph_years[-1]), ssp=(ssp_years[0], ssp_years[-1]))
+                hc=(hc_years[0], hc_years[-1]), hs=(hs_years[0], hs_years[-1]), ph=(ph_years[0], ph_years[-1]), ssp=(ssp_years[0], ssp_years[-1]))
 
 
 def main():
@@ -368,12 +405,14 @@ def main():
         fail("RCMIP 배출·농도 파일 버전이 다름")
     pts = rcmip(ver)
     hc_ver, hc_off, _ = hadcrut()
+    hs_ver, hs_off, _ = hadsst()
     hot_ver, ph_rows, ta_rows = hot()
-    rng = build_js({"noaa_gl": "File Creation: " + gl_ver, "rcmip": ver, "hadcrut": hc_ver, "hot": hot_ver})
-    print("[완료] 정리 CSV 8개 + %s" % OUT.relative_to(ROOT))
+    rng = build_js({"noaa_gl": "File Creation: " + gl_ver, "rcmip": ver, "hadcrut": hc_ver, "hadsst": hs_ver, "hot": hot_ver})
+    print("[완료] 정리 CSV 9개 + %s" % OUT.relative_to(ROOT))
     print("  NOAA 지구 평균 %d~%d (%s), MLO (%s)" % (rng["gl"] + (gl_ver, mlo_ver)))
     print("  CMIP6 역사 농도 앱용 %d~%d, RCMIP %s, SSP 원자료 시점 %d~%d" % (rng["cm"] + (ver, pts[0], pts[-1])))
     print("  HadCRUT %s %d~%d, 1850~1900 평균 %.4f °C 를 뺌" % ((hc_ver,) + rng["hc"] + (hc_off,)))
+    print("  HadSST %s %d~%d, 1850~1900 평균 %.4f °C 를 뺌" % ((hs_ver,) + rng["hs"] + (hs_off,)))
     print("  HOT pH %d~%d (%s), TA %d개 해" % (rng["ph"] + (hot_ver, len(ta_rows))))
     print("  배출 %d~%d, SSP %d~%d" % (rng["em"] + rng["ssp"]))
 

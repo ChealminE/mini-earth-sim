@@ -30,10 +30,6 @@ body.paper #gl-container { background: var(--paper); border: 0; border-right: 1p
   aspect-ratio: auto; max-height: none; min-height: 0; }
 body.paper #hint { top: var(--sp-3); left: var(--sp-3); right: auto; bottom: auto; color: var(--ink-2); font-size: var(--fs-1);
   background: color-mix(in srgb, var(--paper) 86%, transparent); border: 1px solid var(--rule); line-height: 1.5; }
-body.paper #brightnessControl { left: var(--sp-3); bottom: var(--sp-3); color: var(--ctl-view); font-size: var(--fs-1); font-weight: 600;
-  background: color-mix(in srgb, var(--paper) 90%, transparent); border: 1.5px solid var(--ctl-view); border-radius: var(--radius);
-  padding: var(--sp-1) var(--sp-3); }
-body.paper #brightnessControl input[type="range"] { accent-color: var(--ctl-view); width: 130px; }
 
 /* ── 현재 실태 ───────────────────────────────────────────────────────────
    왼쪽 열 = 3D 모형 + 그 아래 요약 숫자 2×2, 오른쪽 열 = 그래프 2×2.
@@ -154,8 +150,6 @@ body.tab-future.paper #hint { left: auto; right: var(--sp-3); }
 .view3d { display: none; }
 body.paper .view3d { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
   position: absolute; left: var(--sp-3); bottom: var(--sp-3); z-index: 2; }
-/* 현재 실태 탭은 왼쪽 아래에 밝기 조절이 있다 - 그 위로 올린다 */
-body.tab-current.paper .view3d { bottom: calc(var(--sp-3) + 52px); }
 body.paper .view3d .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); }
 body.paper .view3d .btn[aria-pressed="true"] { background: var(--ctl-view-on); }
 
@@ -266,9 +260,7 @@ body.paper .tl-bar input[type=range] { accent-color: var(--ctl-time); }
 
 /* 레버 슬라이더는 시나리오·정책 영역색 (style.css .lv input 의 예전 초록을 덮는다) */
 body.paper .lv input[type=range] { accent-color: var(--ctl-scen); }
-/* 미래 예측 3D: 아래 가운데는 자연 지구 토글 자리라 밝기 조절을 오른쪽 위로 옮긴다.
-   조작 안내(#hint)는 같은 자리를 다투므로 이 탭에서는 숨긴다(끌어서 돌리기는 다른 탭과 같다). */
-body.tab-future.paper #brightnessControl { left: auto; right: var(--sp-3); top: var(--sp-3); bottom: auto; }
+/* 미래 예측 3D: 조작 안내(#hint)는 오른쪽 위로 옮겨 두었는데 그 자리는 예측 배지(#predBadge)·전환 막이 쓴다. 이 탭에서는 숨긴다(끌어서 돌리기는 다른 탭과 같다). */
 body.tab-future.paper #hint { display: none; }
 
 @media (max-height: 760px) {
@@ -312,16 +304,59 @@ body.paper .mix-key.renew svg { color: var(--data-ph); }
   body.paper .fut-charts .chart-title .btn--sm, body.paper .fut-legend .btn--sm { min-height: 26px; }
 }
 
+/* ── 기록 효과 (2차 F4) ───────────────────────────────────────────────────
+   #recFx 자체가 붉은 테두리(가장 긴 0.9초: 0.6초 유지 → 사라짐), ::before 가 셔터 플래시(0.12초), .rec-fx-mark 가 가운데 녹화 표시.
+   soft 는 테두리만. 클릭은 3D로 통과. js/tab-future.js playRecordFx 가 클래스를 붙였다 뗀다. */
+.rec-fx, .rec-status { display: none; }
+body.tab-future.paper .rec-fx { display: block; position: absolute; inset: 0; z-index: 20; pointer-events: none; opacity: 0;
+  box-shadow: inset 0 0 0 4px var(--rec-flash); }
+body.tab-future.paper .rec-fx::before { content: ''; position: absolute; inset: 0; background: #fff; opacity: 0; }
+body.tab-future.paper .rec-fx-mark { position: absolute; left: 50%; top: 50%; width: 132px; height: 132px; margin: -66px 0 0 -66px;
+  border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2);
+  background: color-mix(in srgb, var(--paper) 86%, transparent); border: 2px solid color-mix(in srgb, var(--rec-flash) 70%, transparent);
+  color: var(--ink); font-size: var(--fs-2); font-weight: 700; opacity: 0; }
+body.tab-future.paper .rec-fx-dot { width: 34px; height: 34px; border-radius: 50%; background: var(--rec-flash); }
+body.tab-future.paper .rec-fx.full, body.tab-future.paper .rec-fx.soft { animation: rec-frame .9s ease-out forwards; }
+body.tab-future.paper .rec-fx.full::before { animation: rec-flash .12s ease-out forwards; }
+body.tab-future.paper .rec-fx.full .rec-fx-mark { animation: rec-mark .9s ease-out forwards; }
+@keyframes rec-frame { 0%, 66% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes rec-flash { 0% { opacity: .55; } 100% { opacity: 0; } }
+@keyframes rec-mark { 0% { opacity: 0; transform: scale(.82); } 18% { opacity: 1; transform: scale(1.08); } 34% { transform: scale(1); }
+  70% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1); } }
+/* 움직임 줄이기: 플래시·크기 변화 없이 테두리와 가운데 표시만 0.6초 보였다 사라짐 */
+@media (prefers-reduced-motion: reduce) {
+  body.tab-future.paper .rec-fx.full, body.tab-future.paper .rec-fx.soft { animation: rec-plain .6s steps(1, end) forwards; }
+  body.tab-future.paper .rec-fx.full::before { animation: none; }
+  body.tab-future.paper .rec-fx.full .rec-fx-mark { animation: rec-plain .6s steps(1, end) forwards; }
+}
+@keyframes rec-plain { 0% { opacity: 1; } 100% { opacity: 0; } }
+/* 스크린리더 전용 알림 (눈에는 안 보이게) */
+body.tab-future.paper .rec-status { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; }
+
 /* ── 예측 전환 효과 (C6) ─────────────────────────────────────────────────── */
 .blueprint, .pred-badge, .pred-band { display: none; }
-/* 청사진 격자: 미래 구간에 있는 동안 3D 위에 옅게. 클릭은 3D로 통과 */
+/* 예측 테두리: 미래 구간에 있는 동안 3D 칸 둘레만 파랗게. 클릭은 3D로 통과.
+   예전 청사진 격자(3D 위를 덮는 줄무늬)는 지구를 가려 뺐다(2차 F6, 10/24 피드백) — 3D가 주인공이고 효과는 둘레에만 둔다.
+   ::before = 테두리를 따라 한 바퀴 4초로 도는 빛(conic-gradient를 mask로 테두리 두께만 남김, @property 각도 애니메이션),
+   ::after = 네 모서리의 짧은 ㄱ자 표시(조준선 느낌). 지구와 무관한 받침대의 연산 효과는 3D 쪽(common.js buildPredictFx). */
+@property --pf-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 body.tab-future.paper .blueprint { display: block; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s ease;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--ctl-time) 14%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--ctl-time) 14%, transparent) 1px, transparent 1px);
-  background-size: 28px 28px;
   box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--ctl-time) 30%, transparent); }
 body.tab-future.paper .blueprint.on { opacity: 1; }
+body.tab-future.paper .blueprint::before { content: ''; position: absolute; inset: 0; padding: 3px;
+  background: conic-gradient(from var(--pf-angle), transparent 0 62%, color-mix(in srgb, var(--ctl-time) 35%, transparent) 78%,
+    var(--ctl-time) 90%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+body.tab-future.paper .blueprint.on::before { animation: pf-spin 4s linear infinite; }
+@keyframes pf-spin { to { --pf-angle: 360deg; } }
+body.tab-future.paper .blueprint::after { content: ''; position: absolute; inset: 9px; --c: var(--ctl-time);
+  background:
+    linear-gradient(var(--c) 0 0) left top / 18px 2px no-repeat, linear-gradient(var(--c) 0 0) left top / 2px 18px no-repeat,
+    linear-gradient(var(--c) 0 0) right top / 18px 2px no-repeat, linear-gradient(var(--c) 0 0) right top / 2px 18px no-repeat,
+    linear-gradient(var(--c) 0 0) left bottom / 18px 2px no-repeat, linear-gradient(var(--c) 0 0) left bottom / 2px 18px no-repeat,
+    linear-gradient(var(--c) 0 0) right bottom / 18px 2px no-repeat, linear-gradient(var(--c) 0 0) right bottom / 2px 18px no-repeat; }
 body.tab-future.paper .pred-badge:not([hidden]) { display: block; position: absolute; top: 64px; right: var(--sp-3);
   padding: 2px var(--sp-3); font-size: var(--fs-2); font-weight: 700; color: var(--on-fill); background: var(--ctl-time); border-radius: 999px; }
 /* 띠: 0.4초 나타남 → 2초 유지 → 0.6초 사라짐 (합 3초) */
@@ -334,20 +369,24 @@ body.tab-future.paper .pred-band span { font-size: var(--fs-1); color: var(--ink
 body.tab-future.paper .pred-band.show { animation: pred-band 3s ease forwards; }
 @keyframes pred-band { 0% { opacity: 0; transform: translate(-50%, -8px); } 13% { opacity: 1; transform: translate(-50%, 0); }
   80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
-/* 움직임 줄이기: 페이드 없이 짧게(1.5초 보였다 사라짐). 격자·손잡이 변화는 그대로 */
+/* 움직임 줄이기: 페이드 없이 짧게(1.5초 보였다 사라짐). 테두리 빛은 돌지 않고 멈춘 채, 손잡이 변화는 그대로 */
 @media (prefers-reduced-motion: reduce) {
   body.tab-future.paper .pred-band.show { animation: pred-band-plain 1.5s steps(1, end) forwards; }
   body.tab-future.paper .blueprint { transition: none; }
+  body.tab-future.paper .blueprint.on::before { animation: none; }
 }
 @keyframes pred-band-plain { 0% { opacity: 1; transform: translateX(-50%); } 100% { opacity: 0; transform: translateX(-50%); } }
 
-/* 시간 막대 슬라이더: 1750~2023 실선 채움 / 2023~2200 빗금 / 전선까지 빗금 위 옅은 채움 (그래프와 같은 표현).
+/* 시간 막대 슬라이더 (2차 F3): 1750~2023 = 회색 채움(그래프의 먹색 관측선과 같은 계열), 2023~2200 = 가운데 파란 점선
+   (그래프의 예측 점선과 같은 표현). 전선까지는 점선이 진하고, 아직 계산하지 않은 뒤쪽은 종이색 막을 덮어 옅게 한다.
+   배경 레이어는 앞에 쓴 것이 위다: ① 과거 회색 채움 ② 전선 뒤 옅게 덮는 막 ③ 전체 폭 점선 ④ 바탕색.
+   점선을 전체 폭에 깔고 ①②로 범위를 자르는 방식이라 레이어마다 위치/크기/반복을 따로 준다.
    --p-obs, --p-front 는 js/tab-future.js updateTrack 이 넣는다. 손잡이는 예측 구간에서 점선 테두리로 바뀐다. */
 body.paper #tlScrub { -webkit-appearance: none; appearance: none; height: 30px; background: transparent; cursor: pointer;
   --p-obs: 60.67%; --p-front: 60.67%;
-  --track: linear-gradient(to right, var(--ctl-time) 0 var(--p-obs), transparent var(--p-obs)),
-           linear-gradient(to right, transparent var(--p-obs), color-mix(in srgb, var(--ctl-time) 28%, transparent) var(--p-obs) var(--p-front), transparent var(--p-front)),
-           repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink-3) 45%, transparent) 0 1.5px, transparent 1.5px 6px),
+  --track: linear-gradient(to right, color-mix(in srgb, var(--ink-3) 62%, var(--paper-3)) 0 var(--p-obs), transparent var(--p-obs)) 0 0 / 100% 100% no-repeat,
+           linear-gradient(to right, transparent var(--p-front), color-mix(in srgb, var(--paper-3) 62%, transparent) var(--p-front)) 0 0 / 100% 100% no-repeat,
+           linear-gradient(to right, var(--ctl-time) 0 6px, transparent 6px) 0 50% / 10px 3px repeat-x,
            var(--paper-3); }
 body.paper #tlScrub::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }
 body.paper #tlScrub::-moz-range-track { height: 12px; border-radius: 6px; background: var(--track); border: 1px solid var(--rule); }

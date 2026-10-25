@@ -118,17 +118,5 @@ function updateLegend3D() {
   updateLegend3D();
 }
 
-// ── 밝기 슬라이더 ──────────────────────────────────
-// 같은 씬이라도 화면 밝기·명암비에 따라 톤매핑 결과가 다르게 보여서(어두운 패널일수록
-// 새까맣게 보임), 화면마다 사용자가 직접 노출값을 보정할 수 있게 슬라이더로 노출
-const brightnessSlider = document.getElementById('brightnessSlider');
-const savedExposure = Number(localStorage.getItem('brightnessExposure'));
-if (savedExposure) {
-  renderer.toneMappingExposure = savedExposure;
-  brightnessSlider.value = savedExposure;
-}
-brightnessSlider.addEventListener('input', () => {
-  const exposure = Number(brightnessSlider.value);
-  renderer.toneMappingExposure = exposure;
-  localStorage.setItem('brightnessExposure', exposure);
-});
+// 밝기 슬라이더는 없앴다(2차 F2): 종이 테마에서는 노출을 common.js 의 1.1로 고정해 화면마다 같은 색으로 보이게 한다.
+// localStorage 'brightnessExposure' 는 1인칭이 같이 쓰는 키라 여기서 읽지도 지우지도 않는다.

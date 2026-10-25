@@ -82,6 +82,21 @@ const SOURCES = {
     status: 'verified',
     note: '원본은 1961~1990 기준. 1850~1900 평균(−0.3594 °C)을 빼서 산업화 이전 기준으로 바꿨다(IPCC AR6와 같은 기준). 띠 = 원본 2.5 %~97.5 % 범위에 같은 값을 뺀 것. 받은 해(2026, 진행 중) 제외 → 1850~2025. 2차 개편 전 화면 값(출처 불명)은 이 자료에 평행이동해도 잔차 표준편차 0.135 °C, 추세 0.315 vs 0.211 °C/10년이라 전 지구 평균이 아니었다.',
   },
+  obs_sst_hadsst4: {
+    label: '전 지구 표층 해수온 편차 (관측)',
+    summary: '배·부이로 잰 바다 표면 수온을 모아 만든 전 지구 평균이 1850~1900년보다 얼마나 높은지입니다.',
+    kind: 'obs',
+    org: 'Met Office Hadley Centre',
+    dataset: 'HadSST4 global annual mean sea-surface temperature anomaly (HadSST.4.2.0.0_annual_GLOBE.csv)',
+    version: 'HadSST.4.2.0.0',
+    cite: 'Kennedy, J. J., Rayner, N. A., Atkinson, C. P. and Killick, R. E. (2019) An ensemble data set of sea-surface temperature change from 1850: the Met Office Hadley Centre HadSST.4.0.0.0 data set. J. Geophys. Res. Atmos. 124, 7719–7763. https://doi.org/10.1029/2018JD029867',
+    citeChecked: false,
+    url: 'https://www.metoffice.gov.uk/hadobs/hadsst4/',
+    file: 'data/raw/hadsst/HadSST.4.2.0.0_annual_GLOBE.csv',
+    license: 'Open Government Licence v3.0 (원본 안내서로 확인 못 함)',
+    status: 'unverified',
+    note: '값은 원본 파일에서 직접 옮겼다(anomaly 열). 인용 논문·라이선스는 원본 user guide가 저장소에 없고 Met Office 누리집에 접속할 수 없어 확인하지 못했다. 원본은 1961~1990 기준 → 1850~1900 평균(−0.2672 °C)을 빼서 바꾼 뒤 그래프에는 sst0(18 °C) + 편차로 그린다(HadCRUT5와 같은 방법). 원본의 95 % 열은 편향 불확실성만의 범위라 불확실성 띠는 그리지 않는다. 1850~2025.',
+  },
   ph_hot: {
     label: '해수 pH (하와이 Station ALOHA 관측)',
     summary: '하와이 북쪽 바다(ALOHA 정점)의 표층 바닷물 pH를 해마다 평균한 값입니다.',
@@ -375,8 +390,8 @@ const SOURCES = {
     url: REPO_URL + 'js/earth-system.js',
     license: '-',
     status: 'verified',
-    note: '모형 계산값, 관측 비교 없음(해수온 관측 자료는 이번에 받지 않음). sst0 = 18 °C는 대표값으로 출처를 확인하지 못했다.',
-    related: ['model_temp'],
+    note: '모형 계산값. 바다 표층이 대기 기온 편차만큼 그대로 데워진다고 단순화했으므로(sst = sst0 + T) 실제 표층 해수온(HadSST4)보다 빨리 데워지는 쪽으로 어긋날 수 있다. sst0 = 18 °C는 대표값으로 출처를 확인하지 못했다.',
+    related: ['model_temp', 'obs_sst_hadsst4'],
   },
 
   // ── 직접 설계 레버 ───────────────────────────────────────────────────────

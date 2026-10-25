@@ -92,5 +92,18 @@ check('지시약: 7.6·8.2 끝 색, 범위 밖은 끝 색', String(V.phIndicator
   check('지시약: pH가 낮을수록 밝아짐(색 순서가 밝기로도 읽힘)', mono);
 }
 
+// ── 2차 F5·F6 생성 조건 ──
+// 씬을 만드는 js/common.js 는 three.js·DOM이 있어야 돌므로 node에서 실행하지 않고, 만들기 조건식을 소스에서 확인한다.
+// (화면에서 실제로 확인한 것: 미래 예측 bundles.future.clouds·predictFx 있음, 직접 실험 bundles.live.clouds = null)
+{
+  const src = fs.readFileSync(path.join(ROOT, 'js', 'common.js'), 'utf8');
+  const fut = fs.readFileSync(path.join(ROOT, 'js', 'tab-future.js'), 'utf8');
+  check('구름: 종이 씬에서만 새 구름, 직접 실험 씬은 예전 얼음 덩어리', /const clouds = PAPER \? buildClouds\(/.test(src) && /if \(!PAPER\) \{\s*const cloudIceMat/.test(src));
+  check('예측 효과: 종이 씬 + opts.predictFx 일 때만 만듦', /const predictFx = PAPER && opts\.predictFx \? buildPredictFx\(/.test(src));
+  check('예측 효과: opts.predictFx 는 미래 예측 탭 씬만 (sceneFor)', /predictFx: tab === 'future'/.test(src));
+  check('예측 효과: 자연 지구 씬도 켬 · 두 씬 모두에 setPredictFx', /sceneNature = \{[^}]*opts: \{[^}]*predictFx: true/.test(fut)
+    && /setPredictFx\(sceneFuture, now\)/.test(fut) && /setPredictFx\(sceneNature, now\)/.test(fut));
+}
+
 console.log(fails ? `\n${fails}개 실패` : '\n전부 통과');
 process.exit(fails ? 1 : 0);
