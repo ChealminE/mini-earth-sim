@@ -700,3 +700,26 @@ body.paper .gw-deck-open { width: 100%; justify-content: flex-start; flex: none;
    그래프 칸 = 위 요약 숫자 한 줄 + 아래 작업대(남는 높이 전부). 예전 그래프 2×2(.charts-2col)는 숨긴다(js/tab-current.js USE_WORKSPACE) */
 body.paper #tab-current .charts-2col[hidden], body.paper #currentWorkspace[hidden] { display: none; }
 body.paper #currentWorkspace { flex: 1 1 auto; min-height: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); }
+
+/* ── 3차 C4 — 학습지로 보내기 · [나의 증거] 카드 ───────────────────────── */
+/* 미래 예측 그래프 제목 줄: 빈칸(.ct-space)이 버튼들을 오른쪽으로 민다. 숨긴 버튼(B3)이 있어도 자리가 흔들리지 않게 margin auto 대신 */
+body.paper .fut-charts .chart-title .ct-space { flex: 1; }
+body.paper .fut-charts .chart-title .btn { margin-left: var(--sp-1); }
+body.paper .ws-msg { margin: 0; font-size: var(--fs-2); font-weight: 600; color: var(--warn); }
+body.paper .ws-msg:empty { display: none; }
+body.paper .ws-evidence { display: flex; flex-direction: column; gap: var(--sp-3); }
+body.paper .ev-card { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: var(--radius); }
+body.paper .ev-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+body.paper .ev-title { font-size: var(--fs-2); color: var(--ink); }
+body.paper .ev-tags { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
+body.paper .ev-tag { padding: 0 var(--sp-2); font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); background: var(--paper-2);
+  border: 1px solid var(--rule); border-radius: 999px; }
+body.paper .ev-chart { position: relative; height: 170px; }
+body.paper .ev-note, body.paper .ev-src { margin: 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.4; }
+body.paper .ev-note[hidden] { display: none; }
+body.paper .ev-memo { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-1); font-weight: 600; color: var(--ink); }
+body.paper .ev-memo textarea { font: inherit; font-size: var(--fs-2); font-weight: 400; color: var(--ink); background: var(--paper); resize: vertical;
+  border: 1.5px solid var(--rule); border-radius: var(--radius); padding: var(--sp-1) var(--sp-2); box-sizing: border-box; width: 100%; }
+body.paper .ev-memo textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .ev-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }

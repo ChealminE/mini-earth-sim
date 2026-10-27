@@ -116,7 +116,10 @@ const chartFossil = USE_WORKSPACE ? null : new Chart(document.getElementById('ch
 // ── 그래프 작업대 (3차 C3) ────────────────────────────────────────────
 // 처음 상태: Y1 = 대기 CO₂, 시간 보기, 전체 기간. 3D는 지금처럼 최신 관측 상태 그대로(분석창 연도와 묶지 않음).
 const currentWorkspace = USE_WORKSPACE
-  ? GraphWorkspace.create(document.getElementById('currentWorkspace'), { catalog: DATA_CATALOG }) : null;
+  ? GraphWorkspace.create(document.getElementById('currentWorkspace'), {
+    catalog: DATA_CATALOG,
+    onSend: cfg => Worksheet.addEvidence('workspace', cfg, 'current'),   // 학습지로 보내기 (3차 C4)
+  }) : null;
 if (currentWorkspace) {
   document.querySelector('#tab-current .charts-2col').hidden = true;
   currentWorkspace.add('co2');
@@ -125,4 +128,23 @@ if (currentWorkspace) {
 function resizeCurrentGraphs() {
   if (currentWorkspace) currentWorkspace.resize();
   else [chartCo2, chartTempHist, chartPhHist, chartFossil].forEach(c => c.resize());
+}
+
+// ── 학습지 [나의 증거] 카드: 작업대 구성 다시 그리기 (3차 C4, js/worksheet.js) ──
+// 그림이 아니라 구성(getConfig)만 저장되어 있어 같은 규칙(R1~R8)으로 다시 그린다(js/graph-workspace.js drawStatic)
+{
+  const item = id => DATA_CATALOG.find(it => it.id === id);
+  const shortOf = id => (item(id) ? item(id).short : id);
+  const MODE_TAG = { shape: '모양 비교', scatter: '산점도' };
+  Worksheet.registerEvidenceKind('workspace', {
+    title: cfg => cfg.series.map(shortOf).join(' · ') || '(빈 그래프)',
+    tags: cfg => [MODE_TAG[cfg.mode], ...(cfg.flips || []).map(id => `${shortOf(id)} 축 뒤집음`),
+      cfg.range !== 'all' ? `${cfg.range}년~` : null, cfg.commonOnly && cfg.mode === 'time' ? '공통 기간만' : null].filter(Boolean),
+    sources: cfg => cfg.series.flatMap(id => (item(id) ? [].concat(item(id).src) : [])),
+    draw: (canvas, cfg) => { const { chart, view } = GraphWorkspace.drawStatic(canvas, DATA_CATALOG, cfg); return { chart, note: view.banner }; },
+    // 크게 보기: 현재 실태 작업대에 그대로 불러온다 (switchTab·activeTab 은 main.js)
+    open: cfg => { if (activeTab !== 'current') switchTab('current'); if (currentWorkspace) currentWorkspace.loadConfig(cfg); },
+    csv: cfg => ({ series: cfg.series.join('+'), mode: cfg.mode, flips: (cfg.flips || []).join('+'),
+      range: (cfg.range === 'all' ? '전체' : `${cfg.range}~`) + (cfg.commonOnly && cfg.mode === 'time' ? ' 공통 기간만' : '') }),
+  });
 }

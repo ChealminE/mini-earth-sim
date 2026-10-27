@@ -78,16 +78,201 @@ const GraphWorkspace = (() => {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmt = (v, step) => { const d = step >= 1 ? 0 : step >= 0.1 ? 1 : step >= 0.01 ? 2 : 3; return v.toFixed(d); };
 
+  // ── 작업대와 학습지 증거 카드(3차 C4)가 함께 쓰는 부품: 구성(cfg) → Chart.js 계열·축 ──
+  // 자료 묶음: 카드 자료는 한 번만 만든다(모형 자료는 엔진 실행). 목록마다 하나
+  const envCache = new WeakMap();
+  function makeEnv(catalog, axes = DATA_AXES) {
+    if (envCache.has(catalog)) return envCache.get(catalog);
+    const byId = id => catalog.find(it => it.id === id);
+    const cache = new Map();
+    const pts = id => { if (!cache.has(id)) cache.set(id, byId(id).get()); return cache.get(id); };
+    const env = { catalog, axes, byId, pts, periodOf: id => GraphWorkspaceCore.span(pts(id)) };
+    envCache.set(catalog, env);
+    return env;
+  }
+  const lineDs = (it, data, extra = {}) => ({
+    label: it.short + (it.scope === 'station' && !it.short.includes('한 지점') ? ' · 한 지점' : '') + (it.scope === 'model' && !it.short.includes('모형') ? ' · 모형' : ''),
+    data, $id: it.id, showLine: true, borderColor: Theme.color(it.color), backgroundColor: Theme.color(it.color),
+    borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0.1,
+    borderDash: it.scope === 'model' ? [6, 4] : [], ...extra,
+  });
+  const colorOf = (scale, col) => { scale.title.color = col; scale.ticks.color = col; return scale; };
+  const xAxis = per => Theme.axis({ type: 'linear', min: per.from, max: per.to,
+    ticks: { color: Theme.color('--ink-3'), font: Theme.font(), maxTicksLimit: 8, callback: v => String(v) } });
+  // 구성 → 그릴 것. cfg = { series, mode, range, commonOnly, flips(배열 또는 Set) }
+  function buildView(env, cfg) {
+    const { byId, pts, axes } = env, C = Theme.color;
+    const ids = cfg.series.filter(id => byId(id)), flips = new Set(cfg.flips || []);
+    const ds = [], scales = {}, gaps = [], segs = [];
+    let banner = '', tag = '';
+    // 시간 보기는 합집합 기간(공통 기간만 켜면 교집합), 모양 비교·산점도는 항상 공통 기간 (마스터 결정 6). 기간 버튼(R8)으로 앞을 자른다
+    const lists = ids.map(pts);
+    let per = !ids.length ? null : cfg.mode === 'time' && !cfg.commonOnly ? GraphWorkspaceCore.unionPeriod(...lists) : GraphWorkspaceCore.commonPeriod(...lists);
+    if (per && cfg.range !== 'all') per = per.to >= cfg.range ? { from: Math.max(per.from, cfg.range), to: per.to } : null;
+    // 같은 axis 끼리 묶어 축을 정한다 (R1·R2)
+    const groups = [];
+    for (const id of ids) { const it = byId(id), g = groups.find(x => x.axis === it.axis); if (g) g.ids.push(id); else groups.push({ axis: it.axis, ids: [id] }); }
+    const axisTitle = gids => { const its = gids.map(byId), unit = axes[its[0].axis].unit; return its.map(it => it.short).join(' · ') + (unit ? ` (${unit})` : ''); };
+    function yScale(gids, values, position) {
+      const r = GraphWorkspaceCore.axisRange(values, Math.max(...gids.map(id => byId(id).minSpan)), 0.05) || { min: 0, max: 1 };
+      const col = gids.length === 1 ? C(byId(gids[0]).color) : C('--ink-2');
+      const flip = gids.some(id => flips.has(id));
+      const sc = Theme.axis({
+        type: 'linear', position, min: r.min, max: r.max, reverse: flip,
+        title: axisTitle(gids) + (flip ? ' (뒤집음 ↓)' : ''),
+        ticks: { color: col, font: Theme.font(), maxTicksLimit: 6, callback: (v, i, ticks) => fmt(v, Math.abs((ticks[1]?.value ?? v + 1) - (ticks[0]?.value ?? v))) },
+        grid: { drawOnChartArea: position === 'left', color: Theme.alpha('--rule', 0.55) },
+      });
+      return colorOf(sc, col);   // 축 제목·눈금 = 계열 색 (R2). 두 계열이 한 축이면 먹색
+    }
+    if (ids.length && cfg.mode === 'time' && per) {
+      groups.forEach((g, gi) => {
+        const yid = gi === 0 ? 'y' : 'y1';
+        for (const id of g.ids) {
+          const it = byId(id), p = GraphWorkspaceCore.within(pts(id), per);
+          if (p.some(o => o.lo !== undefined)) {   // 불확도 띠: 위 경계를 다음 계열(아래 경계)까지 채운다
+            ds.push({ ...lineDs(it, p.map(o => ({ x: o.x, y: o.hi })), { borderWidth: 0, fill: '+1', backgroundColor: Theme.alpha('--data-band', 1), borderDash: [] }), label: '_띠', yAxisID: yid, $id: null });
+            ds.push({ ...lineDs(it, p.map(o => ({ x: o.x, y: o.lo })), { borderWidth: 0 }), label: '_띠 아래', yAxisID: yid, $id: null });
+          }
+          ds.push({ ...lineDs(it, p), yAxisID: yid });
+          // 이 계열 자료가 없는 구간 (마스터 결정 6)
+          const sp = GraphWorkspaceCore.span(pts(id));
+          if (sp.from > per.from) gaps.push({ from: per.from, to: sp.from, color: it.color, text: `${it.short} 자료 없음 (${sp.from}년부터)` });
+          if (sp.to < per.to) gaps.push({ from: sp.to, to: per.to, color: it.color, text: `${it.short} 자료 없음 (${sp.to}년까지)` });
+          for (const o of p) if (o.seg) segs.push({ x: o.x, color: it.color, ...o.seg });
+        }
+        const vals = g.ids.flatMap(id => GraphWorkspaceCore.within(pts(id), per).flatMap(o => [o.y, o.lo, o.hi].filter(Number.isFinite)));
+        scales[yid] = yScale(g.ids, vals, gi === 0 ? 'left' : 'right');
+      });
+      scales.x = xAxis(per);
+    } else if (ids.length && cfg.mode === 'shape' && per) {
+      // R5: 공통 기간에서 0~1로. 축 눈금 대신 '낮음/높음'
+      ids.forEach(id => ds.push({ ...lineDs(byId(id), GraphWorkspaceCore.normalize(pts(id), per)), yAxisID: 'y' }));
+      scales.y = Theme.axis({ type: 'linear', min: -0.05, max: 1.05, title: '상대적 높낮이 (공통 기간 안)',
+        ticks: { color: C('--ink-3'), font: Theme.font(), stepSize: 0.5, callback: v => (v === 0 ? '낮음' : v === 1 ? '높음' : '') } });
+      scales.x = xAxis(per);
+      banner = '모양만 비교합니다 — 크기와 단위는 비교할 수 없어요';
+    } else if (ids.length === 2 && cfg.mode === 'scatter' && per) {
+      // R6: x = Y1, y = Y2, 공통 연도만. 점 색 = 연도 순(옅음 → 진함)
+      const [a, b] = ids.map(byId), pairs = GraphWorkspaceCore.pairByYear(pts(a.id), pts(b.id), per);
+      const n = pairs.length, ink = C('--data-obs');
+      ds.push({ label: `${per.from}년(옅음) → ${per.to}년(진함)`, data: pairs, $id: 'pair', $xLabel: a.short, $yLabel: b.short,
+        showLine: false, pointRadius: 3, pointHoverRadius: 5, borderWidth: 0,
+        pointBackgroundColor: pairs.map((p, i) => Theme.alpha('--data-obs', 0.15 + 0.85 * (n > 1 ? i / (n - 1) : 1))), backgroundColor: ink, borderColor: ink });
+      scales.x = yScale([a.id], pairs.map(p => p.x), 'bottom');
+      scales.x.grid = { color: Theme.alpha('--rule', 0.55) };
+      scales.y = yScale([b.id], pairs.map(p => p.y), 'left');
+      const { r } = GraphWorkspaceCore.pearson(pts(a.id), pts(b.id), per);
+      banner = `상관계수 r = ${r == null ? '계산 불가' : r.toFixed(2)} · 자료 ${n}쌍 · ${per.from}~${per.to}년 — 함께 변한다고 원인이라는 뜻은 아니에요. 왜 함께 변하는지 설명이 필요해요`;
+    }
+    if (ids.length > 1 && !GraphWorkspaceCore.commonPeriod(...lists) && cfg.mode !== 'time') banner = '두 자료가 함께 있는 기간이 없어요 — 공통 기간이 필요한 보기는 그릴 수 없습니다';
+    else if (ids.length && !per) banner = cfg.range !== 'all' ? `${cfg.range}년 이후 자료가 없어요 — 기간을 [전체]로 바꿔 보세요` : '두 자료가 함께 있는 기간이 없어요';
+    else if (cfg.mode === 'scatter' && ids.length === 1) banner = '산점도는 자료 두 개가 필요해요';
+    // 뒤집기 꼬리표 (R4)
+    const fl = ids.filter(id => flips.has(id));
+    if (fl.length && cfg.mode !== 'shape') tag = `${fl.map(id => byId(id).short).join('·')} 축을 뒤집었어요 ↓`;
+    return { ds, scales, gaps, segs, banner, tag, per, legend: cfg.mode !== 'scatter' && ds.length > 0 };
+  }
+  // 자료가 없는 구간: 옅은 빗금 + "○○ 자료 없음 (1989년부터)" / 이음 경계(seg): 세로 점선(+ 작업대는 HTML 설명 표시를 그 자리로)
+  function gapPlugin(segMarks) {
+    const C = Theme.color;
+    return {
+      id: 'gwGaps',
+      beforeDatasetsDraw(ch) {
+        const gaps = ch.$gaps || [];
+        if (!gaps.length) return;
+        const { ctx, chartArea: a, scales: { x } } = ch;
+        ctx.save();
+        gaps.forEach((g, k) => {
+          const x0 = Math.max(a.left, x.getPixelForValue(g.from)), x1 = Math.min(a.right, x.getPixelForValue(g.to));
+          if (x1 - x0 < 2) return;
+          ctx.save();
+          ctx.beginPath(); ctx.rect(x0, a.top, x1 - x0, a.bottom - a.top); ctx.clip();
+          ctx.fillStyle = Theme.alpha('--ink', 0.035); ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+          ctx.strokeStyle = Theme.alpha('--ink', 0.1); ctx.lineWidth = 1;
+          for (let s = x0 - (a.bottom - a.top); s < x1; s += 9) { ctx.beginPath(); ctx.moveTo(s, a.bottom); ctx.lineTo(s + (a.bottom - a.top), a.top); ctx.stroke(); }
+          ctx.restore();
+          ctx.fillStyle = C(g.color); ctx.font = `600 ${Theme.px('--fs-1')}px ${C('--font-body') || 'sans-serif'}`;
+          ctx.textBaseline = 'top';
+          const tw = ctx.measureText(g.text).width;
+          if (tw < x1 - x0 - 8) ctx.fillText(g.text, x0 + 6, a.top + 6 + k * (Theme.px('--fs-1') + 4));
+        });
+        ctx.restore();
+      },
+      afterDraw(ch) {
+        const segs = ch.$segs || [];
+        const { ctx, chartArea: a, scales: { x } } = ch;
+        if (!x) return;
+        ctx.save(); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+        const marks = segMarks ? segMarks() : [];
+        segs.forEach((s, i) => {
+          const px = x.getPixelForValue(s.x);
+          const inside = px >= a.left && px <= a.right;
+          if (marks[i]) { marks[i].hidden = !inside; marks[i].style.left = px + 'px'; marks[i].style.top = a.top + 'px'; }
+          if (!inside) return;
+          ctx.strokeStyle = C(s.color);
+          ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+        });
+        ctx.restore();
+      },
+    };
+  }
+  function tipLabelFor(env, modeOf) {
+    return c => {
+      const ds = c.dataset;
+      if (!ds.$id) return null;
+      if (modeOf() === 'scatter') return `${c.raw.year}년 · ${ds.$xLabel} ${c.raw.x.toFixed(3)} · ${ds.$yLabel} ${c.raw.y.toFixed(3)}`;
+      if (modeOf() === 'shape') return `${c.raw.x}년 · ${ds.label} (0~1 정규화) ${c.raw.y.toFixed(2)}`;
+      const it = env.byId(ds.$id);
+      return `${c.raw.x}년 · ${it.short} ${c.raw.y.toFixed(it.minSpan >= 2 ? 1 : 3)}${it.unit ? ' ' + it.unit : ''}`;
+    };
+  }
+  // 분석창 하나 = Chart.js 하나(type scatter + showLine). 축은 손으로 못 바꾼다(확대·끌기 플러그인 없음, R3)
+  function chartConfig(env, modeOf, segMarks) {
+    return {
+      type: 'scatter',
+      data: { datasets: [] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: { legend: Theme.legend(), tooltip: { filter: item => !!item.dataset.$id, callbacks: { label: tipLabelFor(env, modeOf) } } },
+        scales: {},
+        layout: { padding: { top: 4, right: 4 } },
+      },
+      plugins: [gapPlugin(segMarks)],
+    };
+  }
+  // 저장한 구성을 다시 그린 그래프 (학습지 [나의 증거] 카드). 그림을 저장하지 않고 필요할 때 다시 그린다(마스터 §6-8).
+  // 돌려준 Chart 는 부른 쪽이 destroy() 한다. { chart, view } 를 돌려준다(view.banner·tag 를 카드 글로 쓸 수 있게)
+  function drawStatic(canvas, catalog, cfg) {
+    const env = makeEnv(catalog);
+    const v = buildView(env, cfg);
+    const conf = chartConfig(env, () => cfg.mode, null);
+    conf.data.datasets = v.ds;
+    conf.options.scales = v.scales;
+    conf.options.plugins.legend.display = v.legend;
+    const chart = new Chart(canvas, conf);
+    chart.$gaps = v.gaps; chart.$segs = v.segs;
+    chart.update('none');
+    return { chart, view: v };
+  }
+  // Chart → PNG(종이색 바탕). 그 순간에만 만든다
+  function chartImage(chart) {
+    const src = chart.canvas, out = document.createElement('canvas');
+    out.width = src.width; out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = Theme.color('--paper'); ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, 0);
+    return out.toDataURL('image/png');
+  }
+
   function create(root, opts) {
     const catalog = opts.catalog, axes = opts.axes || DATA_AXES, hints = opts.hints || DATA_HINTS;
     const decks = opts.decks || ['core', 'carbon', 'model'];
     const deckNames = opts.deckNames || DATA_DECKS;
     const C = Theme.color;
-    const byId = id => catalog.find(it => it.id === id);
-    // 자료는 카드마다 한 번만 만든다(모형 자료는 엔진 실행)
-    const ptsCache = new Map();
-    const pts = id => { if (!ptsCache.has(id)) ptsCache.set(id, byId(id).get()); return ptsCache.get(id); };
-    const periodOf = id => GraphWorkspaceCore.span(pts(id));
+    const env = makeEnv(catalog, axes);
+    const { byId, pts, periodOf } = env;
     const srcKeys = it => [].concat(it.src);
 
     const st = { series: [], mode: 'time', range: 'all', commonOnly: false, flips: new Set(), lock: null };
@@ -160,173 +345,22 @@ const GraphWorkspace = (() => {
 
     // ── 그래프 (Chart.js 한 개를 계속 갱신) ──
     const plot = q('.gw-plot');
-    const hatchPlugin = {   // 자료가 없는 구간: 옅은 빗금 + "○○ 자료 없음 (1989년부터)"
-      id: 'gwGaps',
-      beforeDatasetsDraw(ch) {
-        const gaps = ch.$gaps || [];
-        if (!gaps.length) return;
-        const { ctx, chartArea: a, scales: { x } } = ch;
-        ctx.save();
-        gaps.forEach((g, k) => {
-          const x0 = Math.max(a.left, x.getPixelForValue(g.from)), x1 = Math.min(a.right, x.getPixelForValue(g.to));
-          if (x1 - x0 < 2) return;
-          ctx.save();
-          ctx.beginPath(); ctx.rect(x0, a.top, x1 - x0, a.bottom - a.top); ctx.clip();
-          ctx.fillStyle = Theme.alpha('--ink', 0.035); ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
-          ctx.strokeStyle = Theme.alpha('--ink', 0.1); ctx.lineWidth = 1;
-          for (let s = x0 - (a.bottom - a.top); s < x1; s += 9) { ctx.beginPath(); ctx.moveTo(s, a.bottom); ctx.lineTo(s + (a.bottom - a.top), a.top); ctx.stroke(); }
-          ctx.restore();
-          ctx.fillStyle = C(g.color); ctx.font = `600 ${Theme.px('--fs-1')}px ${C('--font-body') || 'sans-serif'}`;
-          ctx.textBaseline = 'top';
-          const txt = g.text, tw = ctx.measureText(txt).width;
-          if (tw < x1 - x0 - 8) ctx.fillText(txt, x0 + 6, a.top + 6 + k * (Theme.px('--fs-1') + 4));
-        });
-        ctx.restore();
-      },
-      afterDraw(ch) {   // 이음 경계(seg): 세로 점선. 설명은 HTML 표시(.gw-seg)를 그 자리로 옮긴다
-        const segs = ch.$segs || [];
-        const { ctx, chartArea: a, scales: { x } } = ch;
-        ctx.save(); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
-        const marks = qa('.gw-seg');
-        segs.forEach((s, i) => {
-          const px = x.getPixelForValue(s.x);
-          const inside = px >= a.left && px <= a.right;
-          if (marks[i]) { marks[i].hidden = !inside; marks[i].style.left = px + 'px'; marks[i].style.top = a.top + 'px'; }
-          if (!inside) return;
-          ctx.strokeStyle = C(s.color);
-          ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
-        });
-        ctx.restore();
-      },
-    };
-    const chart = new Chart(q('.gw-plot canvas'), {
-      type: 'scatter',
-      data: { datasets: [] },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode: 'nearest', intersect: false },
-        plugins: { legend: Theme.legend(), tooltip: { filter: item => !!item.dataset.$id, callbacks: { label: tipLabel } } },
-        scales: {},
-        layout: { padding: { top: 4, right: 4 } },
-      },
-      plugins: [hatchPlugin],
-    });
-    function tipLabel(c) {
-      const ds = c.dataset;
-      if (!ds.$id) return null;
-      if (st.mode === 'scatter') return `${c.raw.year}년 · ${ds.$xLabel} ${c.raw.x.toFixed(3)} · ${ds.$yLabel} ${c.raw.y.toFixed(3)}`;
-      if (st.mode === 'shape') return `${c.raw.x}년 · ${ds.label} (0~1 정규화) ${c.raw.y.toFixed(2)}`;
-      const it = byId(ds.$id);
-      return `${c.raw.x}년 · ${it.short} ${c.raw.y.toFixed(it.minSpan >= 2 ? 1 : 3)}${it.unit ? ' ' + it.unit : ''}`;
-    }
-
-    // ── 그리기 ──
-    function xPeriod(lists) {
-      let per = st.mode === 'time' && !st.commonOnly ? GraphWorkspaceCore.unionPeriod(...lists) : GraphWorkspaceCore.commonPeriod(...lists);
-      if (per && st.range !== 'all') per = per.to >= st.range ? { from: Math.max(per.from, st.range), to: per.to } : null;
-      return per;
-    }
-    const lineDs = (it, data, extra = {}) => ({
-      label: it.short + (it.scope === 'station' && !it.short.includes('한 지점') ? ' · 한 지점' : '') + (it.scope === 'model' && !it.short.includes('모형') ? ' · 모형' : ''),
-      data, $id: it.id, showLine: true, borderColor: C(it.color), backgroundColor: C(it.color),
-      borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: 0.1,
-      borderDash: it.scope === 'model' ? [6, 4] : [], ...extra,
-    });
-    // 같은 axis 끼리 묶어 축을 정한다 (R1·R2)
-    function axisGroups(ids) {
-      const groups = [];
-      for (const id of ids) {
-        const it = byId(id), g = groups.find(x => x.axis === it.axis);
-        if (g) g.ids.push(id); else groups.push({ axis: it.axis, ids: [id] });
-      }
-      return groups;
-    }
-    function axisTitle(ids) {
-      const its = ids.map(byId), unit = axes[its[0].axis].unit;
-      return its.map(it => it.short).join(' · ') + (unit ? ` (${unit})` : '');
-    }
-    const flipped = ids => ids.some(id => st.flips.has(id));
-    const colorOf = (scale, col) => { scale.title.color = col; scale.ticks.color = col; return scale; };
-    function yScale(ids, values, position, visible = true) {
-      const it0 = byId(ids[0]);
-      const r = GraphWorkspaceCore.axisRange(values, Math.max(...ids.map(id => byId(id).minSpan)), 0.05) || { min: 0, max: 1 };
-      const col = ids.length === 1 ? C(it0.color) : C('--ink-2');
-      const flip = flipped(ids);
-      const s = Theme.axis({
-        type: 'linear', position, display: visible, min: r.min, max: r.max, reverse: flip,
-        title: axisTitle(ids) + (flip ? ' (뒤집음 ↓)' : ''),
-        ticks: { color: col, font: Theme.font(), maxTicksLimit: 6, callback: (v, i, ticks) => fmt(v, Math.abs((ticks[1]?.value ?? v + 1) - (ticks[0]?.value ?? v))) },
-        grid: { drawOnChartArea: position === 'left', color: Theme.alpha('--rule', 0.55) },
-      });
-      return colorOf(s, col);   // 축 제목·눈금 = 계열 색 (R2). 두 계열이 한 축이면 먹색
-    }
+    const chart = new Chart(q('.gw-plot canvas'), chartConfig(env, () => st.mode, () => qa('.gw-seg')));
 
     function render() {
       const ids = st.series;
-      const lists = ids.map(pts);
-      const ds = [], scales = {}, gaps = [], segs = [];
-      let banner = '', tag = '';
+      const v = buildView(env, st);
       q('.gw-empty').hidden = ids.length > 0;
-      const per = ids.length ? xPeriod(lists) : null;
-      const noCommon = ids.length > 1 && !per;
-      if (ids.length && st.mode === 'time' && per) {
-        const groups = axisGroups(ids);
-        groups.forEach((g, gi) => {
-          const yid = gi === 0 ? 'y' : 'y1';
-          for (const id of g.ids) {
-            const it = byId(id), p = GraphWorkspaceCore.within(pts(id), per);
-            if (id === 'temp' || p.some(o => o.lo !== undefined)) {   // 불확도 띠: 위 경계를 다음 계열(아래 경계)까지 채운다
-              ds.push({ ...lineDs(it, p.map(o => ({ x: o.x, y: o.hi })), { borderWidth: 0, fill: '+1', backgroundColor: Theme.alpha('--data-band', 1), borderDash: [] }), label: '_띠', yAxisID: yid, $id: null });
-              ds.push({ ...lineDs(it, p.map(o => ({ x: o.x, y: o.lo })), { borderWidth: 0 }), label: '_띠 아래', yAxisID: yid, $id: null });
-            }
-            ds.push({ ...lineDs(it, p), yAxisID: yid });
-            // 이 계열 자료가 없는 구간 (마스터 결정 6)
-            const s = GraphWorkspaceCore.span(pts(id));
-            if (s.from > per.from) gaps.push({ from: per.from, to: s.from, color: it.color, text: `${it.short} 자료 없음 (${s.from}년부터)` });
-            if (s.to < per.to) gaps.push({ from: s.to, to: per.to, color: it.color, text: `${it.short} 자료 없음 (${s.to}년까지)` });
-            for (const o of p) if (o.seg) segs.push({ x: o.x, color: it.color, ...o.seg });
-          }
-          const vals = g.ids.flatMap(id => GraphWorkspaceCore.within(pts(id), per).flatMap(o => [o.y, o.lo, o.hi].filter(Number.isFinite)));
-          scales[yid] = yScale(g.ids, vals, gi === 0 ? 'left' : 'right');
-        });
-        scales.x = Theme.axis({ type: 'linear', min: per.from, max: per.to, ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 8, callback: v => String(v) } });
-      } else if (ids.length && st.mode === 'shape' && per) {
-        // R5: 공통 기간에서 0~1로. 축 눈금 대신 '낮음/높음'
-        ids.forEach(id => ds.push({ ...lineDs(byId(id), GraphWorkspaceCore.normalize(pts(id), per)), yAxisID: 'y' }));
-        scales.y = Theme.axis({ type: 'linear', min: -0.05, max: 1.05, title: '상대적 높낮이 (공통 기간 안)',
-          ticks: { color: C('--ink-3'), font: Theme.font(), stepSize: 0.5, callback: v => (v === 0 ? '낮음' : v === 1 ? '높음' : '') } });
-        scales.x = Theme.axis({ type: 'linear', min: per.from, max: per.to, ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 8, callback: v => String(v) } });
-        banner = '모양만 비교합니다 — 크기와 단위는 비교할 수 없어요';
-      } else if (ids.length === 2 && st.mode === 'scatter' && per) {
-        // R6: x = Y1, y = Y2, 공통 연도만. 점 색 = 연도 순(옅음 → 진함)
-        const [a, b] = ids.map(byId), pairs = GraphWorkspaceCore.pairByYear(pts(a.id), pts(b.id), per);
-        const n = pairs.length, ink = C('--data-obs');
-        ds.push({ label: `${per.from}년(옅음) → ${per.to}년(진함)`, data: pairs, $id: 'pair', $xLabel: a.short, $yLabel: b.short,
-          showLine: false, pointRadius: 3, pointHoverRadius: 5, borderWidth: 0,
-          pointBackgroundColor: pairs.map((p, i) => Theme.alpha('--data-obs', 0.15 + 0.85 * (n > 1 ? i / (n - 1) : 1))), backgroundColor: ink, borderColor: ink });
-        scales.x = colorOf(yScale([a.id], pairs.map(p => p.x), 'bottom'), C(a.color));
-        scales.x.grid = { color: Theme.alpha('--rule', 0.55) };
-        scales.y = colorOf(yScale([b.id], pairs.map(p => p.y), 'left'), C(b.color));
-        const { r } = GraphWorkspaceCore.pearson(pts(a.id), pts(b.id), per);
-        banner = `상관계수 r = ${r == null ? '계산 불가' : r.toFixed(2)} · 자료 ${n}쌍 · ${per.from}~${per.to}년 — 함께 변한다고 원인이라는 뜻은 아니에요. 왜 함께 변하는지 설명이 필요해요`;
-      }
-      if (noCommon) banner = '두 자료가 함께 있는 기간이 없어요 — 공통 기간이 필요한 보기는 그릴 수 없습니다';
-      else if (ids.length && !per) banner = `${st.range}년 이후 자료가 없어요 — 기간을 [전체]로 바꿔 보세요`;
-      else if (st.mode === 'scatter' && ids.length === 1) banner = '산점도는 자료 두 개가 필요해요';
-      // 뒤집기 꼬리표 (R4)
-      const fl = ids.filter(id => st.flips.has(id));
-      if (fl.length && st.mode !== 'shape') tag = `${fl.map(id => byId(id).short).join('·')} 축을 뒤집었어요 ↓`;
-      // 같은 축을 쓰는 계열이 하나면 축 글자를 그 계열 색으로 (R2)
-      chart.data.datasets = ds;
-      chart.options.scales = scales;
-      chart.options.plugins.legend.display = st.mode !== 'scatter' && ds.length > 0;
-      chart.$gaps = gaps;
-      chart.$segs = segs;
-      q('.gw-segs').innerHTML = segs.map(s => `<span class="gw-seg"><span class="gw-seg-mark" tabindex="0" aria-label="자료 이음: ${esc(s.text)}">이음</span>
+      chart.data.datasets = v.ds;
+      chart.options.scales = v.scales;
+      chart.options.plugins.legend.display = v.legend;
+      chart.$gaps = v.gaps;
+      chart.$segs = v.segs;
+      q('.gw-segs').innerHTML = v.segs.map(s => `<span class="gw-seg"><span class="gw-seg-mark" tabindex="0" aria-label="자료 이음: ${esc(s.text)}">이음</span>
         <span class="gw-seg-text" role="tooltip">${esc(s.text)} ${srcButton(s.src)}</span></span>`).join('');
       const bannerEl = q('.gw-banner'), plotH = plot.clientHeight;
-      bannerEl.hidden = !banner; bannerEl.textContent = banner;
-      q('.gw-tag').hidden = !tag; q('.gw-tag').textContent = tag;
+      bannerEl.hidden = !v.banner; bannerEl.textContent = v.banner;
+      q('.gw-tag').hidden = !v.tag; q('.gw-tag').textContent = v.tag;
       chart.update('none');
       // 고정 문구가 나타나거나 줄 수가 바뀌면 분석창 높이가 바뀐다. Chart.js 자체 크기 맞춤은 다음 화면 갱신까지 기다려
       // 그사이 x축 글자가 안내 줄과 겹쳐 보였다 → 높이가 바뀌었으면 바로 맞춘다
@@ -416,14 +450,7 @@ const GraphWorkspace = (() => {
     // 탐구 단계가 카드·보기를 제한할 때 (3차 E). lock(null) 로 풀기
     function lock(o) { st.lock = o || null; if (o && o.modes && !o.modes.includes(st.mode)) st.mode = o.modes[0]; changed(); }
     // 그 순간의 그림 (PNG 내려받기). 저장하지 않는다 — 구성(getConfig)만 저장하고 그림은 필요할 때 다시 그린다(마스터 §6-8)
-    function toImage() {
-      const src = chart.canvas, out = document.createElement('canvas');
-      out.width = src.width; out.height = src.height;
-      const ctx = out.getContext('2d');
-      ctx.fillStyle = C('--paper'); ctx.fillRect(0, 0, out.width, out.height);
-      ctx.drawImage(src, 0, 0);
-      return out.toDataURL('image/png');
-    }
+    const toImage = () => chartImage(chart);
 
     // ── 조작 연결 ──
     root.addEventListener('click', e => {
@@ -503,5 +530,5 @@ const GraphWorkspace = (() => {
     };
   }
 
-  return { create };
+  return { create, drawStatic, chartImage, buildView, makeEnv, SCOPE_TAG, MODES };
 })();

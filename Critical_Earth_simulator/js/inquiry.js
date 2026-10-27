@@ -298,17 +298,21 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   }
   function renderLog() {
     const rows = InquiryCore.logRows(INQ.answers, INQ.records);
-    el('recInq').hidden = rows.length === 0;
+    // 학습지 증거(3차 C4)도 이 CSV로 함께 내보내므로, 증거만 있어도 이 묶음을 보인다
+    el('recInq').hidden = rows.length === 0 && Worksheet.evidenceRows().length === 0;
     el('inqLogCount').textContent = rows.length;
     el('inqLog').innerHTML = rows.map(r => `<tr><td>${esc(r.path)}</td><td>${esc(r.step)}</td><td>${esc(r.question)}</td>`
       + `<td>${esc(r.answer)}</td><td>${esc(r.year)}</td><td>${esc(r.value)}</td></tr>`).join('');
   }
   el('inqCsv').addEventListener('click', () => {
-    const rows = InquiryCore.logRows(INQ.answers, INQ.records);
-    if (!rows.length) return;
+    const rows = InquiryCore.logRows(INQ.answers, INQ.records), ev = Worksheet.evidenceRows();
+    if (!rows.length && !ev.length) return;
+    // 학습지 증거 줄(3차 C4)은 빈 줄 하나 뒤에 제 머리줄(kind, series, mode, flips, range, memo, time)과 함께 붙인다
+    const csv = InquiryCore.toCsv(rows) + (ev.length ? '\r\n\r\n' + Worksheet.evidenceCsv(InquiryCore.localTime) : '');
     // BOM: 엑셀에서 한글이 깨지지 않게 (측정 기록 CSV와 같은 방식)
-    downloadBlob(new Blob(['\ufeff' + InquiryCore.toCsv(rows)], { type: 'text/csv;charset=utf-8;' }), `미래예측_탐구기록_${fileStamp()}.csv`);
+    downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }), `미래예측_탐구기록_${fileStamp()}.csv`);
   });
+  document.addEventListener('worksheet:evidence', renderLog);
   el('inqClear').addEventListener('click', () => {
     if (!confirm('탐구 기록(고른 점·쓴 글·고른 보기·기록 줄)을 모두 지울까요?')) return;
     INQ.answers = {};

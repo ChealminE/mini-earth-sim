@@ -25,7 +25,7 @@ function switchTab(name) {
   document.getElementById('tabHeaderTitle').textContent = TAB_HEADERS[name].title;
   document.getElementById('tabHeaderDesc').textContent = TAB_HEADERS[name].desc;
   document.getElementById('topbarDesc').textContent = TAB_HEADERS[name].desc;
-  Worksheet.setTitle(TAB_HEADERS[name].title);   // 학습지 칸은 두 탭이 함께 쓴다 (js/worksheet.js)
+  Worksheet.setTitle(TAB_HEADERS[name].title, PAPER_TABS.includes(name));   // 학습지 칸은 두 탭이 함께 쓴다 (js/worksheet.js)
   // 머리줄 탭 버튼: 지금 탭은 눌림 상태로 (css/theme.css .btn.is-on)
   document.querySelectorAll('#topbar [data-tab-go]').forEach(a => {
     const on = a.dataset.tabGo === name;
