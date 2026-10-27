@@ -324,9 +324,13 @@ const GraphWorkspace = (() => {
       chart.$segs = segs;
       q('.gw-segs').innerHTML = segs.map(s => `<span class="gw-seg"><span class="gw-seg-mark" tabindex="0" aria-label="자료 이음: ${esc(s.text)}">이음</span>
         <span class="gw-seg-text" role="tooltip">${esc(s.text)} ${srcButton(s.src)}</span></span>`).join('');
-      q('.gw-banner').hidden = !banner; q('.gw-banner').textContent = banner;
+      const bannerEl = q('.gw-banner'), plotH = plot.clientHeight;
+      bannerEl.hidden = !banner; bannerEl.textContent = banner;
       q('.gw-tag').hidden = !tag; q('.gw-tag').textContent = tag;
       chart.update('none');
+      // 고정 문구가 나타나거나 줄 수가 바뀌면 분석창 높이가 바뀐다. Chart.js 자체 크기 맞춤은 다음 화면 갱신까지 기다려
+      // 그사이 x축 글자가 안내 줄과 겹쳐 보였다 → 높이가 바뀌었으면 바로 맞춘다
+      if (plot.clientHeight !== plotH) chart.resize();
       renderControls();
     }
 

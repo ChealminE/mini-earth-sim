@@ -1,4 +1,7 @@
 // ================= 현재 실태 탭 =================
+// 3차 C3: 그래프 4개(CO₂·기온·pH·화석연료) 자리를 그래프 작업대(js/graph-workspace.js)로 대체했다.
+// 예전 그래프 코드는 되돌리기 쉽게 남겨 두고, USE_WORKSPACE 가 true 면 만들지 않는다(마크업 .charts-2col 도 숨긴다).
+const USE_WORKSPACE = true;
 const sceneCurrent = sceneFor('current'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 
 // ── 관측 자료 ──────────────────────────────────────────────────────────
@@ -87,13 +90,13 @@ const OBS = Theme.color('--data-obs');
 const obsLine = (label, data) => ({ label, data, borderColor: OBS, backgroundColor: OBS, borderWidth: 2, pointRadius: 0, tension: 0.15 });
 const modelLine = (label, data, token) => ({ label, data, borderColor: Theme.color(token), backgroundColor: Theme.color(token),
   borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.15 });
-const chartCo2 = new Chart(document.getElementById('chartCo2'), {
+const chartCo2 = USE_WORKSPACE ? null : new Chart(document.getElementById('chartCo2'), {
   type: 'line', data: { datasets: [
     obsLine('관측 (NOAA 지구 평균)', obsCo2),
     modelLine('모형', modelCo2, '--data-co2'),
   ] },
   options: histOpts('ppm', true, obsCo2) });
-const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
+const chartTempHist = USE_WORKSPACE ? null : new Chart(document.getElementById('chartTempHist'), {
   type: 'line', data: { datasets: [
     obsLine('관측 (HadCRUT5)', obsTemp),
     modelLine('모형 (CO₂만)', modelTemp, '--data-temp'),
@@ -103,9 +106,23 @@ const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
     { label: '_불확도 하한', data: obsTempLo, borderWidth: 0, pointRadius: 0, fill: false },
   ] },
   options: histOpts('°C (1850~1900 대비)', true, obsTemp) });
-const chartPhHist = new Chart(document.getElementById('chartPhHist'), {
+const chartPhHist = USE_WORKSPACE ? null : new Chart(document.getElementById('chartPhHist'), {
   type: 'line', data: { datasets: [{ ...obsLine('관측 (HOT)', obsPh), spanGaps: true }] },
   options: histOpts('pH', false, obsPh) });
-const chartFossil = new Chart(document.getElementById('chartFossil'), {
+const chartFossil = USE_WORKSPACE ? null : new Chart(document.getElementById('chartFossil'), {
   type: 'line', data: { datasets: [obsLine('GCP', obsFossil)] },
   options: histOpts('백만 톤 CO₂', false, obsFossil) });
+
+// ── 그래프 작업대 (3차 C3) ────────────────────────────────────────────
+// 처음 상태: Y1 = 대기 CO₂, 시간 보기, 전체 기간. 3D는 지금처럼 최신 관측 상태 그대로(분석창 연도와 묶지 않음).
+const currentWorkspace = USE_WORKSPACE
+  ? GraphWorkspace.create(document.getElementById('currentWorkspace'), { catalog: DATA_CATALOG }) : null;
+if (currentWorkspace) {
+  document.querySelector('#tab-current .charts-2col').hidden = true;
+  currentWorkspace.add('co2');
+} else document.getElementById('currentWorkspace').hidden = true;
+// 칸 크기가 바뀌거나 탭을 열 때 main.js 가 부른다
+function resizeCurrentGraphs() {
+  if (currentWorkspace) currentWorkspace.resize();
+  else [chartCo2, chartTempHist, chartPhHist, chartFossil].forEach(c => c.resize());
+}

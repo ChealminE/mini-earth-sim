@@ -53,7 +53,7 @@ function switchTab(name) {
     resizeAnalysisChart();
     applyState(sceneLive);
   } else {
-    chartCo2.resize(); chartTempHist.resize(); chartPhHist.resize(); chartFossil.resize();
+    resizeCurrentGraphs();   // 그래프 작업대(3차 C3) 또는 예전 그래프 4개 (js/tab-current.js)
     sceneCurrent.state.co2 = lastOf(obsCo2).y; // 마지막 완전한 해의 NOAA 지구 평균
     applyState(sceneCurrent);
   }
@@ -79,7 +79,7 @@ window.addEventListener('resize', fitRenderer);
 if (typeof ResizeObserver !== 'undefined') {
   new ResizeObserver(() => fitRenderer()).observe(glContainer);
   new ResizeObserver(() => {
-    if (activeTab === 'current') [chartCo2, chartTempHist, chartPhHist, chartFossil].forEach(c => c.resize());
+    if (activeTab === 'current') resizeCurrentGraphs();
     else if (activeTab === 'future') [...charts, futChartSink].forEach(c => c.resize());
   }).observe(document.getElementById('graph-panel'));
 }
