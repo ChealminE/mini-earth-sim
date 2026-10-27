@@ -686,10 +686,17 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     else if (b.dataset.inq === 'next') go(1);
   });
 
-  // 새로 고친 뒤: 저장된 응답을 되살리고, 탐구 중이었으면 그 단계로 다시 들어간다
-  const saved = load();
-  renderLog();
-  if (saved && saved.on) setMode(true);
+  // 새로 고친 뒤: 저장된 응답을 되살리고, 탐구 중이었으면 그 단계로 다시 들어간다.
+  // 이 함수 안(Inquiry 를 만드는 도중)에서 부르면 안 된다 — 아래 resume 참고.
+  function resume() {
+    const saved = load();
+    renderLog();
+    if (saved && saved.on) setMode(true);
+  }
 
-  return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
+  return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, resume, ACTIONS };
 })();
+// 되살리기는 Inquiry 가 다 만들어진 뒤에 한다. 단계에 들어가면 tab-future.js 가 그래프를 다시 그리며 Inquiry 를 찾는데,
+// const 가 초기화되기 전에는 typeof Inquiry 조차 ReferenceError 를 던진다(TDZ). 예전에는 그 오류로 Inquiry 가 끝내
+// 만들어지지 않아, 탐구를 켠 채 닫았다가 다시 열면 그래프·시나리오가 비고 단일 HTML은 '불러오는 중…'에서 멈췄다.
+if (Inquiry) Inquiry.resume();
