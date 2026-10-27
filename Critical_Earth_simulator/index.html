@@ -270,7 +270,14 @@
               <p class="fc-desc readout" id="fcPresetDesc"></p>
             </div>
           </div>
+          <!-- 보기 도구 (3차 E2): 화면에서 내린 보기 기능(B3) 여섯 개를 탐구 경로 밖에서도 켜고 끈다 (js/main.js) -->
+          <section class="ws-tools" aria-label="보기 도구">
+            <h3 class="fc-h">보기 도구 <span>화면에서 학습지로 옮긴 기능</span></h3>
+            <div class="ws-tools-grid" id="wsTools"></div>
+          </section>
         </div>
+        <!-- 학습지 카드 영역 (3차 E2, js/worksheet.js registerCard). 탐구 단계 중에는 단계 본문 안으로 옮겨진다(js/inquiry.js) -->
+        <div class="ws-cards" id="wsCards"></div>
       </section>
       <!-- 나의 증거: 그래프 작업대에서 보낸 그래프가 쌓인다 (3차 C4) -->
       <section class="ws-panel" role="tabpanel" id="wsPanelEvidence" aria-labelledby="wsTabEvidence" hidden>

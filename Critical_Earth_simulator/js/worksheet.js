@@ -175,6 +175,9 @@ const Worksheet = (() => {
     }
   });
   const h2 = iso => iso.slice(0, 16).replace(/[-:T]/g, '');
+  // 증거 목록 (탐구 askEvidence 가 고르게 한다, 3차 E2)
+  const evidenceList = () => evidence.map((ev, i) => ({ id: ev.id, n: i + 1, kind: ev.kind, cfg: ev.cfg,
+    title: kinds[ev.kind] ? kinds[ev.kind].title(ev.cfg) : ev.kind }));
   // 탐구 기록 CSV에 함께 내보낼 증거 줄 (js/inquiry.js). 열: kind, series, mode, flips, range, memo, time
   const EV_COLS = ['kind', 'series', 'mode', 'flips', 'range', 'memo', 'time'];
   function evidenceRows() {
@@ -185,11 +188,67 @@ const Worksheet = (() => {
     return [EV_COLS.join(','), ...evidenceRows().map(r => EV_COLS.map(c => q(c === 'time' ? localTime(r.time) : (r[c] == null ? '' : r[c]))).join(','))].join('\r\n');
   }
 
+  // ── 학습지 카드 (3차 E2) ──
+  // 화면에서 내린 보기 기능(B3)을 학습지에서 켜는 자리. 카드 몸통은 원래 요소를 그대로 옮겨 온다(DOM 이동) —
+  // 갱신 코드가 id로 찾으므로(예: if (!$('popSpec').hidden) updateSpeciation(...)) 새로 만들면 둘이 어긋난다.
+  // 카드가 보이는지는 등록할 때 준 isOpen() 이 정한다(예: 바다 속 탄소 = #popSpec 의 hidden 이 풀렸는가). 그래서 어느 코드가
+  // 열고 닫든(그래프 옆 버튼·탐구 동작·카드의 닫기) 카드가 따라간다 — hidden 속성 변화는 MutationObserver 로 본다.
+  // 카드 영역 #wsCards 는 자유 조작이면 [탐구] 탭 아래, 탐구 단계 중이면 단계 본문 안(js/inquiry.js placeCards)에 놓인다.
+  //   registerCard(id, { title, node, ownHead?, open(), close(), isOpen(), available?(tab) → true | '안 되는 까닭' })
+  const cards = {};
+  const cardBox = $('wsCards');
+  let cardListeners = [];
+  function registerCard(id, h) {
+    const sec = document.createElement('section');
+    sec.className = 'ws-card';
+    sec.dataset.card = id;
+    sec.hidden = true;
+    sec.setAttribute('aria-label', h.title);
+    sec.innerHTML = h.ownHead ? '<div class="ws-card-body"></div>'
+      : `<div class="ws-card-head"><b>${esc(h.title)}</b><button class="btn btn--view btn--sm" type="button" data-card-close="${id}"><span data-icon="close"></span>닫기</button></div><div class="ws-card-body"></div>`;
+    if (typeof Icons !== 'undefined') Icons.fill(sec);
+    if (h.node) {
+      h.node.removeAttribute('data-ws-moved');   // B3에서 화면에서만 숨겼던 표시를 걷는다(이제 학습지 카드 안)
+      sec.querySelector('.ws-card-body').appendChild(h.node);
+      new MutationObserver(() => syncCards()).observe(h.node, { attributes: true, attributeFilter: ['hidden'] });
+    }
+    cardBox.appendChild(sec);
+    cards[id] = { sec, h };
+    syncCards();
+  }
+  let page = 'current';
+  const usable = id => { const a = cards[id].h.available; return a ? a(page) : true; };
+  function openCard(id) {
+    const c = cards[id];
+    if (!c || usable(id) !== true) return false;
+    if ($('wsPanelInquiry').hidden || isCollapsed()) show('inquiry');   // 카드는 [탐구] 탭에 있다
+    c.h.open();
+    syncCards();
+    c.sec.scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+  function closeCard(id) { const c = cards[id]; if (c && c.h.isOpen()) c.h.close(); syncCards(); }
+  function toggleCard(id) { const c = cards[id]; if (!c) return; if (c.h.isOpen()) closeCard(id); else openCard(id); }
+  const cardOpen = id => !!(cards[id] && cards[id].h.isOpen());
+  function syncCards() {
+    for (const { sec, h } of Object.values(cards)) sec.hidden = !h.isOpen();
+    cardListeners.forEach(fn => fn());
+  }
+  // 탭을 바꾸면 그 탭에서 못 쓰는 카드는 닫는다 (예: '탄소는 어디로?'는 미래 예측 전용)
+  function cardsForTab(tab) {
+    page = tab;
+    for (const id of Object.keys(cards)) if (usable(id) !== true && cards[id].h.isOpen()) cards[id].h.close();
+    for (const { h } of Object.values(cards)) if (h.onTab) h.onTab(tab);
+    syncCards();
+  }
+  cardBox.addEventListener('click', e => { const b = e.target.closest('[data-card-close]'); if (b) closeCard(b.dataset.cardClose); });
+
   // 접힘 기억 되살리기는 맨 끝에서: setCollapsed → syncEvidence 가 위의 증거 변수(let·const)를 쓰므로 그 선언 뒤여야 한다
   // (앞에 두면 초기화 전 변수를 건드려 멈춘다 — 3차 B1의 탐구 복원 버그와 같은 종류)
   let saved = null;
   try { saved = localStorage.getItem(STORE_KEY); } catch (e) { /* 기본값: 펼침 */ }
   if (saved === 'true') setCollapsed(true);
 
-  return { store, show, setTitle, setCollapsed, isCollapsed, registerEvidenceKind, addEvidence, evidenceRows, evidenceCsv, EV_MAX };
+  return { store, show, setTitle, setCollapsed, isCollapsed, registerCard, openCard, closeCard, toggleCard, cardOpen, cardsForTab, syncCards,
+    onCards: fn => cardListeners.push(fn), cardUsable: id => (cards[id] ? usable(id) : false), registerEvidenceKind, addEvidence, evidenceRows, evidenceCsv, evidenceList, EV_MAX };
 })();

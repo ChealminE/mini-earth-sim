@@ -743,3 +743,38 @@ body.paper .chart-title .ct-sub { min-width: 0; margin-left: var(--sp-1); font-s
   body.paper .fut-send .fut-send-lbl { display: none; }
   body.paper .fut-charts .chart-title .fut-send { padding: 0 var(--sp-1); }
 }
+
+/* ── 3차 E1·E2 — 학습지 [탐구] 탭: 탐구 패널 · 보기 도구 · 카드 ───────── */
+body.paper #wsPanelInquiry .inq-panel { flex: 1 1 auto; min-height: 0; }
+body.paper .inq-away { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+body.paper .ws-tools { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--rule); }
+body.paper .ws-tools .fc-h { margin-bottom: var(--sp-1); font-size: var(--fs-3); }
+body.paper .ws-tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-1); }
+body.paper .ws-tools-grid .btn { justify-content: flex-start; }
+body.paper .ws-tools-grid .btn[aria-pressed="true"] { background: var(--ctl-view-on); color: var(--on-fill); }
+/* 카드 영역: 자유 조작이면 [탐구] 탭 끝, 탐구 단계 중이면 단계 본문 안 */
+body.paper .ws-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+body.paper .ws-cards:empty { display: none; }
+body.paper .ws-card { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); background: var(--paper);
+  border: 1px solid var(--rule); border-left: 4px solid var(--ctl-view); border-radius: var(--radius); }
+body.paper .ws-card[hidden] { display: none; }
+body.paper .ws-card-head { display: flex; align-items: center; gap: var(--sp-2); }
+body.paper .ws-card-head b { flex: 1; min-width: 0; font-size: var(--fs-2); color: var(--ink); }
+body.paper .ws-card-text { margin: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.5; }
+body.paper .ws-card-text b { color: var(--ink); }
+body.paper .ws-omega { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
+body.paper .ws-omega[data-tab="current"] .future-only-text, body.paper .ws-omega[data-tab="future"] .current-only-btn { display: none; }
+/* 옮겨 온 요소들: 3D·그래프 위에 겹치던 모양(절대 위치·그림자)을 카드 안의 평범한 묶음으로 */
+body.paper #wsCards .legend3d { position: static; width: auto; max-height: none; overflow: visible; padding: 0; background: none; border: 0; }
+body.paper #wsCards .legend3d .lg-head { display: none; }
+body.paper #wsCards .legend3d .lg-body { display: grid; }
+body.paper #wsCards .fut-pop { position: static; inset: auto; z-index: auto; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; }
+body.paper #wsCards .fut-pop[hidden] { display: none; }
+body.paper #wsCards .inq-cards { position: static; inset: auto; z-index: auto; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; }
+body.paper #wsCards .ic-grid { grid-template-columns: 1fr; }
+/* 증거 고르기 (askEvidence) */
+body.paper .inq-ev { display: flex; flex-direction: column; gap: var(--sp-1); }
+body.paper .inq-ev select { font: inherit; font-size: var(--fs-2); color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule);
+  border-radius: var(--radius); padding: var(--sp-1) var(--sp-2); min-height: 34px; }
+body.paper .inq-ev select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .inq-ev-acts { display: flex; flex-wrap: wrap; gap: var(--sp-1); }

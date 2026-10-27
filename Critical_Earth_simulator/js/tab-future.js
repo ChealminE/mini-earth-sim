@@ -397,6 +397,7 @@ function setOmegaView(on) {
   futChartPh.options.scales.y1.display = VIEW.omega;
   futChartPh.options.layout.padding.right = VIEW.omega ? 4 : Y1_AXIS_W + 4;   // Ω 축이 비워 둔 자리를 쓴다
   futChartPh.update('none');
+  Worksheet.syncCards();   // 학습지 'Ω 함께 보기' 카드가 이 상태를 따른다 (3차 E2)
 }
 
 // ── 탄산 화학종 분포 (팝오버 "바다 속 탄소") ──────────────────────────────
@@ -475,8 +476,9 @@ function updateSink(h) {
 
 // ── 보조 정보 팝오버 ───────────────────────────────────────────────────
 // 그래프 열 위에 뜨고 배치를 밀지 않는다(스크롤이 생기면 안 된다). 한 번에 하나만.
+// 3차 E2부터 팝오버 두 개(#popSink·#popSpec)는 학습지 카드 안에 있다(js/main.js registerCard) — #futCharts 밖이라 클래스로 찾는다
 function setPopover(id) {
-  document.querySelectorAll('#futCharts .fut-pop').forEach(p => { p.hidden = p.id !== id; });
+  document.querySelectorAll('.fut-pop').forEach(p => { p.hidden = p.id !== id; });
   document.querySelectorAll('#futCharts .fut-pop-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pop === id)));
   if (id) { futChartSink.resize(); renderFuture(); }
 }
@@ -912,7 +914,7 @@ setInterval(() => {
 // 탐구 모드를 켜면 지금 상태를 저장해 두고, 끄면 그대로 되돌린다(시나리오·레버·재생 위치·전선·토글·팝오버).
 // setPreset을 거치지 않고 직접 넣는다 - setPreset은 '이전 선택' 선을 바꾸기 때문이다.
 function futSnapshot() {
-  const open = [...document.querySelectorAll('#futCharts .fut-pop')].find(p => !p.hidden);
+  const open = [...document.querySelectorAll('.fut-pop')].find(p => !p.hidden);
   return {
     preset: FUT.preset, levers: { ...FUT.levers }, year: FUT.year, frontier: FUT.frontier, speed: FUT.speed,
     showNature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, popover: open ? open.id : null,

@@ -47,6 +47,17 @@
 //   { do: 'impactCards', levels: 'seen' }                  기온 수준별 영향 카드 (아래 INQUIRY_IMPACTS).
 //                                                          'seen' = 이 경로에서 학생이 재생한 시나리오들이 도달한 수준
 //   { do: 'record' }                                       지금 상태를 기록 서랍에 한 줄 저장 (버튼을 보인다)
+//  ── 3차 E2: 화면에서 학습지로 옮긴 기능 ──
+//   { do: 'view3d', mode: 'co2' }                          3D 보기: co2(CO₂ 점) · indicator(지시약 색, 범례 카드도 연다) · visible(둘 다 끔)
+//   { do: 'card', id: 'spec' }                             학습지 카드: legend3d(3D 범례) · spec(바다 속 탄소) · omega(Ω) ·
+//                                                          sink(탄소는 어디로?, 미래 예측) · impacts(기온 수준별 영향, 미래 예측)
+//   { do: 'ws', load: ['co2', 'fossil'], mode: 'time', range: 'all', lock: true }
+//                                                          그래프 작업대(현재 실태)에 자료를 놓는다. lock 이면 덱에 그 카드만 남긴다.
+//                                                          load 의 이름은 js/data-catalog.js DATA_CATALOG 의 id
+//   { do: 'askEvidence', saveAs: 'A_evidence', prompt: '…', need: ['co2', 'fossil'] }
+//                                                          [나의 증거]에서 하나를 고르거나 지금 작업대를 붙이고 주장 한 줄을 쓴다.
+//                                                          need = 있으면 좋은 자료(빠지면 알려 주기만 함)
+//  단계를 나갈 때 view3d·card·ws(잠금)는 되돌린다(선언형). 학생이 작업대에 직접 넣은 자료는 자유 조작으로 돌아가면 복원된다.
 // ============================================================================
 
 // 과거만 보는 단계에서 함께 쓰는 동작 (1750~2023 관측, 예측으로 못 감)

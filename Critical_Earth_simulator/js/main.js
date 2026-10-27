@@ -1,6 +1,9 @@
 // ================= 부트스트랩: 세 탭을 엮고 초기 렌더를 시작 =================
 const bundles = { current: sceneCurrent, future: sceneFuture, live: sceneLive };
 let activeTab = 'current';
+// 보기 도구 버튼 눌림 표시(파일 끝 3차 E2 절이 채운다). updateLegend3D 가 그보다 먼저 불리므로 선언은 여기 맨 위에 둔다
+// (let 을 아래에 두면 초기화 전 이름을 typeof 로 읽어도 오류 — 3차 B1의 탐구 복원 버그와 같은 종류)
+let syncTools = null;
 
 // ── 우측 상단(아크릴 모형 바로 아래) 탭별 제목/설명 ──────────────────
 const TAB_HEADERS = {
@@ -26,6 +29,7 @@ function switchTab(name) {
   document.getElementById('tabHeaderDesc').textContent = TAB_HEADERS[name].desc;
   document.getElementById('topbarDesc').textContent = TAB_HEADERS[name].desc;
   Worksheet.setTitle(TAB_HEADERS[name].title, PAPER_TABS.includes(name));   // 학습지 칸은 두 탭이 함께 쓴다 (js/worksheet.js)
+  if (PAPER_TABS.includes(name)) Worksheet.cardsForTab(name);   // 그 탭에서 못 쓰는 학습지 카드는 닫고, 바다 속 탄소는 그 탭 값으로
   // 머리줄 탭 버튼: 지금 탭은 눌림 상태로 (css/theme.css .btn.is-on)
   document.querySelectorAll('#topbar [data-tab-go]').forEach(a => {
     const on = a.dataset.tabGo === name;
@@ -94,6 +98,8 @@ function bindView3D(id, key) {
     btn.setAttribute('aria-pressed', String(VIEW3D[key]));
     applyState(bundles[activeTab]);
     updateLegend3D();
+    // 지시약 색은 범례 없이 읽을 수 없다 → 켜면 학습지 3D 범례 카드를 함께 연다 (3차 E2)
+    if (key === 'indicator' && VIEW3D.indicator) Worksheet.openCard('legend3d');
   });
 }
 bindView3D('view3dCo2', 'co2');
@@ -107,6 +113,7 @@ function updateLegend3D() {
   lg.querySelector('[data-row="co2"]').classList.toggle('on', VIEW3D.co2);
   lg.querySelector('[data-row="sea"]').classList.toggle('on', VIEW3D.indicator);
   lg.querySelector('[data-row="city"]').hidden = activeTab === 'future' && typeof FUT !== 'undefined' && FUT.showNature;
+  if (syncTools) syncTools();   // 보기 도구 버튼의 눌림 표시 (아래, 3차 E2)
 }
 {
   // 색 막대: 7.6 = 0 %, 8.2 = 100 %
@@ -133,3 +140,70 @@ function updateLegend3D() {
 
 // 밝기 슬라이더는 없앴다(2차 F2): 종이 테마에서는 노출을 common.js 의 1.1로 고정해 화면마다 같은 색으로 보이게 한다.
 // localStorage 'brightnessExposure' 는 1인칭이 같이 쓰는 키라 여기서 읽지도 지우지도 않는다.
+
+// ── 학습지 카드 · 보기 도구 (3차 E2) ─────────────────────────────────
+// B3에서 화면에서 내린 여섯 기능을 학습지에서 켠다. 카드 몸통은 원래 요소를 옮겨 와 갱신 코드가 그대로 돈다(js/worksheet.js registerCard).
+// 이 파일이 맨 뒤에 읽혀 세 탭의 함수(setPopover·setOmegaView·setNatureView·updateSpeciation·currentWorkspace …)를 모두 부를 수 있어 여기에 둔다.
+{
+  const $ = id => document.getElementById(id);
+  const ONLY_FUTURE = '미래 예측 화면에서 볼 수 있어요';
+  // 3D 범례: 정보 표시만. 학습지 카드 안에서는 늘 펼친 채로
+  let legendOpen = false;
+  Worksheet.registerCard('legend3d', { title: '3D 범례 — 3D의 무엇이 무엇을 나타내나', node: $('legend3d'),
+    open: () => { legendOpen = true; }, close: () => { legendOpen = false; }, isOpen: () => legendOpen });
+  // 바다 속 탄소: 미래 예측은 재생 연도의 값(renderFuture 가 갱신), 현재 실태는 엔진 역사 실행의 마지막 관측 연도(2023) 상태
+  const specCurrent = () => { const h = DataSeries.history(); updateSpeciation(h[h.length - 1], h[0]); };
+  Worksheet.registerCard('spec', { title: '바다 속 탄소', node: $('popSpec'), ownHead: true,
+    open: () => { setPopover('popSpec'); if (activeTab === 'current') specCurrent(); },
+    close: () => setPopover(null), isOpen: () => !$('popSpec').hidden,
+    onTab: tab => { if (!$('popSpec').hidden && tab === 'current') specCurrent(); } });
+  // 탄소는 어디로?: 그래프 옆 버튼도 그대로(같은 요소가 학습지 카드 한 곳에만 보인다). 미래 예측 궤적의 누적값이라 미래 예측 전용
+  Worksheet.registerCard('sink', { title: '탄소는 어디로?', node: $('popSink'), ownHead: true,
+    open: () => setPopover('popSink'), close: () => setPopover(null), isOpen: () => !$('popSink').hidden,
+    available: tab => tab === 'future' || ONLY_FUTURE });
+  // Ω 함께 보기: 미래 예측 = pH 그래프에 Ω(모형)를 겹친다(setOmegaView), 현재 실태 = 작업대에 Ω(모형) 카드를 넣는 버튼
+  const om = document.createElement('div');
+  om.className = 'ws-omega';
+  om.innerHTML = `<p class="ws-card-text">Ω(아라고나이트 포화도)는 조개·산호가 탄산칼슘 껍데기를 만들기 쉬운 정도입니다.
+      <b>1보다 작으면 껍데기가 녹기 시작합니다.</b> 값은 이 프로그램의 모형이 계산한 전 지구 평균 표층 바다입니다. ${srcButton('model_omega')}</p>
+    <p class="ws-card-text future-only-text">미래 예측의 <b>해수 pH 그래프</b>에 Ω를 함께 그렸습니다(오른쪽 축).</p>
+    <button class="btn btn--view btn--sm current-only-btn" type="button" data-omega-ws><span data-icon="lines"></span>작업대에 Ω(모형) 넣기</button>`;
+  let omegaCur = false;
+  Worksheet.registerCard('omega', { title: 'Ω 함께 보기 — 조개·산호 껍데기', node: om,
+    open: () => { if (activeTab === 'future') setOmegaView(true); else omegaCur = true; },
+    close: () => { if (VIEW.omega) setOmegaView(false); omegaCur = false; },
+    isOpen: () => (activeTab === 'future' ? VIEW.omega : omegaCur),
+    onTab: tab => { om.dataset.tab = tab; } });
+  om.addEventListener('click', e => { if (e.target.closest('[data-omega-ws]') && currentWorkspace) currentWorkspace.add('omega'); });
+  // 영향 카드(탐구 경로 C): 3D 위에 겹치던 것을 학습지로. 내용은 js/inquiry.js showCards 가 채운다
+  Worksheet.registerCard('impacts', { title: '기온 수준별 영향', node: $('inqCards'), ownHead: true,
+    open: () => { $('inqCards').hidden = !$('inqCards').innerHTML.trim(); }, close: () => { $('inqCards').hidden = true; },
+    isOpen: () => !$('inqCards').hidden, available: tab => tab === 'future' || ONLY_FUTURE });
+  // 카드 안의 닫기 버튼(팝오버 머리의 [닫기])
+  $('wsCards').addEventListener('click', e => { if (e.target.closest('.fut-pop-close')) setPopover(null); });
+
+  // 보기 도구 여섯 개: 자유 조작에서도 기능에 닿을 수 있게 ([탐구] 탭, 경로 밖)
+  const TOOLS = [
+    { id: 'legend3d', label: '3D 범례', icon: 'list', on: () => Worksheet.cardOpen('legend3d'), act: () => Worksheet.toggleCard('legend3d') },
+    { id: 'nature', label: '자연만 있는 지구', icon: 'leaf', only: 'future', on: () => activeTab === 'future' && FUT.showNature, act: () => setNatureView(!FUT.showNature) },
+    { id: 'co2', label: 'CO₂ 보기', icon: 'dots', on: () => VIEW3D.co2, act: () => $('view3dCo2').click() },
+    { id: 'indicator', label: '지시약으로 보기', icon: 'drop', on: () => VIEW3D.indicator, act: () => $('view3dIndicator').click() },
+    { id: 'omega', label: 'Ω 함께 보기', icon: 'shell', on: () => Worksheet.cardOpen('omega'), act: () => Worksheet.toggleCard('omega') },
+    { id: 'spec', label: '바다 속 탄소', icon: 'flask', on: () => Worksheet.cardOpen('spec'), act: () => Worksheet.toggleCard('spec') },
+  ];
+  $('wsTools').innerHTML = TOOLS.map(t => `<button class="btn btn--view btn--sm" type="button" data-tool="${t.id}" aria-pressed="false">
+    <span data-icon="${t.icon}"></span>${t.label}</button>`).join('');
+  Icons.fill($('wsTools'));
+  $('wsTools').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (b && !b.disabled) TOOLS.find(t => t.id === b.dataset.tool).act(); });
+  syncTools = () => {
+    for (const t of TOOLS) {
+      const b = $('wsTools').querySelector(`[data-tool="${t.id}"]`);
+      const off = t.only && t.only !== activeTab;
+      b.disabled = !!off;
+      b.title = off ? ONLY_FUTURE : '';
+      b.setAttribute('aria-pressed', String(!off && !!t.on()));
+    }
+  };
+  Worksheet.onCards(syncTools);
+  Worksheet.cardsForTab(activeTab);
+}
