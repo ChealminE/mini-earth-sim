@@ -8,6 +8,7 @@
 - `mqtt_broker.py` — server.py에 내장된 작은 MQTT 브로커 (1883을 Mosquitto가 쓰고 있으면 그쪽에 붙음)
 - `select.html` 시작 화면 → `index.html?tab=current|future|live` 조감 3탭 / `firstperson/` 1인칭 탐험
 - `js/earth-model.js` — 조감·1인칭이 공유하는 과학 모델(탄산 평형·기온 회귀). 예측식은 여기서만 고친다
+- 현재 실태·미래 예측 공용(3차): `js/data-catalog.js`(그래프 작업대에 놓는 자료 카드 목록 — 교사는 이 파일만 고쳐 카드를 넣고 뺀다), `js/graph-workspace.js`(자료 카드를 끌어 놓아 비교하는 공용 그래프 작업대, 축 규칙 R1~R8), `js/worksheet.js`(오른쪽 학습지 패널: 탐구·나의 증거·기록 탭, 공용 저장소 `localStorage['worksheet.v1']` — 1인칭 야장 답도 여기에)
 - 직접 실험 탭: `js/live-setup.js`(실험 준비: 이름·보드 고르기·실험 설계·회로도·코드 받기·센서 배치), `js/tab-live.js`(연결·보드 패널·그래프), `js/live-analysis.js`(분석·편집), `js/live-fit.js`(통계·회귀), `js/xlsx-lite.js`(엑셀)
 - `basic_experiments/<id>/{info.json, code.ino}` — 폴더만 넣으면 서버가 목록을 자동 생성. `std_*`가 원격 제어 표준 코드
 
