@@ -624,3 +624,74 @@ body.paper.ws-collapsed .ws-fold { writing-mode: vertical-rl; min-height: 0; pad
    hidden 속성 대신 CSS로 감춘다: 일부 코드가 hidden 을 상태로 읽는다(예: if (!$('popSpec').hidden)).
    !important 인 까닭: 같은 요소에 탭별 display 규칙(.nature-toggle·.legend3d·.btn 등)이 여럿이라 하나하나 이기려면 선택자가 들쭉날쭉해진다. */
 body.paper [data-ws-moved] { display: none !important; }
+
+/* ── 3차 C2 — 그래프 작업대 (js/graph-workspace.js) ─────────────────────
+   왼쪽 약 75 % = 칸 칩·보기·기간 줄 / 분석창 / 안내 줄, 오른쪽 약 25 % = 자료 카드 덱(덱 안에서만 스크롤).
+   직접 실험 탭(다크)으로 옮길 때는 이 절을 그 탭 테마에 맞춰 옮긴다(docs/작업대_이관_가이드.md, 3차 G). */
+body.paper .gw { display: grid; grid-template-columns: minmax(0, 3fr) minmax(170px, 1fr); gap: var(--sp-3); min-height: 0; height: 100%; box-sizing: border-box; }
+body.paper .gw-main { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; min-height: 0; }
+body.paper .gw-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); flex: none; }
+body.paper .gw-slots, body.paper .gw-modes, body.paper .gw-ranges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+body.paper .gw-modes { margin-left: auto; }
+body.paper .gw-label { font-size: var(--fs-1); color: var(--ink-2); margin-right: 2px; }
+/* 칸 칩: 놓을 곳. 빈 칸은 점선 테두리, 찬 칸은 계열 색 왼쪽 띠 */
+body.paper .gw-slot { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 30px; padding: 0 var(--sp-2); box-sizing: border-box;
+  font-size: var(--fs-1); color: var(--ink-3); border: 1.5px dashed var(--ink-3); border-radius: var(--radius); background: var(--paper); white-space: nowrap; }
+body.paper .gw-slot b { color: var(--ink-2); }
+body.paper .gw-slot.is-full { color: var(--ink); border: 1px solid var(--rule); border-left: 4px solid var(--slot-c); }
+body.paper .gw-slot:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+body.paper .gw-slot-x { border: 0; background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-1); cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+body.paper .gw-slot-x:hover { background: var(--paper-3); color: var(--ink); }
+body.paper .gw.is-dragging .gw-slot, body.paper .gw.is-dragging .gw-plot { outline: 2px dashed var(--ctl-nav); outline-offset: 1px; }
+body.paper .gw .drag-over { outline: 3px solid var(--ctl-nav) !important; background: var(--ctl-nav-bg); }
+/* 분석창 */
+body.paper .gw-plot { position: relative; flex: 1 1 auto; min-height: 0; }
+body.paper .gw-plot canvas { position: absolute; inset: 0; }
+body.paper .gw-empty { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  font-size: var(--fs-3); color: var(--ink-3); border: 1.5px dashed var(--rule); border-radius: var(--radius); }
+body.paper .gw-empty[hidden] { display: none; }
+/* 고정 문구(모양 비교·산점도 r): 분석창 바로 위 한 줄 — 그래프 위에 겹치면 점·범례를 가린다.
+   뒤집기 꼬리표: 분석창 오른쪽 아래(x축 위, 오른쪽 축 안쪽) — 위쪽은 범례·자료 없음 글자·이음 표시 자리 */
+body.paper .gw-banner { flex: none; margin: 0; padding: 2px var(--sp-2); font-size: var(--fs-1); font-weight: 600; color: var(--ink); line-height: 1.35;
+  background: var(--paper-2); border-left: 3px solid var(--ink-2); }
+body.paper .gw-tag { position: absolute; right: 60px; bottom: 44px; z-index: 2; padding: 1px var(--sp-2); font-size: var(--fs-1); font-weight: 700;
+  color: var(--data-ph); background: var(--paper); border: 1.5px solid var(--data-ph); border-radius: 999px; }
+/* .btn 의 display 규칙이 hidden 을 덮지 않게 (뒤집기 버튼은 Y2에 pH가 있을 때만 — R4) */
+body.paper .gw [hidden] { display: none !important; }
+/* 자료 이음 표시: 점선 맨 위의 작은 꼬리표, 올리면(또는 초점) 설명과 출처 ⓘ */
+body.paper .gw-segs { position: absolute; inset: 0; pointer-events: none; }
+body.paper .gw-seg { position: absolute; transform: translateX(-50%); pointer-events: auto; z-index: 3; }
+body.paper .gw-seg[hidden] { display: none; }
+body.paper .gw-seg-mark { display: block; padding: 0 4px; font-size: var(--fs-1); color: var(--ink-2); background: var(--paper); border: 1px dashed var(--ink-3); border-radius: 4px; cursor: help; }
+body.paper .gw-seg-text { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: max-content; max-width: 280px; margin-top: 4px;
+  padding: var(--sp-1) var(--sp-2); font-size: var(--fs-1); color: var(--ink); line-height: 1.4; background: var(--paper); border: 1px solid var(--rule);
+  border-radius: var(--radius); box-shadow: 0 4px 14px rgba(40, 32, 16, .14); }
+body.paper .gw-seg:hover .gw-seg-text, body.paper .gw-seg:focus-within .gw-seg-text { display: block; }
+/* 안내 줄 */
+body.paper .gw-hint { display: flex; align-items: center; gap: var(--sp-2); flex: none; min-height: 30px; }
+body.paper .gw-hint-text { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.35; }
+body.paper .gw-hint-src { display: inline-flex; flex: none; }
+body.paper .gw-send { flex: none; }
+/* 자료 카드 덱 */
+body.paper .gw-deck { display: flex; flex-direction: column; gap: var(--sp-1); min-height: 0; overflow: hidden auto; padding-left: var(--sp-3); border-left: 1px solid var(--rule); }
+body.paper .gw-deck-help { margin: 0; font-size: var(--fs-1); color: var(--ink-3); line-height: 1.35; }
+body.paper .gw-deck-group[hidden] { display: none; }
+body.paper .gw-deck-name { margin: var(--sp-1) 0 2px; font-size: var(--fs-1); font-weight: 700; color: var(--ink-2); }
+body.paper .gw-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+body.paper .gw-card, .gw-ghost { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 var(--sp-1); padding: 3px var(--sp-2) 2px;
+  background: var(--paper); border: 1px solid var(--rule); border-left: 4px solid var(--card-c); border-radius: var(--radius); cursor: grab; user-select: none; box-sizing: border-box; }
+body.paper .gw-card:hover { border-color: var(--ink-3); }
+body.paper .gw-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .gw-card.is-on { background: var(--paper-3); box-shadow: inset 0 0 0 1px var(--ink-3); }
+body.paper .gw-card.is-locked { opacity: .4; cursor: not-allowed; }
+.gw-ghost { position: fixed; z-index: 3000; pointer-events: none; opacity: .9; box-shadow: 0 8px 22px rgba(40, 32, 16, .25); background: #fff; }
+body.paper .gw-card-head { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: var(--sp-1); }
+body.paper .gw-card-name { flex: 1; min-width: 0; font-size: var(--fs-1); font-weight: 700; line-height: 1.3; color: var(--ink); }
+body.paper .gw-card-add { flex: none; width: 24px; height: 22px; padding: 0; font: inherit; font-size: var(--fs-2); line-height: 1; color: var(--ctl-nav);
+  background: var(--ctl-nav-bg); border: 1px solid var(--ctl-nav); border-radius: 6px; cursor: pointer; }
+body.paper .gw-card-tag { grid-column: 1 / -1; justify-self: start; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.3; }
+body.paper .gw-card-tag.scope-station { color: var(--warn); font-weight: 600; }
+body.paper .gw-card-tag.scope-model::before { content: '··· '; }
+body.paper .gw-spark { grid-column: 1; width: 100%; height: 26px; }
+body.paper .gw-card-per { grid-column: 2; align-self: end; font-size: var(--fs-1); color: var(--ink-3); white-space: nowrap; }
+body.paper .gw-deck-open { width: 100%; justify-content: flex-start; flex: none; }

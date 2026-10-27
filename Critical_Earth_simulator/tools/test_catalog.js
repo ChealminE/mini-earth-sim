@@ -1,5 +1,5 @@
 // ============================================================================
-// 자료 목록(js/data-catalog.js) 검사 (3차 C1, node)
+// 자료 목록(js/data-catalog.js) · 그래프 작업대 계산(GraphWorkspaceCore) 검사 (3차 C1·C2, node)
 // ----------------------------------------------------------------------------
 // 교사가 data-catalog.js 를 고친 뒤 이것만 돌려 보면 되게 한다: 출처 키·색 토큰·정해진 값·자료 모양.
 // 실행: node tools/test_catalog.js
@@ -17,7 +17,7 @@ const check = (ok, name, detail = '') => {
 
 // 브라우저와 같은 순서로 전역 스크립트를 한 컨텍스트에 불러온다 (index.html: … sources → earth-system → … → data-catalog)
 const ctx = vm.createContext({ console, Math });
-for (const f of ['js/earth-model.js', 'js/earth-data.js', 'js/sources.js', 'js/earth-system.js', 'js/data-catalog.js']) {
+for (const f of ['js/earth-model.js', 'js/earth-data.js', 'js/sources.js', 'js/earth-system.js', 'js/data-catalog.js', 'js/graph-workspace.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
 }
 const { CAT, AXES, DECKS, HINTS, SOURCES } = vm.runInContext(
@@ -71,6 +71,39 @@ check(co2.filter(p => p.seg).map(p => p.x).join() === '1979', 'CO₂: CMIP6 → 
 for (const h of HINTS.pairs) {
   check(h.pair.length === 2 && h.pair.every(id => CAT.some(it => it.id === id)), `안내 문구 짝 ${h.pair.join('+')} 가 목록에 있음`);
   check(/\?/.test(h.text), `안내 문구 ${h.pair.join('+')} 는 질문으로 (결론을 말하지 않음)`);
+}
+
+// ── 4) 그래프 작업대 계산 (js/graph-workspace.js GraphWorkspaceCore) — 합성 자료 ──
+const G = vm.runInContext('GraphWorkspaceCore', ctx);
+const line = (from, to, f) => Array.from({ length: to - from + 1 }, (_, i) => ({ x: from + i, y: f(from + i, i) }));
+const near = (a, b, e = 1e-9) => Math.abs(a - b) < e;
+{
+  // R3: minSpan 보다 좁은 자료 → 범위 폭 = minSpan (pH 0.01 출렁임이 급변처럼 보이지 않게)
+  const r = G.axisRange([8.050, 8.055, 8.060], 0.1, 0.05);
+  check(near(r.max - r.min, 0.1) && near((r.max + r.min) / 2, 8.055), 'axisRange: 좁은 자료는 폭 = minSpan, 가운데 유지', `${r.min.toFixed(4)}~${r.max.toFixed(4)}`);
+  const w = G.axisRange([0, 10], 1, 0.05);
+  check(near(w.min, -0.5) && near(w.max, 10.5), 'axisRange: 넓은 자료는 위아래 5 % 여백', `${w.min}~${w.max}`);
+  check(G.axisRange([NaN, undefined], 1) === null, 'axisRange: 값이 없으면 null');
+}
+{
+  const a = line(1750, 2025, x => x), b = line(1989, 2024, x => -x), c = line(1600, 1700, x => x);
+  const cp = G.commonPeriod(a, b);
+  check(cp && cp.from === 1989 && cp.to === 2024, 'commonPeriod: 1750~2025 ∩ 1989~2024 = 1989~2024', JSON.stringify(cp));
+  check(G.commonPeriod(a, c) === null, 'commonPeriod: 겹치지 않으면 null (산점도·모양 비교 비활성)');
+  const up = G.unionPeriod(a, b);
+  check(up.from === 1750 && up.to === 2025, 'unionPeriod: 시간 보기 x축은 합집합', JSON.stringify(up));
+  const n = G.normalize(line(2000, 2010, (x, i) => 5 + 2 * i), { from: 2002, to: 2006 });
+  check(n.length === 5 && near(n[0].y, 0) && near(n[4].y, 1) && near(n[2].y, 0.5), 'normalize: 기간 안 최소 0 · 최대 1');
+  const p1 = G.pearson(line(1990, 2020, x => 3 * x + 1), line(1985, 2010, x => 0.5 * x - 7));
+  check(near(p1.r, 1) && p1.n === 21, '완전 상관 r = 1 (공통 연도 1990~2010, n = 21)', `r=${p1.r} n=${p1.n}`);
+  const p2 = G.pearson(line(1990, 2020, x => x), line(1990, 2020, x => -2 * x));
+  check(near(p2.r, -1), '반대 상관 r = −1', `r=${p2.r}`);
+  const p3 = G.pearson(line(1990, 2020, x => x), line(1990, 2020, () => 4));
+  check(p3.r === null, '한쪽이 일정하면 r 계산 불가(null)');
+  check(G.pearson(a, c).n === 0 && G.pearson(a, c).r === null, '공통 연도가 없으면 n = 0, r = null');
+  // 실제 자료: CO₂ × pH 는 공통 기간이 HOT 관측 기간(1989~)
+  const real = G.commonPeriod(CAT.find(it => it.id === 'co2').get(), CAT.find(it => it.id === 'ph').get());
+  check(real && real.from === 1989, '실제 자료 CO₂ ∩ pH 공통 기간은 1989년부터', JSON.stringify(real));
 }
 
 console.log(fails ? `\n실패 ${fails}개` : '\n전부 통과');
