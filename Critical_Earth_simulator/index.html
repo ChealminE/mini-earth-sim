@@ -232,31 +232,85 @@
       </select>
       <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
       <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
-      <button class="btn btn--rec" type="button" id="recOpen" aria-controls="recDrawer" aria-expanded="false"><span data-icon="list"></span>기록 보기</button>
+      <button class="btn btn--rec" type="button" id="recOpen" aria-controls="wsPanelRecord"><span data-icon="list"></span>기록 보기</button>
     </div>
   </div>
+
+  <!-- 학습지 (3차 B2): 오른쪽 40 % 칸. 현재 실태·미래 예측이 같은 요소를 함께 쓰고 탭에 맞게 내용만 바뀐다 (js/worksheet.js).
+       [접기]를 누르면 44 px 세로 띠로 줄고 왼쪽이 화면 전체를 쓴다. 탭 내용은 다른 파일이 id로 채운다 -->
+  <aside id="worksheet" class="ws" aria-label="학습지">
+    <div class="ws-head">
+      <h2 class="ws-title" id="wsTitle">학습지</h2>
+      <button class="btn btn--nav btn--sm ws-fold" type="button" id="wsFold" aria-expanded="true" aria-controls="wsBody">접기</button>
+    </div>
+    <div class="ws-body" id="wsBody">
+      <div class="ws-tabs" role="tablist" aria-label="학습지 내용">
+        <button class="ws-tab" type="button" role="tab" id="wsTabInquiry" aria-controls="wsPanelInquiry" aria-selected="true">탐구</button>
+        <button class="ws-tab" type="button" role="tab" id="wsTabEvidence" aria-controls="wsPanelEvidence" aria-selected="false" tabindex="-1">나의 증거</button>
+        <button class="ws-tab" type="button" role="tab" id="wsTabRecord" aria-controls="wsPanelRecord" aria-selected="false" tabindex="-1">기록</button>
+      </div>
+      <section class="ws-panel" role="tabpanel" id="wsPanelInquiry" aria-labelledby="wsTabInquiry">
+        <!-- 현재 실태 탐구 경로는 3차 E3에서 들어온다 -->
+        <p class="ws-empty ws-current-only">현재 실태 탐구 활동은 다음 단계에서 이곳에 들어옵니다. 지금은 [미래 예측] 화면의 학습지에서 탐구할 수 있습니다.</p>
+        <!-- 미래 예측 탭에서만 보임: 탐구/자유 조작 전환과 탐구 패널, 고른 시나리오 설명 (js/tab-future.js·js/inquiry.js).
+             시나리오 버튼은 조작 띠(#fcScen), 직접 설계 레버는 3D 칸 위(#fcLevers)에 있다 -->
+        <div class="future-only fc" id="futureControls">
+          <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
+          <div class="inq-mode" role="group" aria-label="조작 방식">
+            <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
+            <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
+          </div>
+          <div class="inq-panel" id="inqPanel" hidden></div>
+          <div id="fcFree">
+          <!-- 시나리오 버튼·직접 설계 버튼은 조작 띠(#ctlStrip)로, 레버 패널은 3D 칸 위로 옮겼다(3차 B1). 고른 시나리오 설명만 여기 남는다 -->
+          <div id="fcScenarioView">
+            <p class="fc-desc readout" id="fcPresetDesc"></p>
+          </div>
+          </div>
+        </div>
+      </section>
+      <!-- 나의 증거: 그래프 작업대에서 보낸 그래프가 쌓인다 (3차 C4) -->
+      <section class="ws-panel" role="tabpanel" id="wsPanelEvidence" aria-labelledby="wsTabEvidence" hidden>
+        <ul class="ws-evidence" id="wsEvidence"></ul>
+        <p class="ws-empty" id="wsEvidenceEmpty">그래프 작업대에서 [학습지로 보내기]를 누르면 여기에 쌓입니다.</p>
+      </section>
+      <section class="ws-panel" role="tabpanel" id="wsPanelRecord" aria-labelledby="wsTabRecord" hidden>
+        <!-- 측정 기록 + 탐구 기록 (예전 기록 서랍, 3차 B2에서 학습지 [기록] 탭으로 옮김). CSV 열은 예전과 같다 -->
+        <div class="rec-drawer" id="recDrawer">
+          <div class="rec-head">
+            <b class="readout">기록 <span id="recCount2">0</span>줄</b>
+            <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>측정 기록 CSV</button>
+            <button class="btn btn--rec" type="button" id="recClear"><span data-icon="trash"></span>기록 지우기</button>
+          </div>
+          <div class="rec-table-wrap"><table class="spec-table rec-table">
+            <thead><tr><th>연도</th><th>시나리오</th><th>지구</th>
+              <th>co2_ppm<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂">ⓘ</button></th>
+              <th>air_temp<button class="src-i" type="button" data-src="model_air_temp" aria-label="출처 보기: 기온">ⓘ</button></th>
+              <th>water_temp<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 해수온">ⓘ</button></th>
+              <th>ph<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH">ⓘ</button></th></tr></thead>
+            <tbody id="recLog"></tbody>
+          </table></div>
+          <!-- 탐구 기록 묶음 (2차 개편 E5): 탐구 모드에서 고른 점·글·보기·기록 줄. js/inquiry.js 가 채운다 -->
+          <section class="rec-inq" id="recInq" hidden>
+            <div class="rec-head">
+              <b class="readout">탐구 기록 <span id="inqLogCount">0</span>줄</b>
+              <button class="btn btn--rec" type="button" id="inqCsv"><span data-icon="download"></span>탐구 기록 CSV</button>
+              <button class="btn btn--rec" type="button" id="inqClear"><span data-icon="trash"></span>탐구 기록 지우기</button>
+            </div>
+            <div class="rec-table-wrap"><table class="spec-table rec-table">
+              <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
+              <tbody id="inqLog"></tbody>
+            </table></div>
+          </section>
+        </div>
+      </section>
+    </div>
+  </aside>
 
   <div id="tab-header-panel">
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
     <div class="sub" id="tabHeaderDesc"></div>
-
-    <!-- 미래 예측 탭에서만 보임: 인간활동 지구의 배출 조작 (js/tab-future.js).
-         2024년부터의 배출을 정한다. 시나리오 목록 ↔ 직접 설계(레버) 패널을 바꿔 가며 보여 준다 -->
-    <div class="future-only fc" id="futureControls">
-      <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
-      <div class="inq-mode" role="group" aria-label="조작 방식">
-        <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
-        <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
-      </div>
-      <div class="inq-panel" id="inqPanel" hidden></div>
-      <div id="fcFree">
-      <!-- 시나리오 버튼·직접 설계 버튼은 조작 띠(#ctlStrip)로, 레버 패널은 3D 칸 위로 옮겼다(3차 B1). 고른 시나리오 설명만 여기 남는다 -->
-      <div id="fcScenarioView">
-        <p class="fc-desc readout" id="fcPresetDesc"></p>
-      </div>
-      </div>
-    </div>
   </div>
 
   <div id="graph-panel">
@@ -331,35 +385,6 @@
         </div>
       </section>
 
-      <!-- 기록 서랍: 오른쪽에서 밀려 나와 화면을 덮는다(배치를 밀지 않음). CSV 열은 예전과 같다 -->
-      <aside class="rec-drawer" id="recDrawer" aria-label="기록" hidden>
-        <div class="rec-head">
-          <b class="readout">기록 <span id="recCount2">0</span>줄</b>
-          <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>측정 기록 CSV</button>
-          <button class="btn btn--rec" type="button" id="recClear"><span data-icon="trash"></span>기록 지우기</button>
-          <button class="btn btn--nav" type="button" id="recClose"><span data-icon="close"></span>닫기</button>
-        </div>
-        <div class="rec-table-wrap"><table class="spec-table rec-table">
-          <thead><tr><th>연도</th><th>시나리오</th><th>지구</th>
-            <th>co2_ppm<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂">ⓘ</button></th>
-            <th>air_temp<button class="src-i" type="button" data-src="model_air_temp" aria-label="출처 보기: 기온">ⓘ</button></th>
-            <th>water_temp<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 해수온">ⓘ</button></th>
-            <th>ph<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH">ⓘ</button></th></tr></thead>
-          <tbody id="recLog"></tbody>
-        </table></div>
-        <!-- 탐구 기록 묶음 (2차 개편 E5): 탐구 모드에서 고른 점·글·보기·기록 줄. js/inquiry.js 가 채운다 -->
-        <section class="rec-inq" id="recInq" hidden>
-          <div class="rec-head">
-            <b class="readout">탐구 기록 <span id="inqLogCount">0</span>줄</b>
-            <button class="btn btn--rec" type="button" id="inqCsv"><span data-icon="download"></span>탐구 기록 CSV</button>
-            <button class="btn btn--rec" type="button" id="inqClear"><span data-icon="trash"></span>탐구 기록 지우기</button>
-          </div>
-          <div class="rec-table-wrap"><table class="spec-table rec-table">
-            <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
-            <tbody id="inqLog"></tbody>
-          </table></div>
-        </section>
-      </aside>
     </div>
 
     <div class="tab-panel" id="tab-live">
@@ -682,6 +707,7 @@
 <script src="js/earth-system.js?v=2"></script>
 <script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
+<script src="js/worksheet.js"></script>
 <script src="js/tab-current.js?v=5"></script>
 <script src="js/tab-future.js?v=6"></script>
 <script src="js/inquiry-steps.js?v=1"></script>

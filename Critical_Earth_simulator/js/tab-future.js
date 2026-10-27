@@ -530,17 +530,9 @@ function addRecord({ fx = 'full' } = {}) {
   playRecordFx(fx, rec.year);
   $('recStatus').textContent = `${rec.year}년 기록됨`;
 }
-function setDrawer(open) {
-  $('recDrawer').hidden = !open;
-  $('recOpen').setAttribute('aria-expanded', String(open));
-  if (open) $('recClose').focus();
-}
 $('recAdd').addEventListener('click', () => addRecord({ fx: 'full' }));
-$('recOpen').addEventListener('click', () => setDrawer($('recDrawer').hidden));
-$('recClose').addEventListener('click', () => { setDrawer(false); $('recOpen').focus(); });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('recDrawer').hidden && activeTab === 'future') { setDrawer(false); $('recOpen').focus(); }
-});
+// 3차 B2: 기록은 서랍 대신 학습지 [기록] 탭에 있다. [기록 보기]는 그 탭으로 바꾼다(학습지를 접어 두었으면 편다)
+$('recOpen').addEventListener('click', () => Worksheet.show('record'));
 $('recClear').addEventListener('click', () => {
   measRecords.length = 0;
   $('recLog').innerHTML = '';

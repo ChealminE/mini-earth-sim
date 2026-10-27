@@ -497,7 +497,7 @@ body.paper .rec-inq td:nth-child(3), body.paper .rec-inq td:nth-child(4) { white
    └ 좌 60 % ────────────────────────────┴ 우 40 % ───────┘
    위의 탭별 격자(현재 실태 40:60, 미래 예측 조작 | 3D | 그래프)는 지우지 않고 여기서 덮는다(되돌리기 쉽게).
    display: contents 를 풀고 #graph-panel 을 한 칸으로 되돌린다 — 요약 숫자·시간 막대가 더 이상 3D 열에 붙지 않으므로.
-   학습지 칸은 B2에서 #worksheet 가 차지한다. B1에서는 임시로 #tab-header-panel(탐구 전환·탐구 패널·시나리오 설명)을 둔다. */
+   학습지 칸은 #worksheet(3차 B2, 아래 절). #tab-header-panel 은 직접 실험 탭에서만 쓴다. */
 #ctlStrip { display: none; }
 body.paper.tab-current #app, body.paper.tab-future #app {
   display: grid;
@@ -510,14 +510,8 @@ body.paper.tab-current #gl-container, body.paper.tab-future #gl-container { grid
 body.paper.tab-current #graph-panel, body.paper.tab-future #graph-panel { grid-area: graph; display: block; min-width: 0; min-height: 0; overflow: hidden; }
 body.paper.tab-current #tab-current, body.paper.tab-future #tab-future { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 
-/* 학습지 칸 (임시): 패널 안에서만 세로 스크롤. 문서 전체 스크롤은 0 이어야 한다(마스터 §5-6) */
-body.paper.tab-current #tab-header-panel, body.paper.tab-future #tab-header-panel {
-  grid-area: ws; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden auto; box-sizing: border-box;
-  padding: var(--sp-3) var(--sp-4); background: var(--paper-2); color: var(--ink); border-left: 1px solid var(--rule); }
-body.paper #tab-header-panel > .home-link, body.paper #tab-header-panel > .sub { display: none; }
-body.paper.tab-current #tab-header-panel > h2, body.paper.tab-future #tab-header-panel > h2 { display: block; flex: none;
-  margin: 0 0 var(--sp-3); font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink); }
-body.paper.tab-future.inq-on #futureControls { height: auto; flex: 1 1 auto; }   /* 제목 줄 아래 남은 높이만 (예전 height: 100%) */
+/* 예전 미래 예측 왼쪽 패널(#tab-header-panel)은 내용이 학습지로 옮겨 가 종이 탭에서는 다시 숨긴다(직접 실험 탭은 그대로) */
+body.paper.tab-current #tab-header-panel, body.paper.tab-future #tab-header-panel { display: none; }
 
 /* 조작 띠: 3D 바로 아래 한두 줄. 현재 실태 = 관측 기간 안내, 미래 예측 = 위 시나리오 / 아래 시간 막대 */
 body.paper.tab-current #ctlStrip, body.paper.tab-future #ctlStrip { grid-area: ctl; display: flex; flex-direction: column; gap: var(--sp-1);
@@ -582,3 +576,44 @@ body.paper.tab-future .fut-legend { grid-column: 1 / -1; }
   body.paper.tab-future .fut-charts { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
   body.paper.tab-current #tab-current .charts-2col { padding-top: var(--sp-1); padding-bottom: var(--sp-1); row-gap: var(--sp-2); }
 }
+
+/* ── 3차 B2 — 학습지 패널 (#worksheet, js/worksheet.js) ──────────────────
+   머리(제목 · [접기]) / 탭 셋 [탐구][나의 증거][기록] / 고른 탭 내용. 스크롤은 탭 내용 안에서만(문서 전체 스크롤 0).
+   접으면 44 px 세로 띠(body.ws-collapsed). */
+#worksheet { display: none; }
+body.paper.tab-current #worksheet, body.paper.tab-future #worksheet {
+  grid-area: ws; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; box-sizing: border-box;
+  background: var(--paper-2); color: var(--ink); border-left: 1px solid var(--rule); }
+body.paper.ws-collapsed.tab-current #app, body.paper.ws-collapsed.tab-future #app { grid-template-columns: minmax(0, 1fr) 44px; }
+body.paper .ws-head { flex: none; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); }
+body.paper .ws-title { flex: 1; min-width: 0; margin: 0; font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.paper .ws-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+body.paper .ws-body[hidden] { display: none; }
+/* 탭: 고른 탭은 밑줄(이동 영역색). 버튼 상자처럼 보이지 않게 — 3D·그래프 조작 버튼과 구분 */
+body.paper .ws-tabs { flex: none; display: flex; gap: var(--sp-1); padding: 0 var(--sp-3); border-bottom: 1px solid var(--rule); }
+body.paper .ws-tab { min-height: 40px; margin-bottom: -1px; padding: 0 var(--sp-3); font: inherit; font-size: var(--fs-2); font-weight: 600;
+  color: var(--ink-2); background: none; border: 0; border-bottom: 3px solid transparent; cursor: pointer; }
+body.paper .ws-tab:hover { color: var(--ink); }
+body.paper .ws-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ctl-nav); }
+body.paper .ws-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+body.paper .ws-panel { flex: 1 1 auto; min-height: 0; overflow: hidden auto; box-sizing: border-box; display: flex; flex-direction: column;
+  gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+body.paper .ws-panel[hidden] { display: none; }
+body.paper .ws-empty { margin: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.55; }
+body.paper.tab-future .ws-current-only { display: none; }
+body.paper .ws-evidence { margin: 0; padding: 0; list-style: none; }
+body.paper .ws-evidence:empty { display: none; }
+/* [탐구] 탭: 탐구 중에는 단계 안내가 탭 높이를 채우고 본문만 스크롤된다(예전 왼쪽 패널과 같은 방식) */
+body.paper.tab-future.inq-on #futureControls { height: auto; flex: 1 1 auto; }
+/* [기록] 탭: 예전 서랍(화면 오른쪽 고정·그림자)을 탭 안의 평범한 묶음으로 */
+body.paper #worksheet .rec-drawer { position: static; z-index: auto; width: auto; flex: 1 1 auto; min-height: 0; padding: 0;
+  background: none; border: 0; box-shadow: none; animation: none; }
+body.paper #worksheet .rec-head .btn { padding: 0 var(--sp-2); gap: var(--sp-1); }
+/* 표는 40 % 칸보다 넓을 수 있다: 글자를 쪼개 줄바꿈하지 않고("현재 정/책") 표 상자 안에서 가로로 스크롤 */
+body.paper #worksheet .rec-table th, body.paper #worksheet .rec-table td { padding: var(--sp-1); white-space: nowrap; }
+body.paper #worksheet .rec-inq td:nth-child(3), body.paper #worksheet .rec-inq td:nth-child(4) { white-space: normal; min-width: 10em; }
+/* 접힘: 제목과 [펼치기]를 세로로 */
+body.paper.ws-collapsed .ws-head { flex: 1; flex-direction: column-reverse; justify-content: flex-end; padding: var(--sp-2) 0; }
+body.paper.ws-collapsed .ws-title { flex: none; writing-mode: vertical-rl; font-size: var(--fs-2); color: var(--ink-2); }
+body.paper.ws-collapsed .ws-fold { writing-mode: vertical-rl; min-height: 0; padding: var(--sp-2) 0; width: 32px; }
