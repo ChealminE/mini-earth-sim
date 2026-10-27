@@ -44,6 +44,8 @@ const InquiryCore = (() => {
     askEvidence: ['saveAs'],   // 나의 증거 하나를 붙이고 주장 한 줄
   };
   const VIEW3D_MODES = ['co2', 'indicator', 'visible'];
+  // 미래 예측 그래프·시간 막대·시나리오에 묶인 동작 — 현재 실태 경로에서는 쓸 수 없다 (3차 E3)
+  const FUTURE_ONLY = ['showCharts', 'timeRange', 'overlay', 'setScenario', 'play', 'toggleNature', 'omega', 'modelPast', 'record', 'impactCards'];
   const CARDS = ['legend3d', 'spec', 'omega', 'sink', 'impacts'];
 
   // next를 따라 단계 순서를 만든다. next가 없으면 배열의 바로 아래 단계.
@@ -60,7 +62,7 @@ const InquiryCore = (() => {
     return out;
   }
 
-  // 단계 데이터 검사. ctx = { markers, impacts, sources } (출처 키 확인용, 없으면 건너뜀)
+  // 단계 데이터 검사. ctx = { markers, impacts, sources, catalog(DATA_CATALOG id 목록) } (없으면 그 검사는 건너뜀)
   function validate(paths, ctx = {}) {
     const errs = [], saveAs = new Map();
     const pathIds = new Set();
@@ -81,7 +83,14 @@ const InquiryCore = (() => {
           const need = ACTION_SPEC[a.do];
           if (!need) { errs.push(`${w}: 모르는 동작 "${a.do}"`); continue; }
           for (const f of need) if (a[f] == null) errs.push(`${w}: ${a.do}에 ${f} 없음`);
-          for (const c of [].concat(a.charts || [], a.chart || [])) if (!CHART_IDS[c]) errs.push(`${w}: 모르는 그래프 "${c}"`);
+          for (const c of [].concat(a.charts || [], a.chart || [])) if (!CHART_IDS[c] && c !== 'ws') errs.push(`${w}: 모르는 그래프 "${c}"`);
+          // 탭에 맞지 않는 동작 (3차 E3): 현재 실태 경로는 미래 예측 그래프·재생·시나리오를 못 쓰고, 미래 예측 경로는 작업대를 못 쓴다
+          if (p.tab === 'current' && FUTURE_ONLY.includes(a.do)) errs.push(`${w}: ${a.do} 는 미래 예측 경로에서만 (이 경로는 current)`);
+          if (p.tab === 'current' && a.do === 'card' && ['sink', 'impacts'].includes(a.id)) errs.push(`${w}: card ${a.id} 는 미래 예측 전용`);
+          if (p.tab === 'current' && a.do === 'pickPoint' && a.chart !== 'ws') errs.push(`${w}: 현재 실태 경로의 pickPoint 는 chart: 'ws'`);
+          if (p.tab === 'future' && (a.do === 'ws' || (a.do === 'pickPoint' && a.chart === 'ws'))) errs.push(`${w}: 작업대(ws)는 현재 실태 경로에서만 (이 경로는 future)`);
+          if (a.do === 'ws' && ctx.catalog) for (const id of a.load) if (!ctx.catalog.includes(id)) errs.push(`${w}: ws.load "${id}" 가 DATA_CATALOG 에 없음`);
+          if (a.do === 'askEvidence' && a.need && ctx.catalog) for (const id of a.need) if (!ctx.catalog.includes(id)) errs.push(`${w}: askEvidence.need "${id}" 가 DATA_CATALOG 에 없음`);
           if (a.saveAs) {
             if (saveAs.has(a.saveAs)) errs.push(`${w}: saveAs "${a.saveAs}" 가 ${saveAs.get(a.saveAs)} 와 겹침`);
             saveAs.set(a.saveAs, w);
@@ -119,7 +128,7 @@ const InquiryCore = (() => {
     return [LOG_COLS.join(','), ...rows.map(r => LOG_COLS.map(c => esc(c === 'time' ? localTime(r.time) : (r[c] == null ? '' : r[c]))).join(','))].join('\r\n');
   }
 
-  return { CHART_IDS, PRESETS, TABS, VIEW3D_MODES, CARDS, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
+  return { CHART_IDS, PRESETS, TABS, VIEW3D_MODES, CARDS, FUTURE_ONLY, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
 })();
 
 if (typeof module !== 'undefined') module.exports = InquiryCore;
@@ -151,8 +160,10 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     cards: new Set(),   // 이 단계가 연 학습지 카드
     ws: false,          // 이 단계가 작업대를 잠갔는가
   };
-  const chartByKey = k => charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]);
-  const keyOfChart = ch => Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id);
+  // 그래프 이름 → 차트. 'ws' = 현재 실태 그래프 작업대의 분석창(3차 E3)
+  const chartByKey = k => (k === 'ws' ? (wsNow() && wsNow().chart) : charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]));
+  const keyOfChart = ch => (wsNow() && ch === wsNow().chart ? 'ws' : Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id));
+  const redrawAll = () => { drawCharts(); if (wsNow()) wsNow().chart.draw(); };
 
   const pathById = id => INQUIRY_PATHS.find(p => p.id === id);
   const curPath = () => pathById(INQ.pathId);
@@ -264,6 +275,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     applyChartLayout();
     setTimeLimit();
     for (const ch of charts) ch.canvas.style.cursor = '';
+    if (wsNow()) { wsNow().chart.canvas.style.cursor = ''; wsNow().chart.draw(); }
     QV.play = null;
     setPopover(null);
     if (VIEW.omega) setOmegaView(false);
@@ -466,6 +478,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   function drawUnder(chart) {
     if (!INQ.on || !QV.markers.length) return;
     const { ctx, chartArea: a, scales: { x } } = chart;
+    if (!x || !a) return;
     ctx.save();
     QV.markers.forEach((key, i) => {
       const m = INQUIRY_MARKERS[key];
@@ -491,6 +504,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (!INQ.on) return;
     const key = keyOfChart(chart);
     const { ctx, chartArea: a, scales } = chart;
+    if (!scales.x || !scales.y) return;
+    if (key === 'ws' && wsNow().getConfig().mode !== 'time') return;   // 작업대는 시간 보기에서만 (y = 왼쪽 축 Y1)
     for (const r of Object.values(INQ.answers)) {
       if (r.chart !== key || r.path !== INQ.pathId || r.year === '') continue;
       const px = scales.x.getPixelForValue(r.year), py = scales.y.getPixelForValue(r.value);
@@ -516,6 +531,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (!INQ.on || !QV.pick || e.type !== 'click' || keyOfChart(chart) !== QV.pick.chart) return;
     const a = chart.chartArea;
     if (e.x < a.left || e.x > a.right || e.y < a.top || e.y > a.bottom) return;
+    if (QV.pick.chart === 'ws') { pickOnWorkspace(chart, e); return; }
     const year = Math.round(Math.max(LIMIT.from, Math.min(LIMIT.to, chart.scales.x.getValueForPixel(e.x))));
     const r = valueAt(chart.$spec, year);
     if (!r) return;   // 아직 예측하지 않은 해
@@ -524,6 +540,19 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       answer: `${year}년 (${spec.fmt(r.v)}, ${r.tag})` });
     showPick();
     drawCharts();
+  }
+  // 작업대 분석창 클릭 → Y1 계열에서 가장 가까운 해의 관측값 (3차 E3)
+  function pickOnWorkspace(chart, e) {
+    const cfg = wsNow().getConfig(), id = cfg.series[0];
+    if (!id || cfg.mode !== 'time') return;
+    const it = DATA_CATALOG.find(x => x.id === id), pts = GraphWorkspace.makeEnv(DATA_CATALOG).pts(id);
+    const want = chart.scales.x.getValueForPixel(e.x);
+    const p = pts.reduce((b, q) => (Math.abs(q.x - want) < Math.abs(b.x - want) ? q : b), pts[0]);
+    const val = `${p.y.toFixed(it.minSpan >= 2 ? 1 : 3)}${it.unit ? ' ' + it.unit : ''}`;
+    setAnswer(QV.pick.saveAs, { question: QV.pick.question, chart: 'ws', year: p.x, value: Number(p.y.toFixed(4)),
+      answer: `${p.x}년 (${it.short} ${val}, ${it.scope === 'model' ? '모형' : '관측'})` });
+    showPick();
+    chart.draw();
   }
   function showPick() {
     const w = el('inqPick');
@@ -665,7 +694,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     },
     pickPoint(a, ctx) {
       QV.pick = { chart: a.chart, saveAs: a.saveAs, question: a.prompt || ctx.step.question };
-      chartByKey(a.chart).canvas.style.cursor = 'crosshair';
+      const ch = chartByKey(a.chart);
+      if (ch) ch.canvas.style.cursor = 'crosshair';
       widget(ctx, '', 'inq-pick').id = 'inqPick';
       showPick();
     },
@@ -676,7 +706,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
         widget(ctx, `<span class="inq-swatch fill" style="background:${Theme.alpha(MARKER_TINT[i % MARKER_TINT.length], 0.35)}"></span>`
           + `<b>${esc(m.label)}</b> ${esc(m.range || `${m.from}~${m.to}`)}${srcButton(m.src)}`, 'inq-key');
       });
-      drawCharts();
+      redrawAll();
     },
     setScenario(a, ctx) {
       if (!a.wait) { if (FUT.preset !== a.preset) setPreset(a.preset); return; }

@@ -119,6 +119,12 @@ const currentWorkspace = USE_WORKSPACE
   ? GraphWorkspace.create(document.getElementById('currentWorkspace'), {
     catalog: DATA_CATALOG,
     onSend: cfg => Worksheet.addEvidence('workspace', cfg, 'current'),   // 학습지로 보내기 (3차 C4)
+    // 탐구 층(3차 E3): 사건 표지·학생이 고른 점을 그리고 분석창 클릭(pickPoint chart: 'ws')을 받는다. 미래 예측 그래프의
+    // inquiryLayerPlugin 과 같은 모양. js/inquiry.js 가 뒤에 읽히므로 그릴 때 있는지만 본다
+    plugins: [{ id: 'inquiryLayer',
+      beforeDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.drawUnder(chart); },
+      afterDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.drawOver(chart); },
+      afterEvent(chart, args) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.chartEvent(chart, args.event); } }],
   }) : null;
 if (currentWorkspace) {
   document.querySelector('#tab-current .charts-2col').hidden = true;

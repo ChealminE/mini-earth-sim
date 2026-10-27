@@ -7,7 +7,8 @@
 // 3) 탐구 기록 CSV 형식 (열 순서, 쉼표·따옴표·줄바꿈 처리)
 // 4) --browser [주소]: 2)의 고친 사본을 실제 화면에 내려보내(Playwright route) 경로 A를 끝까지 진행하고,
 //    탐구를 켰다 끈 뒤 자유 조작 상태(시나리오·레버·재생 위치·전선·토글·팝오버)가 그대로인지 확인한다.
-//    주소 기본값 http://127.0.0.1:8765/index.html?tab=future (예: npx http-server -p 8765 Critical_Earth_simulator)
+//    주소 기본값 http://127.0.0.1:8765/index.html?tab=future (예: npx http-server -p 8765 Critical_Earth_simulator).
+//    경로 A는 현재 실태, C는 미래 예측 경로라(3차 E3) 화면 안에서 switchTab 으로 오간다
 //
 // 실행: node tools/test_inquiry.js            (실패하면 종료 코드 1)
 //       node tools/test_inquiry.js --browser
@@ -20,6 +21,12 @@ const ROOT = path.resolve(__dirname, '..');
 const InquiryCore = require(path.join(ROOT, 'js', 'inquiry.js'));
 const { SOURCES } = require(path.join(ROOT, 'js', 'sources.js'));
 const STEPS_FILE = path.join(ROOT, 'js', 'inquiry-steps.js');
+// 그래프 작업대 자료 목록의 id (ws.load·askEvidence.need 검사, 3차 E3). get()만 엔진을 쓰므로 목록만 읽을 때는 엔진이 필요 없다
+const CATALOG_IDS = (() => {
+  const box = {};
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'js', 'data-catalog.js'), 'utf8') + ';this.ids = DATA_CATALOG.map(it => it.id);', box);
+  return box.ids;
+})();
 
 let fails = 0;
 const check = (ok, name, detail = '') => {
@@ -38,7 +45,7 @@ const ids = p => InquiryCore.stepOrder(p).map(s => s.id).join(' ');
 // ── 1) 지금 파일 ──
 const text = fs.readFileSync(STEPS_FILE, 'utf8');
 const D = loadSteps(text);
-const errs = InquiryCore.validate(D.INQUIRY_PATHS, { markers: D.INQUIRY_MARKERS, sources: SOURCES });
+const errs = InquiryCore.validate(D.INQUIRY_PATHS, { markers: D.INQUIRY_MARKERS, sources: SOURCES, catalog: CATALOG_IDS });
 check(errs.length === 0, '형식 검사 (inquiry-steps.js)', errs.join(' / '));
 for (const p of D.INQUIRY_PATHS) console.log(`      경로 ${p.id}: ${ids(p)}`);
 for (const c of D.INQUIRY_IMPACTS.levels) for (const it of c.items) {
@@ -61,7 +68,7 @@ function cutStep(src, id) {
   return src.slice(0, start) + src.slice(end).replace(/^\s*\n/, '\n');
 }
 const NEW_STEP = `{ id: 'A1b', title: '(시험) 새로 넣은 단계', question: '교사가 끼워 넣은 질문입니다.',
-        actions: [{ do: 'showCharts', charts: ['co2'] }, { do: 'askText', saveAs: 'A_test_inserted' }] },
+        actions: [{ do: 'ws', load: ['co2'] }, { do: 'askText', saveAs: 'A_test_inserted' }] },
       `;
 function editedText() {
   let t = cutStep(text, 'A3');
@@ -71,7 +78,7 @@ function editedText() {
 const edited = editedText();
 const E = loadSteps(edited);
 const pathA = E.INQUIRY_PATHS.find(p => p.id === 'A');
-const errs2 = InquiryCore.validate(E.INQUIRY_PATHS, { markers: E.INQUIRY_MARKERS, sources: SOURCES });
+const errs2 = InquiryCore.validate(E.INQUIRY_PATHS, { markers: E.INQUIRY_MARKERS, sources: SOURCES, catalog: CATALOG_IDS });
 check(errs2.length === 0, '단계 추가·삭제한 사본 형식 검사', errs2.join(' / '));
 check(ids(pathA) === 'A1 A1b A2 A4 A5 A6', '경로 A 순서: A3 삭제 + A1b 추가', ids(pathA));
 
@@ -79,6 +86,22 @@ check(ids(pathA) === 'A1 A1b A2 A4 A5 A6', '경로 A 순서: A3 삭제 + A1b 추
 const broken = loadSteps(cutStep(text, 'A3').replace(`{ id: 'A2',`, `{ id: 'A2', next: 'A3',`));
 const errs3 = InquiryCore.validate(broken.INQUIRY_PATHS, { markers: broken.INQUIRY_MARKERS });
 check(errs3.some(e => e.includes('next "A3"')), '지운 단계를 next로 가리키면 검사가 알림', errs3[0] || '');
+
+// 탭에 맞지 않는 동작을 잡는지 (3차 E3): 현재 실태 경로에 재생·시나리오·자연 지구, 미래 예측 경로에 작업대, 목록에 없는 자료
+{
+  const bad = [
+    { id: 'X', tab: 'current', title: 't', steps: [{ id: 'X1', title: 't', question: 'q', actions: [
+      { do: 'play', from: 2023, to: 2100 }, { do: 'setScenario', preset: 'ssp245' }, { do: 'toggleNature', on: true },
+      { do: 'pickPoint', chart: 'co2', saveAs: 'x_p' }, { do: 'ws', load: ['co2', 'nope'] }, { do: 'card', id: 'sink' }] }] },
+    { id: 'Y', tab: 'future', title: 't', steps: [{ id: 'Y1', title: 't', question: 'q', actions: [{ do: 'ws', load: ['co2'] }] }] },
+    { id: 'Z', title: 't', steps: [{ id: 'Z1', title: 't', question: 'q', actions: [] }] },
+  ];
+  const e = InquiryCore.validate(bad, { catalog: CATALOG_IDS }).join(' / ');
+  const want = ['play 는 미래 예측', 'setScenario 는 미래 예측', 'toggleNature 는 미래 예측', "pickPoint 는 chart: 'ws'", '"nope" 가 DATA_CATALOG', 'card sink', '작업대(ws)는 현재 실태', '경로 Z: tab'];
+  const miss = want.filter(w => !e.includes(w));
+  check(!miss.length, '탭에 맞지 않는 동작·tab 없는 경로·목록에 없는 자료를 검사가 알림', miss.length ? '못 잡음: ' + miss.join(', ') : `${want.length}종`);
+}
+for (const p of D.INQUIRY_PATHS) console.log(`      경로 ${p.id} → ${p.tab}`);
 
 // ── 3) 탐구 기록 CSV ──
 const rows = InquiryCore.logRows(
@@ -108,15 +131,21 @@ async function browser(url) {
     setPreset('custom');
     FUT.levers = { ...FUT.levers, ev: 0.6, ccs: 1.5 }; leversToInputs(FUT.levers); showLeverValues(); recomputeFuture(false);
     setYear(2150); advanceFrontier(2150); renderFuture();
-    setNatureView(true); setOmegaView(true); setPopover('popSink');
+    // 팝오버는 두 탭 모두에서 쓰는 '바다 속 탄소'로 — '탄소는 어디로?'는 미래 예측 전용 카드라 현재 실태로 가면 닫힌다(3차 E2, 의도)
+    setNatureView(true); setOmegaView(true); setPopover('popSpec');
   });
   await page.waitForTimeout(600);
+  // 현재 실태 작업대도 바꿔 둔다(탐구 경로 A·B가 작업대를 쓴다 — 3차 E3)
+  await page.evaluate(() => { currentWorkspace.add('temp'); currentWorkspace.setMode('shape'); });
   const state = () => page.evaluate(() => JSON.stringify({ preset: FUT.preset, levers: FUT.levers, year: FUT.year, frontier: FUT.frontier,
-    nature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, pop: !document.getElementById('popSink').hidden,
+    nature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, pop: !document.getElementById('popSpec').hidden,
     lever: !document.getElementById('fcLevers').hidden, xmax: charts[0].options.scales.x.max, slider: tlScrub.max,
-    cam: getCameraView().target.join(), ds: charts.map(c => c.data.datasets.length).join() }));
+    cam: getCameraView().target.join(), ds: charts.map(c => c.data.datasets.length).join(), ws: JSON.stringify(currentWorkspace.getConfig()) }));
   const before = await state();
 
+  // 경로 A는 현재 실태(3차 E3): 화면 안에서 탭을 바꾼다(머리줄 링크는 페이지를 다시 연다)
+  await page.evaluate(() => switchTab('current'));
+  await page.waitForTimeout(600);
   await page.click('#inqModeOn');
   await page.click('[data-path="A"]');
   const seen = [];
@@ -127,7 +156,9 @@ async function browser(url) {
   }
   check(seen[1].startsWith('(시험) 새로 넣은 단계') && seen.every(s => !s.includes('그때 무슨 일이')) && seen[0].includes('1/6'),
     '화면: 고친 사본으로 경로 A 진행 (새 단계 보임, 지운 단계 없음, 6단계)', seen.map(s => s.split(' [')[1]).join(' '));
-  // 다른 경로 하나에서 시나리오를 바꿔 본 뒤 끈다(C2는 시나리오를 고른다)
+  // 다른 경로 하나에서 시나리오를 바꿔 본 뒤 끈다(C2는 시나리오를 고른다). C는 미래 예측 경로
+  await page.evaluate(() => switchTab('future'));
+  await page.waitForTimeout(600);
   await page.click('[data-path="C"]');
   await page.click('[data-inq="next"]');
   await page.click('[data-scen="ssp119"]');

@@ -23,7 +23,7 @@
 // 학생 응답(고른 점·글·보기)은 단계를 오가도 남는다.
 //
 // 동작 목록 (TASK_2차_E_탐구모드.md §2. 새 동작은 js/inquiry.js ACTION_SPEC 과 여기에 함께 적는다)
-//   그래프 이름: co2 · T · pH · sst  (미래 예측 탭의 그래프 4개)
+//   그래프 이름: co2 · T · pH · sst  (미래 예측 탭의 그래프 4개) · ws (현재 실태 그래프 작업대 분석창, pickPoint 만)
 //   { do: 'showCharts', charts: ['co2'] }                  보일 그래프만 펼치고 나머지는 옅게 접는다
 //   { do: 'timeRange', from: 1750, to: 2023, lockFuture: true }
 //                                                          그래프 x축·시간 막대 범위. lockFuture면 예측(2023 이후)으로 못 간다
@@ -60,129 +60,116 @@
 //  단계를 나갈 때 view3d·card·ws(잠금)는 되돌린다(선언형). 학생이 작업대에 직접 넣은 자료는 자유 조작으로 돌아가면 복원된다.
 // ============================================================================
 
-// 과거만 보는 단계에서 함께 쓰는 동작 (1750~2023 관측, 예측으로 못 감)
+// 과거만 보는 단계에서 함께 쓰는 동작 (1750~2023 관측, 예측으로 못 감) — 3차 E3부터 미래 예측 경로(C1)에서만 쓴다
 const PAST_ONLY = { do: 'timeRange', from: 1750, to: 2023, lockFuture: true };
 
 const INQUIRY_PATHS = [
   // ── 경로 A — 왜 CO₂가 증가했을까? (랩미팅 학습 과정 1) ──
-  { id: 'A', tab: 'future', title: '왜 CO₂가 증가했을까?', summary: 'CO₂ 그래프에서 증가가 시작된 때를 찾고 원인을 생각해 봅니다',
+  // 3차 E3: 관측 자료만 보는 과제라 현재 실태로 옮겼다. 미래 예측 그래프 동작(showCharts·overlay·timeRange·toggleNature) → 작업대(ws)
+  { id: 'A', tab: 'current', title: '왜 CO₂가 증가했을까?', summary: 'CO₂ 그래프에서 증가가 시작된 때를 찾고 원인을 생각해 봅니다',
     steps: [
       { id: 'A1', title: 'CO₂는 어떻게 변해 왔을까?',
         question: 'CO₂는 어떻게 변해 왔나요?',
         text: '1750년부터 2023년까지 관측한 대기 CO₂ 농도입니다. 선이 어떻게 움직이는지 처음부터 끝까지 따라가 보세요.',
         hint: '처음 100년쯤과 마지막 70년쯤의 기울기를 비교해 보세요.',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
+          { do: 'ws', load: ['co2'] },
           { do: 'askText', saveAs: 'A_change', placeholder: '예) 처음에는 … 그러다가 …' },
         ] },
       { id: 'A2', title: '증가는 언제 시작됐을까?',
         question: 'CO₂가 늘어나기 시작한 곳을 그래프에서 눌러 보세요.',
         hint: '선이 위로 꺾이기 시작하는 곳을 찾아보세요. 다시 누르면 고친 곳으로 바뀝니다.',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
-          { do: 'pickPoint', chart: 'co2', saveAs: 'A_turningYear' },
+          { do: 'ws', load: ['co2'] },
+          { do: 'pickPoint', chart: 'ws', saveAs: 'A_turningYear' },
         ] },
       { id: 'A3', title: '그때 무슨 일이 있었을까?',
         question: '내가 고른 해와 두 시기(산업혁명, 1950년 이후 급증)를 비교해 보세요.',
         text: '숨겨 두었던 표지를 공개했습니다. 내가 고른 해(동그라미)는 어느 시기에 가까운가요?',
         hint: '산업혁명 때 석탄을 때는 증기기관과 공장이 퍼졌습니다. 1950년 이후에는 석유·자동차·전기 사용이 크게 늘었습니다.',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
+          { do: 'ws', load: ['co2'] },
           { do: 'revealMarkers', markers: ['industrial_revolution', 'great_acceleration'] },
           { do: 'askText', saveAs: 'A_compare', prompt: '내가 고른 해는 어느 시기에 가까웠나요?', rows: 1 },
         ] },
       { id: 'A4', title: '화석연료 배출과 비교하기',
         question: '두 그래프는 어떤 관계인가요?',
-        text: 'CO₂ 그래프 위에 해마다 태운 화석연료(석탄·석유·가스)에서 나온 탄소의 양을 겹쳤습니다. 3D의 도시도 그해 배출에 맞춰 자랍니다(연출).',
+        text: '작업대에 대기 CO₂와, 해마다 태운 화석연료(석탄·석유·가스)에서 나온 탄소의 양(오른쪽 축)을 함께 놓았습니다.',
         hint: '두 선이 함께 늘어나기 시작하는 때와, 가장 가파르게 늘어나는 때를 비교해 보세요.',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
-          { do: 'overlay', chart: 'co2', series: 'fossil' },
+          { do: 'ws', load: ['co2', 'fossil'] },
           { do: 'focus3D', target: 'city' },
           { do: 'askText', saveAs: 'A_relation' },
         ] },
       { id: 'A5', title: '사람이 없었다면?',
         question: '사람이 없었다면 CO₂는 어땠을까요?',
-        text: '3D를 "자연만 있는 지구"로 바꾸고, 그래프의 회색 점선(자연만 있는 지구)을 굵게 했습니다. 같은 모형에 사람의 배출만 0으로 넣은 결과입니다.',
-        hint: '회색 점선과 관측(검은 선)이 언제부터 벌어지나요?',
+        text: '작업대에 "사람이 없었다면 CO₂ (모형)" 회색 점선을 함께 놓았습니다. 같은 모형에 사람의 배출만 0으로 넣은 결과입니다.',
+        hint: '회색 점선과 관측(갈색 선)이 언제부터 벌어지나요?',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
-          { do: 'toggleNature', on: true },
+          { do: 'ws', load: ['co2', 'co2_nature'] },
           { do: 'askText', saveAs: 'A_nature' },
         ] },
       { id: 'A6', title: '정리하기',
         question: 'CO₂ 증가의 원인은 ____이다.',
-        text: '빈칸을 채워 한 문장으로 정리하고, 지금 상태를 기록 서랍에 남기세요.',
+        text: '빈칸을 채워 한 문장으로 정리하고, 그 주장을 뒷받침하는 증거를 하나 붙이세요.',
         actions: [
-          { do: 'showCharts', charts: ['co2'] },
-          PAST_ONLY,
+          { do: 'ws', load: ['co2', 'fossil'] },
           { do: 'askText', saveAs: 'A_cause', placeholder: 'CO₂ 증가의 원인은 …이다.' },
-          { do: 'record', value: 'ppm' },
+          // 3차 E3에서 넣음 — 수업 담당자 확인 필요
+          { do: 'askEvidence', saveAs: 'A_evidence', prompt: '이 주장을 뒷받침하는 증거를 고르세요', need: ['co2', 'fossil'] },
         ] },
     ] },
 
   // ── 경로 B — 해양 pH는 그동안 어땠을까? (랩미팅 학습 과정 2) ──
-  { id: 'B', tab: 'future', title: '해양 pH는 그동안 어땠을까?', summary: '바다의 pH와 CO₂를 비교하고, 바다가 산성화되는 까닭을 알아봅니다',
+  // 3차 E3: 현재 실태로 옮겼다. B4의 2200년 재생은 현재 실태에 없어 Ω(모형)의 1750~2023 변화를 보게 바꿨다(미래는 경로 C 화면)
+  { id: 'B', tab: 'current', title: '해양 pH는 그동안 어땠을까?', summary: '바다의 pH와 CO₂를 비교하고, 바다가 산성화되는 까닭을 알아봅니다',
     steps: [
       { id: 'B1', title: 'pH는 어떻게 변하고 있을까?',
         question: 'pH는 어떻게 변하고 있나요?',
-        text: '검은 점은 하와이 앞바다(Station ALOHA)에서 1989년부터 잰 pH, 옅은 선은 모형이 계산한 1750년부터의 전 지구 평균 표층 pH입니다.',
+        text: '청록 실선은 하와이 앞바다(Station ALOHA)에서 1989년부터 잰 pH, 점선은 모형이 계산한 1750년부터의 전 지구 평균 표층 pH입니다.',
         hint: 'pH가 작아질수록 산성 쪽입니다. 0.1만 달라져도 수소 이온(H⁺)은 약 26 % 늘어납니다.',
         actions: [
-          { do: 'showCharts', charts: ['pH'] },
-          PAST_ONLY,
-          { do: 'modelPast', on: true },
+          { do: 'ws', load: ['ph', 'ph_model'] },
           { do: 'askText', saveAs: 'B_change' },
         ] },
       { id: 'B2', title: 'CO₂와 비교하기',
         question: '두 값은 어떤 관계인가요?',
-        text: 'pH 그래프 위에 대기 CO₂를 겹쳤습니다(오른쪽 축).',
+        text: '작업대에 대기 CO₂(왼쪽 축)와 pH(오른쪽 축)를 함께 놓았습니다.',
         hint: '한쪽이 올라갈 때 다른 쪽은 어떻게 되나요?',
         actions: [
-          { do: 'showCharts', charts: ['pH'] },
-          PAST_ONLY,
-          { do: 'modelPast', on: true },
-          { do: 'overlay', chart: 'pH', series: 'co2' },
+          { do: 'ws', load: ['co2', 'ph'] },
           { do: 'askText', saveAs: 'B_relation' },
         ] },
       { id: 'B3', title: '바닷물 속에서 무슨 일이?',
         question: 'pH가 낮아지는 이유는 무엇일까요?',
-        text: '대기의 CO₂가 바닷물에 녹으면 물과 반응해 탄산(H₂CO₃)이 되고, 탄산은 수소 이온(H⁺)과 중탄산 이온(HCO₃⁻)으로 나뉩니다. 오른쪽 "바다 속 탄소" 상자에서 1750년과 2023년을 비교해 보세요.',
+        text: '대기의 CO₂가 바닷물에 녹으면 물과 반응해 탄산(H₂CO₃)이 되고, 탄산은 수소 이온(H⁺)과 중탄산 이온(HCO₃⁻)으로 나뉩니다. 학습지의 "바다 속 탄소" 카드에서 1750년과 2023년을 비교해 보세요.',
         equation: 'CO₂ + H₂O ⇌ H₂CO₃ ⇌ H⁺ + HCO₃⁻',
         hint: 'pH는 수소 이온(H⁺)이 많을수록 낮아집니다. 반응식에서 H⁺는 어디서 생기나요?',
         actions: [
-          { do: 'showCharts', charts: ['pH'] },
-          PAST_ONLY,
-          { do: 'openPopover', id: 'spec' },
+          { do: 'ws', load: ['ph'] },
+          { do: 'card', id: 'spec' },
           { do: 'askChoice', saveAs: 'B_why', prompt: 'pH가 낮아지는 이유는?',
             options: ['바닷물의 온도가 올라가서', '바다에 녹은 CO₂가 탄산이 되어 H⁺를 내놓아서', '바닷물의 소금이 늘어나서', '바다 생물이 줄어들어서'],
             answer: 1, feedback: '좋아요. 그런데 표에서 CO₃²⁻(탄산 이온)는 왜 줄었을까요?' },
         ] },
       { id: 'B4', title: '조개와 산호의 껍데기',
         question: 'Ω가 1보다 작아지면 무슨 일이 생길까요?',
-        text: 'Ω(아라고나이트 포화도)는 조개·산호가 껍데기(탄산칼슘)를 만들기 쉬운 정도입니다. 3D에서 조개를 가까이 보고, 현재 정책으로 2200년까지 재생해 Ω가 어떻게 되는지 보세요. 그래프의 Ω는 전 지구 평균 표층 바다 값입니다.',
-        hint: 'Ω = 1은 껍데기가 녹기 시작하는 경계입니다(그래프의 점선). 껍데기 만드는 재료인 CO₃²⁻가 줄면 Ω도 줄어듭니다.',
+        text: 'Ω(아라고나이트 포화도)는 조개·산호가 껍데기(탄산칼슘)를 만들기 쉬운 정도입니다. 3D에서 조개를 가까이 보고, 작업대의 Ω(모형) 선이 1750년부터 어떻게 변해 왔는지 보세요. 작업대의 Ω는 전 지구 평균 표층 바다 값입니다. 앞으로의 변화는 미래 예측 화면에서 이어 볼 수 있어요.',
+        hint: 'Ω = 1은 껍데기가 녹기 시작하는 경계입니다. 껍데기 만드는 재료인 CO₃²⁻가 줄면 Ω도 줄어듭니다.',
         actions: [
-          { do: 'showCharts', charts: ['pH'] },
-          { do: 'setScenario', preset: 'ssp245' },
-          { do: 'timeRange', from: 1750, to: 2200 },
-          { do: 'omega', on: true },
+          { do: 'ws', load: ['co2', 'omega'] },
+          { do: 'card', id: 'omega' },
           { do: 'focus3D', target: 'shell' },
-          { do: 'play', from: 2023, to: 2200 },
           { do: 'askText', saveAs: 'B_omega' },
         ] },
       { id: 'B5', title: '정리하기',
         question: '바다가 산성화되는 이유는 ____이다.',
-        text: '빈칸을 채워 한 문장으로 정리하고, 지금 상태를 기록 서랍에 남기세요.',
+        text: '빈칸을 채워 한 문장으로 정리하고, 그 주장을 뒷받침하는 증거를 하나 붙이세요.',
         actions: [
-          { do: 'showCharts', charts: ['pH'] },
+          { do: 'ws', load: ['co2', 'ph'] },
           { do: 'askText', saveAs: 'B_cause', placeholder: '바다가 산성화되는 이유는 …이다.' },
-          { do: 'record', value: 'pH' },
+          // 3차 E3에서 넣음 — 수업 담당자 확인 필요
+          { do: 'askEvidence', saveAs: 'B_evidence', prompt: '이 주장을 뒷받침하는 증거를 고르세요', need: ['co2', 'ph'] },
         ] },
     ] },
 

@@ -87,6 +87,10 @@ const DATA_CATALOG = [
   { id: 'sink_land', label: '토양·식생이 흡수한 탄소 누적 (모형)', short: '육지 흡수 누적', unit: 'GtC', axis: 'GtC', src: 'carbon_params',
     scope: 'model', color: '--data-land', minSpan: 50, order: 9, deck: 'model',
     get: () => DataSeries.fromRun(DataSeries.history(), o => o.cum.land) },
+  // 탐구 경로 B1(3차 E3)의 '모형이 계산한 1750년부터의 전 지구 평균 표층 pH'를 작업대에서도 보이려고 넣었다. 관측 pH와 같은 축(pH)
+  { id: 'ph_model', label: '해수 pH (모형, 전 지구 평균)', short: 'pH (모형)', unit: '', axis: 'pH', src: 'model_ph',
+    scope: 'model', color: '--data-ph', minSpan: 0.1, order: 11, deck: 'model',
+    get: () => DataSeries.fromRun(DataSeries.history(), o => o.pH) },
   { id: 'omega', label: '아라고나이트 포화도 Ω (모형)', short: 'Ω (모형)', unit: '', axis: 'omega', src: 'model_omega',
     scope: 'model', color: '--data-omega', minSpan: 0.5, order: 10, deck: 'model',
     get: () => DataSeries.fromRun(DataSeries.history(), o => o.omega) },

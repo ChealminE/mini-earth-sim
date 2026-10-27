@@ -369,7 +369,9 @@ const GraphWorkspace = (() => {
 
     // ── 그래프 (Chart.js 한 개를 계속 갱신) ──
     const plot = q('.gw-plot');
-    const chart = new Chart(q('.gw-plot canvas'), chartConfig(env, () => st.mode, () => qa('.gw-seg')));
+    const conf = chartConfig(env, () => st.mode, () => qa('.gw-seg'));
+    conf.plugins.push(...(opts.plugins || []));   // 부르는 쪽이 덧붙이는 그래프 층 (예: 탐구 표지·고른 점, 3차 E3)
+    const chart = new Chart(q('.gw-plot canvas'), conf);
 
     function render() {
       const ids = st.series;
