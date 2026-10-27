@@ -255,22 +255,20 @@
         <button class="ws-tab" type="button" role="tab" id="wsTabRecord" aria-controls="wsPanelRecord" aria-selected="false" tabindex="-1">기록</button>
       </div>
       <section class="ws-panel" role="tabpanel" id="wsPanelInquiry" aria-labelledby="wsTabInquiry">
-        <!-- 현재 실태 탐구 경로는 3차 E3에서 들어온다 -->
-        <p class="ws-empty ws-current-only">현재 실태 탐구 활동은 다음 단계에서 이곳에 들어옵니다. 지금은 [미래 예측] 화면의 학습지에서 탐구할 수 있습니다.</p>
-        <!-- 미래 예측 탭에서만 보임: 탐구/자유 조작 전환과 탐구 패널, 고른 시나리오 설명 (js/tab-future.js·js/inquiry.js).
-             시나리오 버튼은 조작 띠(#fcScen), 직접 설계 레버는 3D 칸 위(#fcLevers)에 있다 -->
-        <div class="future-only fc" id="futureControls">
-          <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
-          <div class="inq-mode" role="group" aria-label="조작 방식">
-            <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
-            <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
-          </div>
-          <div class="inq-panel" id="inqPanel" hidden></div>
-          <div id="fcFree">
+        <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 3차 E1부터 두 탭 공통). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js.
+             경로마다 tab(current|future)이 있어 지금 탭의 경로만 고를 수 있다 -->
+        <div class="inq-mode" role="group" aria-label="조작 방식">
+          <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
+          <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
+        </div>
+        <div class="inq-panel" id="inqPanel" hidden></div>
+        <!-- 자유 조작일 때만 보이는 것: 미래 예측의 고른 시나리오 설명 (탐구 중에는 inquiry.js 가 숨긴다) -->
+        <div id="fcFree">
           <!-- 시나리오 버튼·직접 설계 버튼은 조작 띠(#ctlStrip)로, 레버 패널은 3D 칸 위로 옮겼다(3차 B1). 고른 시나리오 설명만 여기 남는다 -->
-          <div id="fcScenarioView">
-            <p class="fc-desc readout" id="fcPresetDesc"></p>
-          </div>
+          <div class="future-only fc" id="futureControls">
+            <div id="fcScenarioView">
+              <p class="fc-desc readout" id="fcPresetDesc"></p>
+            </div>
           </div>
         </div>
       </section>

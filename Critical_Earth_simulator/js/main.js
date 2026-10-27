@@ -44,6 +44,7 @@ function switchTab(name) {
   // 실험을 시작하면 '실험 화면'(body.live-run) - js/live-setup.js가 전환
   if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
   activeTab = name;
+  if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.onTab(name);   // 탐구 경로는 탭마다 다르다 (3차 E1, js/inquiry.js)
   fitRenderer();   // 탭에 따라 3D 칸 크기가 달라진다
   if (name === 'future') {
     activateFutureTab();   // 그래프 크기 맞추기 + 재생 연도의 엔진 값을 3D에 반영 (js/tab-future.js)

@@ -53,17 +53,46 @@ const Worksheet = (() => {
   let pageOn = true;
   function setTitle(tabTitle, paper = true) { $('wsTitle').textContent = `${tabTitle} 학습지`; pageOn = paper; syncEvidence(); }
 
+  // ── 학습지 공용 저장소 (3차 E1) ──
+  // localStorage['worksheet.v1'] = { answers: { 경로 id: { saveAs: 응답 } }, evidence: [...], fp: {...}, ui: {...},
+  //                                  inquiry: { on, pathId, idx, records } }
+  //   answers  탐구 응답(js/inquiry.js) · evidence 나의 증거(아래) · fp 1인칭 야장 현장 기록(3차 E4) · ui 화면 상태 · inquiry 탐구 진행 상태·기록 줄
+  // 처음 읽을 때 2차의 'inquiry.v1'이 있으면 한 번 옮겨 담는다. 옛 키는 되돌리기 대비로 지우지 않는다.
+  // 모든 읽기·쓰기 try/catch — file:// 단일 HTML 등 저장소가 막힌 환경이면 이번 화면 동안만 메모리에 둔다(마스터 §6-8).
+  // 그림(dataURL)은 넣지 않는다(용량 약 5 MB).
+  const store = (() => {
+    const KEY = 'worksheet.v1', OLD = 'inquiry.v1';
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { d = null; }
+    d = d && typeof d === 'object' ? d : {};
+    for (const [k, v] of Object.entries({ answers: {}, evidence: [], fp: {}, ui: {}, inquiry: {} })) if (!d[k] || typeof d[k] !== typeof v) d[k] = v;
+    if (!d.migratedInquiryV1) {
+      try {
+        const o = JSON.parse(localStorage.getItem(OLD) || 'null');
+        if (o) {
+          // 2차 응답은 saveAs → 응답 하나의 평평한 묶음이었다 → 경로별로 나눈다
+          for (const [saveAs, r] of Object.entries(o.answers || {})) (d.answers[r.path] = d.answers[r.path] || {})[saveAs] = r;
+          d.inquiry = { on: !!o.on, pathId: o.pathId || null, idx: o.idx || 0, records: o.records || [] };
+        }
+      } catch (e) { /* 옛 기록을 못 읽으면 새로 시작 */ }
+      d.migratedInquiryV1 = true;
+    }
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* 저장소를 못 쓰면 이번 화면에서만 */ } };
+    save();
+    return { data: d, save };
+  })();
+
   // ── 나의 증거 (3차 C4) ──
   // 그래프 작업대·미래 예측 그래프의 [학습지로 보내기]가 '구성'을 여기에 쌓는다. 저장소 localStorage['worksheet.v1'] = { evidence: [...] }
   // (3차 E1에서 같은 키를 학습지 공용 저장소로 넓힌다). 그림(dataURL)은 저장하지 않는다 — 용량(약 5 MB)이 금방 차서,
   // 구성만 저장하고 카드가 보일 때 다시 그린다(마스터 §6-8). 증거 카드의 Chart.js 는 [나의 증거] 탭이 보일 때만 만들고 떠나면 destroy.
   // 종류마다 그리기는 그 화면 파일이 맡는다: registerEvidenceKind('workspace', …)는 js/tab-current.js, ('future', …)는 js/tab-future.js.
   //   { title(cfg), tags(cfg) → [글], sources(cfg) → [등록부 키], draw(canvas, cfg) → { chart, note? }, open(cfg), csv(cfg) → { series, mode, flips, range } }
-  const EV_KEY = 'worksheet.v1', EV_MAX = 12;
+  const EV_MAX = 12;
   const kinds = {};
-  let evidence = [], evCharts = [], evMsg = '';
-  try { evidence = (JSON.parse(localStorage.getItem(EV_KEY) || 'null') || {}).evidence || []; } catch (e) { evidence = []; }
-  const saveEv = () => { try { localStorage.setItem(EV_KEY, JSON.stringify({ evidence })); } catch (e) { /* 저장소를 못 쓰면 이번 화면에서만 */ } };
+  let evCharts = [], evMsg = '';
+  const evidence = store.data.evidence;   // 위 공용 저장소의 배열을 그대로 쓴다(고치면 saveEv)
+  const saveEv = () => store.save();
   const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const changedEv = () => document.dispatchEvent(new CustomEvent('worksheet:evidence'));
 
@@ -162,5 +191,5 @@ const Worksheet = (() => {
   try { saved = localStorage.getItem(STORE_KEY); } catch (e) { /* 기본값: 펼침 */ }
   if (saved === 'true') setCollapsed(true);
 
-  return { show, setTitle, setCollapsed, isCollapsed, registerEvidenceKind, addEvidence, evidenceRows, evidenceCsv, EV_MAX };
+  return { store, show, setTitle, setCollapsed, isCollapsed, registerEvidenceKind, addEvidence, evidenceRows, evidenceCsv, EV_MAX };
 })();

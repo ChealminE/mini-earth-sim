@@ -407,7 +407,7 @@ body.paper .inq-mode { display: grid; grid-template-columns: 1fr 1fr; gap: var(-
 body.paper .inq-mode .btn { width: 100%; }
 body.paper .inq-mode .btn[aria-pressed="true"] { background: var(--c-on); color: var(--on-fill); }
 body.paper .inq-panel[hidden], body.paper #fcFree[hidden] { display: none; }
-body.tab-future.paper.inq-on #futureControls { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* (3차 E1) 탐구 패널은 #futureControls 밖, 학습지 [탐구] 탭(.ws-panel, 세로 flex)에 바로 있어 그 높이를 채운다 — 아래 E1 절 */
 body.paper .inq-panel { display: flex; flex-direction: column; gap: var(--sp-2); flex: 1 1 auto; min-height: 0; }
 body.paper .inq-paths { display: flex; flex-direction: column; gap: var(--sp-2); }
 body.paper .inq-path-btn { width: 100%; align-items: flex-start; text-align: left; white-space: normal; padding: var(--sp-2) var(--sp-3); }
@@ -604,8 +604,6 @@ body.paper .ws-empty { margin: 0; font-size: var(--fs-2); color: var(--ink-2); l
 body.paper.tab-future .ws-current-only { display: none; }
 body.paper .ws-evidence { margin: 0; padding: 0; list-style: none; }
 body.paper .ws-evidence:empty { display: none; }
-/* [탐구] 탭: 탐구 중에는 단계 안내가 탭 높이를 채우고 본문만 스크롤된다(예전 왼쪽 패널과 같은 방식) */
-body.paper.tab-future.inq-on #futureControls { height: auto; flex: 1 1 auto; }
 /* [기록] 탭: 예전 서랍(화면 오른쪽 고정·그림자)을 탭 안의 평범한 묶음으로 */
 body.paper #worksheet .rec-drawer { position: static; z-index: auto; width: auto; flex: 1 1 auto; min-height: 0; padding: 0;
   background: none; border: 0; box-shadow: none; animation: none; }

@@ -5,7 +5,8 @@
 // 실행기(js/inquiry.js)는 여기 적힌 것만 읽고 화면에 적용한다. 코드를 고칠 필요가 없어야 한다.
 // 고친 뒤에는 node tools/test_inquiry.js 로 형식을 검사한다(없는 동작 이름·그래프 이름·출처 키를 잡아 준다).
 //
-// 경로   { id, title, summary, steps: [단계, …] }
+// 경로   { id, title, summary, tab, steps: [단계, …] }
+//        tab: 'current' | 'future' — 이 경로가 진행되는 화면(3차 E1). 학습지는 지금 화면의 경로만 목록에 보인다
 // 단계   {
 //   id: 'A2',                       경로 안에서 겹치지 않는 이름 (기록 CSV의 step 열)
 //   title: '증가는 언제 시작됐을까?',  단계 제목
@@ -53,7 +54,7 @@ const PAST_ONLY = { do: 'timeRange', from: 1750, to: 2023, lockFuture: true };
 
 const INQUIRY_PATHS = [
   // ── 경로 A — 왜 CO₂가 증가했을까? (랩미팅 학습 과정 1) ──
-  { id: 'A', title: '왜 CO₂가 증가했을까?', summary: 'CO₂ 그래프에서 증가가 시작된 때를 찾고 원인을 생각해 봅니다',
+  { id: 'A', tab: 'future', title: '왜 CO₂가 증가했을까?', summary: 'CO₂ 그래프에서 증가가 시작된 때를 찾고 원인을 생각해 봅니다',
     steps: [
       { id: 'A1', title: 'CO₂는 어떻게 변해 왔을까?',
         question: 'CO₂는 어떻게 변해 왔나요?',
@@ -115,7 +116,7 @@ const INQUIRY_PATHS = [
     ] },
 
   // ── 경로 B — 해양 pH는 그동안 어땠을까? (랩미팅 학습 과정 2) ──
-  { id: 'B', title: '해양 pH는 그동안 어땠을까?', summary: '바다의 pH와 CO₂를 비교하고, 바다가 산성화되는 까닭을 알아봅니다',
+  { id: 'B', tab: 'future', title: '해양 pH는 그동안 어땠을까?', summary: '바다의 pH와 CO₂를 비교하고, 바다가 산성화되는 까닭을 알아봅니다',
     steps: [
       { id: 'B1', title: 'pH는 어떻게 변하고 있을까?',
         question: 'pH는 어떻게 변하고 있나요?',
@@ -175,7 +176,7 @@ const INQUIRY_PATHS = [
     ] },
 
   // ── 경로 C — 지구의 대기 기온은 어떻게 변하고 있을까? (랩미팅 학습 과정 3) ──
-  { id: 'C', title: '지구의 대기 기온은 어떻게 변하고 있을까?', summary: '관측한 기온을 보고, 시나리오별 미래 기온과 그 영향을 비교합니다',
+  { id: 'C', tab: 'future', title: '지구의 대기 기온은 어떻게 변하고 있을까?', summary: '관측한 기온을 보고, 시나리오별 미래 기온과 그 영향을 비교합니다',
     steps: [
       { id: 'C1', title: '기온은 어떻게 변하고 있을까?',
         question: '기온은 어떻게 변하고 있나요?',

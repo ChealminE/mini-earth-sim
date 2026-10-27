@@ -1,8 +1,9 @@
 // ============================================================================
 // 탐구 모드 — 단계 실행기 (2차 개편 E)
 // ----------------------------------------------------------------------------
-// 미래 예측 탭 왼쪽 패널 맨 위의 [탐구 | 자유 조작] 전환. 탐구를 켜면 왼쪽 패널이 경로 선택 → 단계 안내로 바뀌고,
-// 끄면 자유 조작 패널로 돌아오며 화면 상태(시나리오·레버·재생 위치·토글)를 켜기 전으로 되돌린다.
+// 학습지 [탐구] 탭 맨 위의 [탐구 | 자유 조작] 전환(3차 E1부터 현재 실태·미래 예측 공통). 탐구를 켜면 경로 선택 → 단계 안내로 바뀌고,
+// 끄면 자유 조작으로 돌아오며 화면 상태(시나리오·레버·재생 위치·토글·작업대)를 켜기 전으로 되돌린다.
+// 경로마다 tab(current | future)이 있다: 학습지는 지금 탭의 경로만 보이고, 진행 중에 다른 탭으로 가면 '○○ 탭에서 이어집니다'.
 // 경로·단계 내용은 js/inquiry-steps.js(데이터)에만 있다. 여기는 그 데이터를 화면에 적용하는 일만 한다.
 //
 // 미래 예측 탭의 함수(setPreset·setYear·setPlaying·setNatureView·setPopover·addRecord …)와 값(FUT·VIEW·charts)은
@@ -16,6 +17,7 @@ const InquiryCore = (() => {
   // 단계 데이터의 그래프 이름 → 미래 예측 탭 캔버스 id
   const CHART_IDS = { co2: 'futChartCo2', T: 'futChartT', pH: 'futChartPh', sst: 'futChartSst' };
   const PRESETS = ['ssp245', 'ssp126', 'ssp119'];
+  const TABS = ['current', 'future'];   // 경로가 진행되는 화면 (3차 E1)
 
   // 동작 이름 → 꼭 있어야 하는 필드. 새 동작을 만들면 여기와 inquiry-steps.js 머리말에 함께 적는다.
   const ACTION_SPEC = {
@@ -58,6 +60,7 @@ const InquiryCore = (() => {
     for (const p of paths) {
       const where = `경로 ${p.id}`;
       if (!p.id || !p.title) errs.push(`${where}: id·title 필요`);
+      if (!TABS.includes(p.tab)) errs.push(`${where}: tab 은 ${TABS.join('|')} 중 하나 (3차 E1)`);
       if (pathIds.has(p.id)) errs.push(`${where}: 경로 id 중복`);
       pathIds.add(p.id);
       if (!Array.isArray(p.steps) || !p.steps.length) { errs.push(`${where}: 단계가 없음`); continue; }
@@ -107,7 +110,7 @@ const InquiryCore = (() => {
     return [LOG_COLS.join(','), ...rows.map(r => LOG_COLS.map(c => esc(c === 'time' ? localTime(r.time) : (r[c] == null ? '' : r[c]))).join(','))].join('\r\n');
   }
 
-  return { CHART_IDS, PRESETS, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
+  return { CHART_IDS, PRESETS, TABS, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
 })();
 
 if (typeof module !== 'undefined') module.exports = InquiryCore;
@@ -121,7 +124,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     on: false,
     pathId: null,     // 진행 중인 경로 (null = 경로 고르는 화면)
     idx: 0,           // 단계 순서(stepOrder) 안의 위치
-    snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 (tab-future.js futSnapshot)
+    snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 { fut: tab-future.js futSnapshot, ws: 현재 실태 작업대 구성 }
+    away: false,      // 진행 중인 경로의 탭이 아닌 화면을 보고 있다 (3차 E1)
     answers: {},      // saveAs → { path, step, question, answer, year, value, chart, time } — 단계를 오가도 남는다
     records: [],      // record 동작으로 남긴 줄 { path, step, question, answer, year, value, time, preset, T }
     cam: null,        // 탐구를 켜기 직전의 카메라 시점
@@ -143,6 +147,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   const curOrder = () => InquiryCore.stepOrder(curPath());
 
   // ── 전환 [탐구 | 자유 조작] ──
+  // 두 탭의 자유 조작 상태를 함께 저장·복원한다 — 경로를 고르는 중에 탭을 바꿀 수 있어서 어느 탭 경로가 시작될지 미리 모른다
+  const wsNow = () => (typeof currentWorkspace !== 'undefined' && currentWorkspace ? currentWorkspace : null);
   function setMode(on) {
     if (on === INQ.on) return;
     INQ.on = on;
@@ -150,19 +156,42 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     el('inqModeFree').setAttribute('aria-pressed', String(!on));
     el('fcFree').hidden = on;
     el('inqPanel').hidden = !on;
-    document.body.classList.toggle('inq-on', on);
     if (on) {
-      INQ.snap = futSnapshot();
+      INQ.snap = { fut: futSnapshot(), ws: wsNow() ? wsNow().getConfig() : null };
       INQ.cam = getCameraView();
       enterBaseline();
       if (INQ.pathId && pathById(INQ.pathId)) showStep(); else showPicker();
     } else {
+      INQ.away = false;
       resetStepView();
-      futRestore(INQ.snap);
+      futRestore(INQ.snap.fut);
+      if (wsNow() && INQ.snap.ws) wsNow().loadConfig(INQ.snap.ws);
       setCameraView(INQ.cam);
       INQ.snap = INQ.cam = null;
     }
+    bodyClass();
     save();
+  }
+  // body.inq-on: 탐구가 지금 화면에서 진행 중일 때만(다른 탭 경로를 쉬고 있는 동안에는 그 화면의 조작을 막지 않는다)
+  function bodyClass() { document.body.classList.toggle('inq-on', INQ.on && !INQ.away); }
+  const TAB_KO = { current: '현재 실태', future: '미래 예측' };
+  const TAB_KO_RO = { current: '현재 실태로', future: '미래 예측으로' };   // 받침에 따라 '로/으로'
+  const pageTab = () => (typeof activeTab !== 'undefined' ? activeTab : 'future');
+  // 탭을 바꿀 때 main.js switchTab 이 부른다. 경로를 고르는 중이면 그 탭의 경로 목록, 진행 중인 경로의 탭이 아니면 '이어집니다' 안내
+  function onTab(name) {
+    if (!INQ.on) return;
+    const path = curPath();
+    if (!path) { showPicker(); return; }
+    const away = path.tab !== name;
+    if (away) {
+      if (!INQ.away) resetStepView();
+      INQ.away = true;
+      bodyClass();
+      el('inqPanel').innerHTML = `<div class="inq-away"><p class="inq-q">이 탐구는 <b>${esc(TAB_KO[path.tab])}</b> 화면에서 이어집니다.</p>
+        <p class="inq-text">${esc(path.id)}. ${esc(path.title)} — ${INQ.idx + 1}단계. 응답과 진행 단계는 그대로 남아 있어요.</p>
+        <button class="btn btn--nav" type="button" data-inq="back" data-tab="${path.tab}"><span data-icon="back"></span>${esc(TAB_KO_RO[path.tab])} 돌아가기</button></div>`;
+      Icons.fill(el('inqPanel'));
+    } else if (INQ.away) { INQ.away = false; bodyClass(); showStep(); }
   }
 
   // 탐구를 시작할 때의 화면: 재생 멈춤, 예측 지움(2023), 보기 토글·팝오버 끔
@@ -180,11 +209,15 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // ── 경로 고르기 ──
   function showPicker() {
     INQ.pathId = null;
+    INQ.away = false;
+    bodyClass();
     save();
     resetStepView();
     const box = el('inqPanel');
+    const list = INQUIRY_PATHS.filter(p => p.tab === pageTab());   // 지금 탭의 경로만
     box.innerHTML = `<h3 class="fc-h">탐구 <span>질문을 따라가며 알아보기</span></h3>
-      <div class="inq-paths" role="list">${INQUIRY_PATHS.map(p => `
+      ${list.length ? '' : `<p class="inq-text">${esc(TAB_KO[pageTab()])} 화면의 탐구 경로가 아직 없습니다.</p>`}
+      <div class="inq-paths" role="list">${list.map(p => `
         <button class="btn btn--nav btn--stack inq-path-btn" type="button" role="listitem" data-path="${esc(p.id)}">
           <span class="inq-path-name">${esc(p.id)}. ${esc(p.title)}</span>
           <span class="btn-sub">${esc(p.summary || '')} · ${InquiryCore.stepOrder(p).length}단계</span></button>`).join('')}
@@ -194,6 +227,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   function startPath(id) {
     INQ.pathId = id;
     INQ.idx = 0;
+    INQ.away = pathById(id).tab !== pageTab();
+    if (INQ.away) { onTab(pageTab()); save(); return; }
     showStep();
   }
 
@@ -218,6 +253,9 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   }
 
   function showStep() {
+    if (curPath().tab !== pageTab()) { onTab(pageTab()); return; }   // 다른 탭의 경로(새로 고친 뒤 되살릴 때 등)
+    INQ.away = false;
+    bodyClass();
     const order = curOrder();
     INQ.idx = Math.max(0, Math.min(order.length - 1, INQ.idx));
     const step = order[INQ.idx], path = curPath(), n = order.length;
@@ -275,21 +313,23 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // ── 탐구 기록: 기록 서랍 묶음 · CSV · 브라우저 저장 (E5) ──
   // 저장소는 localStorage. file:// 로 연 단일 HTML 등에서 막히는 브라우저가 있어 실패해도 조용히 넘어간다
   // (그 경우 새로 고치면 응답이 사라질 뿐 탐구는 그대로 된다).
-  const STORE_KEY = 'inquiry.v1';
+  // 3차 E1부터 학습지 공용 저장소(js/worksheet.js Worksheet.store, localStorage 'worksheet.v1')에 둔다.
+  // 응답은 경로별 묶음 answers[경로][saveAs], 진행 상태·기록 줄은 inquiry. 2차의 'inquiry.v1'은 저장소가 처음 한 번 옮겨 담았다.
   function save() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ on: INQ.on, pathId: INQ.pathId, idx: INQ.idx, answers: INQ.answers, records: INQ.records }));
-    } catch (e) { /* 저장소를 못 쓰는 환경 */ }
+    const d = Worksheet.store.data, byPath = {};
+    for (const [k, r] of Object.entries(INQ.answers)) (byPath[r.path] = byPath[r.path] || {})[k] = r;
+    d.answers = byPath;
+    d.inquiry = { on: INQ.on, pathId: INQ.pathId, idx: INQ.idx, records: INQ.records };
+    Worksheet.store.save();
   }
   function load() {
-    try {
-      const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      if (!d) return null;
-      INQ.answers = d.answers || {};
-      INQ.records = d.records || [];
-      if (d.pathId && pathById(d.pathId)) { INQ.pathId = d.pathId; INQ.idx = d.idx || 0; }
-      return d;
-    } catch (e) { return null; }
+    const d = Worksheet.store.data;
+    INQ.answers = {};
+    for (const g of Object.values(d.answers || {})) Object.assign(INQ.answers, g);
+    const q = d.inquiry || {};
+    INQ.records = q.records || [];
+    if (q.pathId && pathById(q.pathId)) { INQ.pathId = q.pathId; INQ.idx = q.idx || 0; }
+    return q;
   }
   let logTimer = 0;
   function logChanged() {   // 글자를 칠 때마다 표를 다시 그리지 않게 0.3초 모아서
@@ -691,6 +731,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     const b = e.target.closest('[data-inq]');
     if (!b) return;
     if (b.dataset.inq === 'paths') showPicker();
+    else if (b.dataset.inq === 'back') switchTab(b.dataset.tab);   // '○○로 돌아가기' → main.js switchTab → onTab
     else if (b.dataset.inq === 'prev') go(-1);
     else if (b.dataset.inq === 'next') go(1);
   });
@@ -708,5 +749,5 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     else queueMicrotask(restore);
   }
 
-  return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
+  return { setMode, startPath, go, onTab, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();
