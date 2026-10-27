@@ -617,3 +617,10 @@ body.paper #worksheet .rec-inq td:nth-child(3), body.paper #worksheet .rec-inq t
 body.paper.ws-collapsed .ws-head { flex: 1; flex-direction: column-reverse; justify-content: flex-end; padding: var(--sp-2) 0; }
 body.paper.ws-collapsed .ws-title { flex: none; writing-mode: vertical-rl; font-size: var(--fs-2); color: var(--ink-2); }
 body.paper.ws-collapsed .ws-fold { writing-mode: vertical-rl; min-height: 0; padding: var(--sp-2) 0; width: 32px; }
+
+/* ── 3차 B3 — 화면 버튼 내리기 (기능 유지) ─────────────────────────────
+   3D 범례 · 자연만 있는 지구 · CO₂ 보기 · 지시약으로 보기 · Ω 함께 보기 · 바다 속 탄소 버튼에 data-ws-moved.
+   기본 화면에서만 감추고 요소·id·이벤트·함수는 그대로 둔다(탐구 동작·학습지 카드 E2에서 켠다).
+   hidden 속성 대신 CSS로 감춘다: 일부 코드가 hidden 을 상태로 읽는다(예: if (!$('popSpec').hidden)).
+   !important 인 까닭: 같은 요소에 탭별 display 규칙(.nature-toggle·.legend3d·.btn 등)이 여럿이라 하나하나 이기려면 선택자가 들쭉날쭉해진다. */
+body.paper [data-ws-moved] { display: none !important; }

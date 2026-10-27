@@ -330,16 +330,19 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
 
   // ── 그래프: 펼치기·접기 ──
   // 접은 그래프는 제목 줄만 옅게 남긴다(그래프 열 높이는 그대로라 스크롤이 생기지 않는다).
-  // 3차 B1부터 그래프가 2×2로 놓이므로 행은 '줄' 단위다: 한 줄의 그래프가 모두 접혔을 때만 그 줄을 제목 높이로 줄인다.
-  // 열 수는 CSS에서 읽는다(배치를 바꿔도 여기를 다시 고치지 않게).
+  // 그래프는 평소 2×2(3차 B1)인데, 탐구 단계가 일부를 접으면 한 열로 쌓아 펼친 그래프가 폭 전체를 쓰게 한다
+  // (2×2 그대로 두면 펼친 그래프가 반쪽 폭만 쓰고 옆 칸이 비었다). 다 펼치면 CSS의 2×2로 돌아간다.
   function applyChartLayout() {
     const keys = Object.keys(InquiryCore.CHART_IDS);
     const shown = keys.map(k => !QV.charts || QV.charts.includes(k));
     keys.forEach((k, i) => el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !shown[i]));
-    const cols = Math.max(1, getComputedStyle(el('futCharts')).gridTemplateColumns.split(' ').length);
-    const rows = ['auto'];
-    for (let i = 0; i < keys.length; i += cols) rows.push(shown.slice(i, i + cols).some(Boolean) ? 'minmax(0, 1fr)' : 'auto');
-    el('futCharts').style.gridTemplateRows = QV.charts ? rows.join(' ') : '';
+    const folding = shown.some(v => !v);
+    // 행 높이는 화면(DOM) 순서로 정한다. CHART_IDS 키 순서(CO₂·기온·pH·해수온)는 3차 A2에서 바꾼 그래프 순서
+    // (CO₂→기온→해수온→pH)와 달라, 키 순서로 만들면 pH 대신 해수온 줄이 늘어났다
+    const blocks = [...el('futCharts').querySelectorAll(':scope > .chart-block')];
+    el('futCharts').style.gridTemplateColumns = folding ? 'minmax(0, 1fr)' : '';
+    el('futCharts').style.gridTemplateRows = folding
+      ? ['auto', ...blocks.map(b => b.classList.contains('inq-fold') ? 'auto' : 'minmax(0, 1fr)')].join(' ') : '';
     // ResizeObserver를 기다리지 않고 바로 맞춘다(헤드리스·느린 기기에서 한동안 예전 크기로 겹쳐 그려졌다)
     charts.forEach(c => c.resize());
   }

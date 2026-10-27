@@ -109,15 +109,17 @@
     <div class="earth-badge readout future-only" id="earthBadge">인간활동 지구 · 현재 정책</div>
     <div class="gl-fade" id="glFade" aria-hidden="true"></div>
     <!-- 3D 보기 토글 (2차 개편 D, 종이 탭에서만 보임): 눈에 보이지 않는 것을 켰을 때만 보이게 한다 (js/common.js VIEW3D) -->
+    <!-- 3차 B3: data-ws-moved 가 붙은 요소는 기본 화면에서만 숨긴다(css/paper.css). 요소·id·이벤트·함수는 그대로이고
+         탐구 동작·학습지 카드(3차 E2)에서 켠다. hidden 속성은 쓰지 않는다 — 일부 코드가 hidden 을 상태로 읽는다 -->
     <div class="view3d paper-only" role="group" aria-label="3D 보기">
       <!-- 자연 지구 토글도 보기 조작이라 같은 묶음에 둔다 (오른쪽 아래는 범례 자리) -->
-      <button class="btn btn--view btn--sm nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
-      <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false"><span data-icon="dots"></span>CO₂ 보기</button>
-      <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false"><span data-icon="drop"></span>지시약으로 보기</button>
+      <button class="btn btn--view btn--sm nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false" data-ws-moved><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
+      <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false" data-ws-moved><span data-icon="dots"></span>CO₂ 보기</button>
+      <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false" data-ws-moved><span data-icon="drop"></span>지시약으로 보기</button>
     </div>
     <!-- 3D 범례 (2차 개편 D7): 3D의 무엇이 무엇을 나타내는지. 정보 표시라 버튼처럼 보이지 않게 두고, 접기 버튼만 보기 조작이다.
          줄 표시는 js/main.js updateLegend3D (보기 토글·자연 지구에 따라). 근거 수준(관측·IPCC·연출)은 줄 끝 ⓘ에서 -->
-    <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle">
+    <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle" data-ws-moved>
       <div class="lg-head">
         <h3 class="lg-title" id="legend3dTitle">3D 범례</h3>
         <button class="btn btn--view btn--sm lg-toggle" type="button" id="legend3dToggle" aria-expanded="true" aria-controls="legend3dBody">접기</button>
@@ -353,8 +355,8 @@
         <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
-          <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false">Ω 함께 보기</button>
-          <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec"><span data-icon="flask"></span>바다 속 탄소</button></div>
+          <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false" data-ws-moved>Ω 함께 보기</button>
+          <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec" data-ws-moved><span data-icon="flask"></span>바다 속 탄소</button></div>
           <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
 
         <!-- 보조 정보 팝오버: 그래프 열 위에 뜨고 배치를 밀지 않는다 -->
