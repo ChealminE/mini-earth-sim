@@ -1,8 +1,9 @@
 // ============================================================================
 // 탐구 모드 — 단계 실행기 (2차 개편 E)
 // ----------------------------------------------------------------------------
-// 미래 예측 탭 왼쪽 패널 맨 위의 [탐구 | 자유 조작] 전환. 탐구를 켜면 왼쪽 패널이 경로 선택 → 단계 안내로 바뀌고,
-// 끄면 자유 조작 패널로 돌아오며 화면 상태(시나리오·레버·재생 위치·토글)를 켜기 전으로 되돌린다.
+// 학습지 [탐구] 탭 맨 위의 [탐구 | 자유 조작] 전환(3차 E1부터 현재 실태·미래 예측 공통). 탐구를 켜면 경로 선택 → 단계 안내로 바뀌고,
+// 끄면 자유 조작으로 돌아오며 화면 상태(시나리오·레버·재생 위치·토글·작업대)를 켜기 전으로 되돌린다.
+// 경로마다 tab(current | future)이 있다: 학습지는 지금 탭의 경로만 보이고, 진행 중에 다른 탭으로 가면 '○○ 탭에서 이어집니다'.
 // 경로·단계 내용은 js/inquiry-steps.js(데이터)에만 있다. 여기는 그 데이터를 화면에 적용하는 일만 한다.
 //
 // 미래 예측 탭의 함수(setPreset·setYear·setPlaying·setNatureView·setPopover·addRecord …)와 값(FUT·VIEW·charts)은
@@ -16,6 +17,7 @@ const InquiryCore = (() => {
   // 단계 데이터의 그래프 이름 → 미래 예측 탭 캔버스 id
   const CHART_IDS = { co2: 'futChartCo2', T: 'futChartT', pH: 'futChartPh', sst: 'futChartSst' };
   const PRESETS = ['ssp245', 'ssp126', 'ssp119'];
+  const TABS = ['current', 'future'];   // 경로가 진행되는 화면 (3차 E1)
 
   // 동작 이름 → 꼭 있어야 하는 필드. 새 동작을 만들면 여기와 inquiry-steps.js 머리말에 함께 적는다.
   const ACTION_SPEC = {
@@ -35,7 +37,16 @@ const InquiryCore = (() => {
     askChoice: ['saveAs', 'options'],
     impactCards: [],
     record: [],
+    // 3차 E2: 화면에서 학습지로 옮긴 기능
+    view3d: ['mode'],          // 3D 보기: co2 · indicator · visible(둘 다 끔)
+    card: ['id'],              // 학습지 카드: legend3d · spec · omega · sink · impacts
+    ws: ['load'],              // 그래프 작업대(현재 실태) 구성
+    askEvidence: ['saveAs'],   // 나의 증거 하나를 붙이고 주장 한 줄
   };
+  const VIEW3D_MODES = ['co2', 'indicator', 'visible'];
+  // 미래 예측 그래프·시간 막대·시나리오에 묶인 동작 — 현재 실태 경로에서는 쓸 수 없다 (3차 E3)
+  const FUTURE_ONLY = ['showCharts', 'timeRange', 'overlay', 'setScenario', 'play', 'toggleNature', 'omega', 'modelPast', 'record', 'impactCards'];
+  const CARDS = ['legend3d', 'spec', 'omega', 'sink', 'impacts'];
 
   // next를 따라 단계 순서를 만든다. next가 없으면 배열의 바로 아래 단계.
   // 고리(같은 단계를 두 번 지남)나 없는 id는 거기서 멈춘다 - validate가 따로 알린다.
@@ -51,13 +62,14 @@ const InquiryCore = (() => {
     return out;
   }
 
-  // 단계 데이터 검사. ctx = { markers, impacts, sources } (출처 키 확인용, 없으면 건너뜀)
+  // 단계 데이터 검사. ctx = { markers, impacts, sources, catalog(DATA_CATALOG id 목록) } (없으면 그 검사는 건너뜀)
   function validate(paths, ctx = {}) {
     const errs = [], saveAs = new Map();
     const pathIds = new Set();
     for (const p of paths) {
       const where = `경로 ${p.id}`;
       if (!p.id || !p.title) errs.push(`${where}: id·title 필요`);
+      if (!TABS.includes(p.tab)) errs.push(`${where}: tab 은 ${TABS.join('|')} 중 하나 (3차 E1)`);
       if (pathIds.has(p.id)) errs.push(`${where}: 경로 id 중복`);
       pathIds.add(p.id);
       if (!Array.isArray(p.steps) || !p.steps.length) { errs.push(`${where}: 단계가 없음`); continue; }
@@ -71,13 +83,22 @@ const InquiryCore = (() => {
           const need = ACTION_SPEC[a.do];
           if (!need) { errs.push(`${w}: 모르는 동작 "${a.do}"`); continue; }
           for (const f of need) if (a[f] == null) errs.push(`${w}: ${a.do}에 ${f} 없음`);
-          for (const c of [].concat(a.charts || [], a.chart || [])) if (!CHART_IDS[c]) errs.push(`${w}: 모르는 그래프 "${c}"`);
+          for (const c of [].concat(a.charts || [], a.chart || [])) if (!CHART_IDS[c] && c !== 'ws') errs.push(`${w}: 모르는 그래프 "${c}"`);
+          // 탭에 맞지 않는 동작 (3차 E3): 현재 실태 경로는 미래 예측 그래프·재생·시나리오를 못 쓰고, 미래 예측 경로는 작업대를 못 쓴다
+          if (p.tab === 'current' && FUTURE_ONLY.includes(a.do)) errs.push(`${w}: ${a.do} 는 미래 예측 경로에서만 (이 경로는 current)`);
+          if (p.tab === 'current' && a.do === 'card' && ['sink', 'impacts'].includes(a.id)) errs.push(`${w}: card ${a.id} 는 미래 예측 전용`);
+          if (p.tab === 'current' && a.do === 'pickPoint' && a.chart !== 'ws') errs.push(`${w}: 현재 실태 경로의 pickPoint 는 chart: 'ws'`);
+          if (p.tab === 'future' && (a.do === 'ws' || (a.do === 'pickPoint' && a.chart === 'ws'))) errs.push(`${w}: 작업대(ws)는 현재 실태 경로에서만 (이 경로는 future)`);
+          if (a.do === 'ws' && ctx.catalog) for (const id of a.load) if (!ctx.catalog.includes(id)) errs.push(`${w}: ws.load "${id}" 가 DATA_CATALOG 에 없음`);
+          if (a.do === 'askEvidence' && a.need && ctx.catalog) for (const id of a.need) if (!ctx.catalog.includes(id)) errs.push(`${w}: askEvidence.need "${id}" 가 DATA_CATALOG 에 없음`);
           if (a.saveAs) {
             if (saveAs.has(a.saveAs)) errs.push(`${w}: saveAs "${a.saveAs}" 가 ${saveAs.get(a.saveAs)} 와 겹침`);
             saveAs.set(a.saveAs, w);
           }
           if (a.do === 'setScenario' && !a.wait && !PRESETS.includes(a.preset)) errs.push(`${w}: setScenario preset은 ${PRESETS.join('|')} 또는 wait: true`);
           if (a.do === 'revealMarkers' && ctx.markers) for (const m of a.markers) if (!ctx.markers[m]) errs.push(`${w}: 사건 표지 "${m}" 없음`);
+          if (a.do === 'view3d' && !VIEW3D_MODES.includes(a.mode)) errs.push(`${w}: view3d mode는 ${VIEW3D_MODES.join('|')}`);
+          if (a.do === 'card' && !CARDS.includes(a.id)) errs.push(`${w}: card id는 ${CARDS.join('|')}`);
         }
       }
       for (const s of p.steps) if (s.next && !ids.has(s.next)) errs.push(`${where} 단계 ${s.id}: next "${s.next}" 가 없음`);
@@ -107,7 +128,7 @@ const InquiryCore = (() => {
     return [LOG_COLS.join(','), ...rows.map(r => LOG_COLS.map(c => esc(c === 'time' ? localTime(r.time) : (r[c] == null ? '' : r[c]))).join(','))].join('\r\n');
   }
 
-  return { CHART_IDS, PRESETS, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
+  return { CHART_IDS, PRESETS, TABS, VIEW3D_MODES, CARDS, FUTURE_ONLY, ACTION_SPEC, stepOrder, validate, LOG_COLS, logRows, toCsv, localTime };
 })();
 
 if (typeof module !== 'undefined') module.exports = InquiryCore;
@@ -121,7 +142,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     on: false,
     pathId: null,     // 진행 중인 경로 (null = 경로 고르는 화면)
     idx: 0,           // 단계 순서(stepOrder) 안의 위치
-    snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 (tab-future.js futSnapshot)
+    snap: null,       // 탐구를 켜기 직전의 자유 조작 상태 { fut: tab-future.js futSnapshot, ws: 현재 실태 작업대 구성 }
+    away: false,      // 진행 중인 경로의 탭이 아닌 화면을 보고 있다 (3차 E1)
     answers: {},      // saveAs → { path, step, question, answer, year, value, chart, time } — 단계를 오가도 남는다
     records: [],      // record 동작으로 남긴 줄 { path, step, question, answer, year, value, time, preset, T }
     cam: null,        // 탐구를 켜기 직전의 카메라 시점
@@ -134,15 +156,22 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     pick: null,         // { chart, saveAs, question } — 그래프를 눌러 연도 고르기
     play: null,         // { from, to, recordAtEnd, value } — 이 단계의 재생 구간
     focused: false,     // 이 단계가 3D 카메라를 옮겼는가
+    view3d: false,      // 이 단계가 3D 보기(CO₂·지시약)를 바꿨는가 (3차 E2)
+    cards: new Set(),   // 이 단계가 연 학습지 카드
+    ws: false,          // 이 단계가 작업대를 잠갔는가
   };
-  const chartByKey = k => charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]);
-  const keyOfChart = ch => Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id);
+  // 그래프 이름 → 차트. 'ws' = 현재 실태 그래프 작업대의 분석창(3차 E3)
+  const chartByKey = k => (k === 'ws' ? (wsNow() && wsNow().chart) : charts.find(c => c.canvas.id === InquiryCore.CHART_IDS[k]));
+  const keyOfChart = ch => (wsNow() && ch === wsNow().chart ? 'ws' : Object.keys(InquiryCore.CHART_IDS).find(k => InquiryCore.CHART_IDS[k] === ch.canvas.id));
+  const redrawAll = () => { drawCharts(); if (wsNow()) wsNow().chart.draw(); };
 
   const pathById = id => INQUIRY_PATHS.find(p => p.id === id);
   const curPath = () => pathById(INQ.pathId);
   const curOrder = () => InquiryCore.stepOrder(curPath());
 
   // ── 전환 [탐구 | 자유 조작] ──
+  // 두 탭의 자유 조작 상태를 함께 저장·복원한다 — 경로를 고르는 중에 탭을 바꿀 수 있어서 어느 탭 경로가 시작될지 미리 모른다
+  const wsNow = () => (typeof currentWorkspace !== 'undefined' && currentWorkspace ? currentWorkspace : null);
   function setMode(on) {
     if (on === INQ.on) return;
     INQ.on = on;
@@ -150,19 +179,44 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     el('inqModeFree').setAttribute('aria-pressed', String(!on));
     el('fcFree').hidden = on;
     el('inqPanel').hidden = !on;
-    document.body.classList.toggle('inq-on', on);
     if (on) {
-      INQ.snap = futSnapshot();
+      INQ.snap = { fut: futSnapshot(), ws: wsNow() ? wsNow().getConfig() : null };
       INQ.cam = getCameraView();
       enterBaseline();
       if (INQ.pathId && pathById(INQ.pathId)) showStep(); else showPicker();
     } else {
+      INQ.away = false;
       resetStepView();
-      futRestore(INQ.snap);
+      parkCards();
+      futRestore(INQ.snap.fut);
+      if (wsNow() && INQ.snap.ws) wsNow().loadConfig(INQ.snap.ws);
       setCameraView(INQ.cam);
       INQ.snap = INQ.cam = null;
     }
+    bodyClass();
     save();
+  }
+  // body.inq-on: 탐구가 지금 화면에서 진행 중일 때만(다른 탭 경로를 쉬고 있는 동안에는 그 화면의 조작을 막지 않는다)
+  function bodyClass() { document.body.classList.toggle('inq-on', INQ.on && !INQ.away); }
+  const TAB_KO = { current: '현재 실태', future: '미래 예측' };
+  const TAB_KO_RO = { current: '현재 실태로', future: '미래 예측으로' };   // 받침에 따라 '로/으로'
+  const pageTab = () => (typeof activeTab !== 'undefined' ? activeTab : 'future');
+  // 탭을 바꿀 때 main.js switchTab 이 부른다. 경로를 고르는 중이면 그 탭의 경로 목록, 진행 중인 경로의 탭이 아니면 '이어집니다' 안내
+  function onTab(name) {
+    if (!INQ.on) return;
+    const path = curPath();
+    if (!path) { showPicker(); return; }
+    const away = path.tab !== name;
+    if (away) {
+      if (!INQ.away) resetStepView();
+      parkCards();
+      INQ.away = true;
+      bodyClass();
+      el('inqPanel').innerHTML = `<div class="inq-away"><p class="inq-q">이 탐구는 <b>${esc(TAB_KO[path.tab])}</b> 화면에서 이어집니다.</p>
+        <p class="inq-text">${esc(path.id)}. ${esc(path.title)} — ${INQ.idx + 1}단계. 응답과 진행 단계는 그대로 남아 있어요.</p>
+        <button class="btn btn--nav" type="button" data-inq="back" data-tab="${path.tab}"><span data-icon="back"></span>${esc(TAB_KO_RO[path.tab])} 돌아가기</button></div>`;
+      Icons.fill(el('inqPanel'));
+    } else if (INQ.away) { INQ.away = false; bodyClass(); showStep(); }
   }
 
   // 탐구를 시작할 때의 화면: 재생 멈춤, 예측 지움(2023), 보기 토글·팝오버 끔
@@ -180,11 +234,16 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // ── 경로 고르기 ──
   function showPicker() {
     INQ.pathId = null;
+    INQ.away = false;
+    bodyClass();
     save();
     resetStepView();
+    parkCards();
     const box = el('inqPanel');
+    const list = INQUIRY_PATHS.filter(p => p.tab === pageTab());   // 지금 탭의 경로만
     box.innerHTML = `<h3 class="fc-h">탐구 <span>질문을 따라가며 알아보기</span></h3>
-      <div class="inq-paths" role="list">${INQUIRY_PATHS.map(p => `
+      ${list.length ? '' : `<p class="inq-text">${esc(TAB_KO[pageTab()])} 화면의 탐구 경로가 아직 없습니다.</p>`}
+      <div class="inq-paths" role="list">${list.map(p => `
         <button class="btn btn--nav btn--stack inq-path-btn" type="button" role="listitem" data-path="${esc(p.id)}">
           <span class="inq-path-name">${esc(p.id)}. ${esc(p.title)}</span>
           <span class="btn-sub">${esc(p.summary || '')} · ${InquiryCore.stepOrder(p).length}단계</span></button>`).join('')}
@@ -194,8 +253,16 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   function startPath(id) {
     INQ.pathId = id;
     INQ.idx = 0;
+    INQ.away = pathById(id).tab !== pageTab();
+    if (INQ.away) { onTab(pageTab()); save(); return; }
     showStep();
   }
+
+  // 학습지 카드 영역(#wsCards, js/worksheet.js): 단계 중에는 단계 본문 안(질문과 함께 스크롤), 그 밖에는 [탐구] 탭 끝.
+  // 단계 화면은 innerHTML 로 통째로 다시 그리므로 그 전에 반드시 밖으로 빼 둔다(안에 둔 채 지우면 카드가 사라진다)
+  const parkCards = () => el('wsPanelInquiry').appendChild(el('wsCards'));
+  // 3D 보기(CO₂·지시약)를 원하는 상태로. B3에서 숨긴 버튼의 클릭 처리(main.js bindView3D)를 그대로 쓴다
+  const setView3D = (key, on) => { if (VIEW3D[key] !== on) el(key === 'co2' ? 'view3dCo2' : 'view3dIndicator').click(); };
 
   // ── 단계 ──
   // 단계 화면 상태(탐구가 그래프·3D에 덧입힌 것)를 모두 걷는다. 단계에 들어갈 때마다, 그리고 탐구를 끌 때 부른다.
@@ -208,6 +275,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     applyChartLayout();
     setTimeLimit();
     for (const ch of charts) ch.canvas.style.cursor = '';
+    if (wsNow()) { wsNow().chart.canvas.style.cursor = ''; wsNow().chart.draw(); }
     QV.play = null;
     setPopover(null);
     if (VIEW.omega) setOmegaView(false);
@@ -215,13 +283,23 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (FUT.showNature) setNatureView(false);
     if (QV.focused) { setCameraView(CAM_TARGETS.overview); QV.focused = false; }
     el('inqCards').hidden = true;
+    // 3차 E2 동작이 바꾼 것 되돌리기
+    if (QV.view3d) { setView3D('co2', false); setView3D('indicator', false); QV.view3d = false; }
+    for (const id of QV.cards) Worksheet.closeCard(id);
+    QV.cards.clear();
+    if (QV.ws && wsNow()) wsNow().lock(null);
+    QV.ws = false;
   }
 
   function showStep() {
+    if (curPath().tab !== pageTab()) { onTab(pageTab()); return; }   // 다른 탭의 경로(새로 고친 뒤 되살릴 때 등)
+    INQ.away = false;
+    bodyClass();
     const order = curOrder();
     INQ.idx = Math.max(0, Math.min(order.length - 1, INQ.idx));
     const step = order[INQ.idx], path = curPath(), n = order.length;
     resetStepView();
+    parkCards();
     const box = el('inqPanel');
     box.innerHTML = `
       <div class="inq-top">
@@ -246,6 +324,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
         <button class="btn btn--nav" type="button" data-inq="next">${INQ.idx === n - 1 ? '마치기' : '다음'}</button>
       </div>`;
     Icons.fill(box);
+    box.querySelector('.inq-body').appendChild(el('wsCards'));   // 이 단계가 연 카드는 질문 아래에
     const ctx = { path, step, widgets: el('inqWidgets'), after: [] };
     for (const a of step.actions || []) {
       const fn = ACTIONS[a.do];
@@ -275,21 +354,23 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   // ── 탐구 기록: 기록 서랍 묶음 · CSV · 브라우저 저장 (E5) ──
   // 저장소는 localStorage. file:// 로 연 단일 HTML 등에서 막히는 브라우저가 있어 실패해도 조용히 넘어간다
   // (그 경우 새로 고치면 응답이 사라질 뿐 탐구는 그대로 된다).
-  const STORE_KEY = 'inquiry.v1';
+  // 3차 E1부터 학습지 공용 저장소(js/worksheet.js Worksheet.store, localStorage 'worksheet.v1')에 둔다.
+  // 응답은 경로별 묶음 answers[경로][saveAs], 진행 상태·기록 줄은 inquiry. 2차의 'inquiry.v1'은 저장소가 처음 한 번 옮겨 담았다.
   function save() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ on: INQ.on, pathId: INQ.pathId, idx: INQ.idx, answers: INQ.answers, records: INQ.records }));
-    } catch (e) { /* 저장소를 못 쓰는 환경 */ }
+    const d = Worksheet.store.data, byPath = {};
+    for (const [k, r] of Object.entries(INQ.answers)) (byPath[r.path] = byPath[r.path] || {})[k] = r;
+    d.answers = byPath;
+    d.inquiry = { on: INQ.on, pathId: INQ.pathId, idx: INQ.idx, records: INQ.records };
+    Worksheet.store.save();
   }
   function load() {
-    try {
-      const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      if (!d) return null;
-      INQ.answers = d.answers || {};
-      INQ.records = d.records || [];
-      if (d.pathId && pathById(d.pathId)) { INQ.pathId = d.pathId; INQ.idx = d.idx || 0; }
-      return d;
-    } catch (e) { return null; }
+    const d = Worksheet.store.data;
+    INQ.answers = {};
+    for (const g of Object.values(d.answers || {})) Object.assign(INQ.answers, g);
+    const q = d.inquiry || {};
+    INQ.records = q.records || [];
+    if (q.pathId && pathById(q.pathId)) { INQ.pathId = q.pathId; INQ.idx = q.idx || 0; }
+    return q;
   }
   let logTimer = 0;
   function logChanged() {   // 글자를 칠 때마다 표를 다시 그리지 않게 0.3초 모아서
@@ -298,17 +379,21 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   }
   function renderLog() {
     const rows = InquiryCore.logRows(INQ.answers, INQ.records);
-    el('recInq').hidden = rows.length === 0;
+    // 학습지 증거(3차 C4)도 이 CSV로 함께 내보내므로, 증거만 있어도 이 묶음을 보인다
+    el('recInq').hidden = rows.length === 0 && Worksheet.evidenceRows().length === 0;
     el('inqLogCount').textContent = rows.length;
     el('inqLog').innerHTML = rows.map(r => `<tr><td>${esc(r.path)}</td><td>${esc(r.step)}</td><td>${esc(r.question)}</td>`
       + `<td>${esc(r.answer)}</td><td>${esc(r.year)}</td><td>${esc(r.value)}</td></tr>`).join('');
   }
   el('inqCsv').addEventListener('click', () => {
-    const rows = InquiryCore.logRows(INQ.answers, INQ.records);
-    if (!rows.length) return;
+    const rows = InquiryCore.logRows(INQ.answers, INQ.records), ev = Worksheet.evidenceRows();
+    if (!rows.length && !ev.length) return;
+    // 학습지 증거 줄(3차 C4)은 빈 줄 하나 뒤에 제 머리줄(kind, series, mode, flips, range, memo, time)과 함께 붙인다
+    const csv = InquiryCore.toCsv(rows) + (ev.length ? '\r\n\r\n' + Worksheet.evidenceCsv(InquiryCore.localTime) : '');
     // BOM: 엑셀에서 한글이 깨지지 않게 (측정 기록 CSV와 같은 방식)
-    downloadBlob(new Blob(['\ufeff' + InquiryCore.toCsv(rows)], { type: 'text/csv;charset=utf-8;' }), `미래예측_탐구기록_${fileStamp()}.csv`);
+    downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }), `미래예측_탐구기록_${fileStamp()}.csv`);
   });
+  document.addEventListener('worksheet:evidence', renderLog);
   el('inqClear').addEventListener('click', () => {
     if (!confirm('탐구 기록(고른 점·쓴 글·고른 보기·기록 줄)을 모두 지울까요?')) return;
     INQ.answers = {};
@@ -330,14 +415,19 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
 
   // ── 그래프: 펼치기·접기 ──
   // 접은 그래프는 제목 줄만 옅게 남긴다(그래프 열 높이는 그대로라 스크롤이 생기지 않는다).
+  // 그래프는 평소 2×2(3차 B1)인데, 탐구 단계가 일부를 접으면 한 열로 쌓아 펼친 그래프가 폭 전체를 쓰게 한다
+  // (2×2 그대로 두면 펼친 그래프가 반쪽 폭만 쓰고 옆 칸이 비었다). 다 펼치면 CSS의 2×2로 돌아간다.
   function applyChartLayout() {
-    const rows = ['auto'];
-    for (const k of Object.keys(InquiryCore.CHART_IDS)) {
-      const show = !QV.charts || QV.charts.includes(k);
-      el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !show);
-      rows.push(show ? 'minmax(0, 1fr)' : 'auto');
-    }
-    el('futCharts').style.gridTemplateRows = QV.charts ? rows.join(' ') : '';
+    const keys = Object.keys(InquiryCore.CHART_IDS);
+    const shown = keys.map(k => !QV.charts || QV.charts.includes(k));
+    keys.forEach((k, i) => el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !shown[i]));
+    const folding = shown.some(v => !v);
+    // 행 높이는 화면(DOM) 순서로 정한다. CHART_IDS 키 순서(CO₂·기온·pH·해수온)는 3차 A2에서 바꾼 그래프 순서
+    // (CO₂→기온→해수온→pH)와 달라, 키 순서로 만들면 pH 대신 해수온 줄이 늘어났다
+    const blocks = [...el('futCharts').querySelectorAll(':scope > .chart-block')];
+    el('futCharts').style.gridTemplateColumns = folding ? 'minmax(0, 1fr)' : '';
+    el('futCharts').style.gridTemplateRows = folding
+      ? ['auto', ...blocks.map(b => b.classList.contains('inq-fold') ? 'auto' : 'minmax(0, 1fr)')].join(' ') : '';
     // ResizeObserver를 기다리지 않고 바로 맞춘다(헤드리스·느린 기기에서 한동안 예전 크기로 겹쳐 그려졌다)
     charts.forEach(c => c.resize());
   }
@@ -388,6 +478,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   function drawUnder(chart) {
     if (!INQ.on || !QV.markers.length) return;
     const { ctx, chartArea: a, scales: { x } } = chart;
+    if (!x || !a) return;
     ctx.save();
     QV.markers.forEach((key, i) => {
       const m = INQUIRY_MARKERS[key];
@@ -413,6 +504,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (!INQ.on) return;
     const key = keyOfChart(chart);
     const { ctx, chartArea: a, scales } = chart;
+    if (!scales.x || !scales.y) return;
+    if (key === 'ws' && wsNow().getConfig().mode !== 'time') return;   // 작업대는 시간 보기에서만 (y = 왼쪽 축 Y1)
     for (const r of Object.values(INQ.answers)) {
       if (r.chart !== key || r.path !== INQ.pathId || r.year === '') continue;
       const px = scales.x.getPixelForValue(r.year), py = scales.y.getPixelForValue(r.value);
@@ -438,6 +531,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (!INQ.on || !QV.pick || e.type !== 'click' || keyOfChart(chart) !== QV.pick.chart) return;
     const a = chart.chartArea;
     if (e.x < a.left || e.x > a.right || e.y < a.top || e.y > a.bottom) return;
+    if (QV.pick.chart === 'ws') { pickOnWorkspace(chart, e); return; }
     const year = Math.round(Math.max(LIMIT.from, Math.min(LIMIT.to, chart.scales.x.getValueForPixel(e.x))));
     const r = valueAt(chart.$spec, year);
     if (!r) return;   // 아직 예측하지 않은 해
@@ -446,6 +540,19 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       answer: `${year}년 (${spec.fmt(r.v)}, ${r.tag})` });
     showPick();
     drawCharts();
+  }
+  // 작업대 분석창 클릭 → Y1 계열에서 가장 가까운 해의 관측값 (3차 E3)
+  function pickOnWorkspace(chart, e) {
+    const cfg = wsNow().getConfig(), id = cfg.series[0];
+    if (!id || cfg.mode !== 'time') return;
+    const it = DATA_CATALOG.find(x => x.id === id), pts = GraphWorkspace.makeEnv(DATA_CATALOG).pts(id);
+    const want = chart.scales.x.getValueForPixel(e.x);
+    const p = pts.reduce((b, q) => (Math.abs(q.x - want) < Math.abs(b.x - want) ? q : b), pts[0]);
+    const val = `${p.y.toFixed(it.minSpan >= 2 ? 1 : 3)}${it.unit ? ' ' + it.unit : ''}`;
+    setAnswer(QV.pick.saveAs, { question: QV.pick.question, chart: 'ws', year: p.x, value: Number(p.y.toFixed(4)),
+      answer: `${p.x}년 (${it.short} ${val}, ${it.scope === 'model' ? '모형' : '관측'})` });
+    showPick();
+    chart.draw();
   }
   function showPick() {
     const w = el('inqPick');
@@ -532,7 +639,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   }
 
   // ── 영향 카드 (impactCards, §5) ──
-  // 3D 위에 뜬다(그래프·왼쪽 패널을 가리지 않고 스크롤도 만들지 않는다). 카드 내용은 INQUIRY_IMPACTS.
+  // 3차 E2부터 학습지 '기온 수준별 영향' 카드(#inqCards 를 옮김)로 뜬다 — 3D를 가리지 않게. 카드 내용은 INQUIRY_IMPACTS.
   // levels: 'seen' = 이 경로에서 재생해 본 시나리오의 끝 연도 기온에 가장 가까운 카드를 강조하고 그 시나리오를 카드에 적는다.
   //         배열 = 그 수준의 카드만 보인다. 생략 = 모든 카드.
   function showCards(levels) {
@@ -587,7 +694,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     },
     pickPoint(a, ctx) {
       QV.pick = { chart: a.chart, saveAs: a.saveAs, question: a.prompt || ctx.step.question };
-      chartByKey(a.chart).canvas.style.cursor = 'crosshair';
+      const ch = chartByKey(a.chart);
+      if (ch) ch.canvas.style.cursor = 'crosshair';
       widget(ctx, '', 'inq-pick').id = 'inqPick';
       showPick();
     },
@@ -598,7 +706,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
         widget(ctx, `<span class="inq-swatch fill" style="background:${Theme.alpha(MARKER_TINT[i % MARKER_TINT.length], 0.35)}"></span>`
           + `<b>${esc(m.label)}</b> ${esc(m.range || `${m.from}~${m.to}`)}${srcButton(m.src)}`, 'inq-key');
       });
-      drawCharts();
+      redrawAll();
     },
     setScenario(a, ctx) {
       if (!a.wait) { if (FUT.preset !== a.preset) setPreset(a.preset); return; }
@@ -629,7 +737,8 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       setCameraView(v);
       QV.focused = true;
     },
-    openPopover(a) { setPopover({ sink: 'popSink', spec: 'popSpec' }[a.id] || a.id); },
+    // 그래프 팝오버는 3차 E2부터 학습지 카드다(같은 요소). 열고 닫는 표시는 카드가 #popSpec·#popSink 의 hidden 을 따른다
+    openPopover(a) { if (Worksheet.openCard(a.id)) QV.cards.add(a.id); },
     omega(a) { setOmegaView(a.on !== false); },
     modelPast(a) { setValidateView(a.on !== false); },   // [모형 검증 보기]: 모형이 계산한 과거(옅은 선)를 관측과 함께
     askText(a, ctx) {
@@ -671,6 +780,72 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
       b.querySelector('button').addEventListener('click', () => showCards(a.levels));
       showCards(a.levels);
     },
+    // ── 3차 E2 ──
+    view3d(a) {
+      QV.view3d = true;
+      if (a.mode === 'visible') { setView3D('co2', false); setView3D('indicator', false); } else setView3D(a.mode, true);
+      // 지시약을 켜면 범례 카드가 따라 열린다(main.js) — 이 단계가 연 카드로 쳐서 단계를 나갈 때 함께 닫는다
+      if (a.mode === 'indicator' && Worksheet.cardOpen('legend3d')) QV.cards.add('legend3d');
+    },
+    card(a) {
+      if (a.id === 'impacts') { showCards(a.levels); QV.cards.add('impacts'); return; }
+      if (Worksheet.openCard(a.id)) QV.cards.add(a.id);
+    },
+    // 작업대(현재 실태) 구성을 정한다. lock 이면 덱에 그 카드만 남긴다(다른 카드는 흐리게, 끌 수 없음)
+    ws(a) {
+      const w = wsNow();
+      if (!w) return;
+      w.loadConfig({ series: a.load, mode: a.mode || 'time', range: a.range || 'all', commonOnly: false, flips: a.flips || [] });
+      w.lock(a.lock ? { deck: a.load, modes: a.modes } : null);
+      QV.ws = !!a.lock;
+    },
+    // 나의 증거 하나를 고르거나(지금 작업대를 바로 붙일 수도) 주장 한 줄을 쓴다. need = 있으면 좋은 자료(맞지 않으면 부드럽게 알림)
+    askEvidence(a, ctx) {
+      const prev = INQ.answers[a.saveAs] || {};
+      const w = widget(ctx, `<div class="inq-ev">
+        <label class="inq-ask"><span>${esc(a.prompt || '이 주장을 뒷받침하는 증거를 고르세요')}</span>
+          <select class="inq-ev-sel"></select></label>
+        ${a.need ? `<p class="inq-sub">필요한 자료: ${esc(a.need.map(id => (DATA_CATALOG.find(it => it.id === id) || { short: id }).short).join(' · '))}</p>` : ''}
+        <div class="inq-ev-acts">${wsNow() ? '<button class="btn btn--rec btn--sm" type="button" data-ev-now><span data-icon="download"></span>지금 작업대를 증거로 붙이기</button>' : ''}</div>
+        <p class="inq-fb" role="status"></p>
+        <label class="inq-ask"><span>주장 한 줄</span><textarea rows="2" placeholder="이 증거가 보여 주는 것: …"></textarea></label></div>`);
+      const sel = w.querySelector('select'), ta = w.querySelector('textarea'), fb = w.querySelector('.inq-fb');
+      ta.value = prev.claim || '';
+      const fill = () => {
+        const list = Worksheet.evidenceList();
+        sel.innerHTML = `<option value="">${list.length ? '증거 고르기…' : '아직 보낸 증거가 없어요 — 작업대에서 [학습지로 보내기]'}</option>`
+          + list.map(e => `<option value="${e.id}">${e.n}. ${esc(e.title)}</option>`).join('');
+        sel.value = list.some(e => e.id === prev.evidence) ? prev.evidence : '';
+        judge();
+      };
+      // need 는 정답 판정이 아니라 안내: 고른 증거(작업대 구성)에 그 자료가 없으면 알려 준다
+      const judge = () => {
+        const e = Worksheet.evidenceList().find(x => x.id === sel.value);
+        const missing = a.need && e && e.cfg.series ? a.need.filter(id => !e.cfg.series.includes(id)) : [];
+        fb.classList.remove('ok');
+        fb.textContent = !e ? '' : missing.length
+          ? `이 증거에는 ${missing.map(id => (DATA_CATALOG.find(it => it.id === id) || { short: id }).short).join(' · ')}이(가) 없어요. 다른 증거를 골라 보세요.` : '';
+      };
+      const saveIt = () => {
+        const e = Worksheet.evidenceList().find(x => x.id === sel.value);
+        prev.evidence = sel.value; prev.claim = ta.value.trim();
+        setAnswer(a.saveAs, { question: a.prompt || ctx.step.question, evidence: sel.value, claim: prev.claim,
+          answer: `${e ? `증거 ${e.n} (${e.title})` : '증거 없음'}${prev.claim ? ' — ' + prev.claim : ''}` });
+      };
+      sel.addEventListener('change', () => { judge(); saveIt(); });
+      ta.addEventListener('input', saveIt);
+      const now = w.querySelector('[data-ev-now]');
+      if (now) now.addEventListener('click', () => {
+        Worksheet.addEvidence('workspace', wsNow().getConfig(), 'current');
+        Worksheet.show('inquiry');   // 보내기가 [나의 증거] 탭으로 바꾸므로 단계 화면으로 돌아온다
+        const list = Worksheet.evidenceList();
+        prev.evidence = list.length ? list[list.length - 1].id : '';
+        fill(); saveIt();
+      });
+      const onEv = () => { if (document.body.contains(sel)) fill(); else document.removeEventListener('worksheet:evidence', onEv); };
+      document.addEventListener('worksheet:evidence', onEv);
+      fill();
+    },
   };
 
   // ── 이벤트 ──
@@ -682,14 +857,23 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     const b = e.target.closest('[data-inq]');
     if (!b) return;
     if (b.dataset.inq === 'paths') showPicker();
+    else if (b.dataset.inq === 'back') switchTab(b.dataset.tab);   // '○○로 돌아가기' → main.js switchTab → onTab
     else if (b.dataset.inq === 'prev') go(-1);
     else if (b.dataset.inq === 'next') go(1);
   });
 
   // 새로 고친 뒤: 저장된 응답을 되살리고, 탐구 중이었으면 그 단계로 다시 들어간다
+  // 탐구 다시 켜기는 페이지의 스크립트가 모두 읽힌 뒤(DOMContentLoaded)로 미룬다. 여기서 바로 부르면
+  // ① setMode → refreshCharts·그래프 플러그인이 아직 초기화 전인 const Inquiry 를 건드려(typeof 도 TDZ에서는 오류) 스크립트가 멈추고
+  //   화면이 booting 상태로 가려진 채 열리지 않았고(탐구를 켠 채 새로 고치면 미래 예측 탭이 안 열리던 버그),
+  // ② 자연 지구 단계(A4 등)는 뒤에 읽히는 main.js 의 updateLegend3D 를 불러 같은 식으로 멈췄다.
   const saved = load();
   renderLog();
-  if (saved && saved.on) setMode(true);
+  if (saved && saved.on) {
+    const restore = () => setMode(true);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore, { once: true });
+    else queueMicrotask(restore);
+  }
 
-  return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
+  return { setMode, startPath, go, onTab, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();

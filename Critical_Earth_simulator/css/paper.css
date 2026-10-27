@@ -32,6 +32,7 @@ body.paper #hint { top: var(--sp-3); left: var(--sp-3); right: auto; bottom: aut
   background: color-mix(in srgb, var(--paper) 86%, transparent); border: 1px solid var(--rule); line-height: 1.5; }
 
 /* ── 현재 실태 ───────────────────────────────────────────────────────────
+   ※ 아래 격자·칸 배치(40:60, display: contents)는 3차 B1에서 대체 — 파일 끝 '3차 B1 — 60:40 화면 셸'이 덮는다(되돌리기 쉽게 남겨 둠).
    왼쪽 열 = 3D 모형 + 그 아래 요약 숫자 2×2, 오른쪽 열 = 그래프 2×2.
    요약 숫자는 #tab-current 안에 있지만 #graph-panel·#tab-current를 display: contents 로 풀어
    #app 그리드에 바로 놓는다(마크업을 3D 칸 쪽으로 옮기면 다른 탭의 #gl-container 구조가 바뀐다). */
@@ -43,7 +44,7 @@ body.tab-current.paper #app {
 body.tab-current.paper #gl-container { grid-column: 1; grid-row: 2; }
 body.tab-current.paper #graph-panel, body.tab-current.paper #tab-current { display: contents; }
 
-/* 요약 숫자 4개: 정보이므로 상자·그림자 없이 평평하게, 구분선만 */
+/* 요약 숫자 5개(CO₂·기온·해수온·pH·화석연료): 정보이므로 상자·그림자 없이 평평하게, 구분선만 */
 body.paper #tab-current .stat-grid { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0; margin: 0; border-top: 1px solid var(--rule); border-right: 1px solid var(--rule); background: var(--paper); }
 body.paper #tab-current .stat-box { background: none; border-radius: 0; padding: var(--sp-2) var(--sp-4); min-width: 0; }
@@ -53,6 +54,7 @@ body.paper .stat-box .label { display: flex; align-items: center; font-size: var
 body.paper .stat-box .value { font-size: var(--fs-5); font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
 body.paper .stat-box .value.co2 { color: var(--data-co2); }
 body.paper .stat-box .value.temp { color: var(--data-temp); }
+body.paper .stat-box .value.sst { color: var(--data-sst); }
 body.paper .stat-box .value.ph { color: var(--data-ph); }
 body.paper .stat-box .delta { font-size: var(--fs-1); color: var(--ink-3); margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -76,6 +78,7 @@ body.paper #topbar .home-link { display: inline-flex; font-size: var(--fs-2); ma
 body.paper #topbar .home-link:hover { color: var(--ctl-nav); }
 
 /* ── 미래 예측 (2차 개편 C1) ──────────────────────────────────────────────
+   ※ 아래 격자·칸 배치(조작 | 3D | 그래프, 맨 아래 시간 막대)는 3차 B1에서 대체 — 파일 끝 '3차 B1 — 60:40 화면 셸'이 덮는다.
    ┌ 머리줄 ─────────────────────────────────────────────┐
    │ 왼쪽 패널(시나리오·레버) │ 3D (지구 하나 + 토글) │ 그래프 열 │
    ├ 시간 막대 ──────────────────────────────────────────┤
@@ -175,7 +178,7 @@ body.paper .legend3d .src-i { margin: 0; }
 body.paper .legend3d .lg-bar { display: block; height: 10px; margin-top: 3px; border: 1px solid var(--ink-3); border-radius: 2px; }
 body.paper .legend3d .lg-ticks { display: flex; justify-content: space-between; color: var(--ink-3); }
 
-/* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
+/* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 (3차 B1에서 대체: 2×2, 파일 끝) */
 body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
   display: grid; grid-template-rows: auto repeat(4, minmax(0, 1fr)); gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3); border-left: 1px solid var(--rule); background: var(--paper); }
@@ -220,7 +223,7 @@ body.paper .buffer-note { margin: 0; padding: var(--sp-2) var(--sp-3); font-size
   background: var(--paper-2); border-left: 3px solid var(--data-ph); border-radius: 0; }
 body.paper .buffer-note b, body.paper .buffer-note b:first-child { color: var(--ink); font-size: inherit; }   /* style.css의 예전 12 px 규칙을 덮는다 */
 
-/* 시간 막대 */
+/* 시간 막대 (3차 B1에서 자리 대체: 조작 띠 #ctlStrip 안, 파일 끝) */
 body.paper .tl-bar { grid-column: 1 / -1; grid-row: 3; position: static; display: flex; align-items: center; gap: var(--sp-3);
   margin: 0; padding: var(--sp-2) var(--sp-4); background: var(--paper-2); border-top: 1px solid var(--rule); }
 body.paper .tl-bar .tl-play { width: auto; height: auto; min-width: 104px; }
@@ -404,7 +407,7 @@ body.paper .inq-mode { display: grid; grid-template-columns: 1fr 1fr; gap: var(-
 body.paper .inq-mode .btn { width: 100%; }
 body.paper .inq-mode .btn[aria-pressed="true"] { background: var(--c-on); color: var(--on-fill); }
 body.paper .inq-panel[hidden], body.paper #fcFree[hidden] { display: none; }
-body.tab-future.paper.inq-on #futureControls { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* (3차 E1) 탐구 패널은 #futureControls 밖, 학습지 [탐구] 탭(.ws-panel, 세로 flex)에 바로 있어 그 높이를 채운다 — 아래 E1 절 */
 body.paper .inq-panel { display: flex; flex-direction: column; gap: var(--sp-2); flex: 1 1 auto; min-height: 0; }
 body.paper .inq-paths { display: flex; flex-direction: column; gap: var(--sp-2); }
 body.paper .inq-path-btn { width: 100%; align-items: flex-start; text-align: left; white-space: normal; padding: var(--sp-2) var(--sp-3); }
@@ -485,3 +488,295 @@ body.paper .rec-inq { display: flex; flex-direction: column; gap: var(--sp-2); f
 body.paper .rec-inq[hidden] { display: none; }
 body.paper .rec-inq td:nth-child(-n+4), body.paper .rec-inq th:nth-child(-n+4) { text-align: left; }
 body.paper .rec-inq td:nth-child(3), body.paper .rec-inq td:nth-child(4) { white-space: normal; min-width: 8em; }
+
+/* ── 3차 B1 — 60:40 화면 셸 (현재 실태·미래 예측 공통) ───────────────────
+   ┌ 머리줄 ──────────────────────────────────────────────┐
+   │ 3D (#gl-container)                  │                │
+   │ 조작 띠 (#ctlStrip)                 │  학습지 칸 (ws) │
+   │ 그래프 (#graph-panel)               │                │
+   └ 좌 60 % ────────────────────────────┴ 우 40 % ───────┘
+   위의 탭별 격자(현재 실태 40:60, 미래 예측 조작 | 3D | 그래프)는 지우지 않고 여기서 덮는다(되돌리기 쉽게).
+   display: contents 를 풀고 #graph-panel 을 한 칸으로 되돌린다 — 요약 숫자·시간 막대가 더 이상 3D 열에 붙지 않으므로.
+   학습지 칸은 #worksheet(3차 B2, 아래 절). #tab-header-panel 은 직접 실험 탭에서만 쓴다. */
+#ctlStrip { display: none; }
+body.paper.tab-current #app, body.paper.tab-future #app {
+  display: grid;
+  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+  grid-template-rows: auto minmax(170px, 38fr) auto minmax(0, 62fr);
+  grid-template-areas: "top top" "gl ws" "ctl ws" "graph ws";
+}
+body.paper.tab-current #topbar, body.paper.tab-future #topbar { grid-area: top; }
+body.paper.tab-current #gl-container, body.paper.tab-future #gl-container { grid-area: gl; border-right: 0; }
+body.paper.tab-current #graph-panel, body.paper.tab-future #graph-panel { grid-area: graph; display: block; min-width: 0; min-height: 0; overflow: hidden; }
+body.paper.tab-current #tab-current, body.paper.tab-future #tab-future { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+/* 예전 미래 예측 왼쪽 패널(#tab-header-panel)은 내용이 학습지로 옮겨 가 종이 탭에서는 다시 숨긴다(직접 실험 탭은 그대로) */
+body.paper.tab-current #tab-header-panel, body.paper.tab-future #tab-header-panel { display: none; }
+
+/* 조작 띠: 3D 바로 아래 한두 줄. 현재 실태 = 관측 기간 안내, 미래 예측 = 위 시나리오 / 아래 시간 막대 */
+body.paper.tab-current #ctlStrip, body.paper.tab-future #ctlStrip { grid-area: ctl; display: flex; flex-direction: column; gap: var(--sp-1);
+  min-width: 0; padding: var(--sp-1) var(--sp-3); background: var(--paper-2);
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+body.paper.tab-future #csObsRange, body.paper.tab-current #fcScen, body.paper.tab-current #tlBar { display: none; }
+body.paper .cs-note { margin: 0; padding: var(--sp-1) 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.paper.tab-future #fcScen { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+body.paper .cs-label { flex: none; display: flex; flex-direction: column; font-family: var(--font-title); font-size: var(--fs-2);
+  font-weight: 700; color: var(--ink); line-height: 1.25; white-space: nowrap; }
+body.paper .cs-label span { font-family: var(--font-body); font-size: var(--fs-1); font-weight: 500; color: var(--ink-3); }
+/* 시나리오 카드는 띠 높이에 맞춰 낮게: 아이콘 왼쪽, 이름/SSP 두 줄 */
+body.paper #fcScen .fc-presets { flex: 1 1 auto; min-width: 0; }
+body.paper #fcScen .fc-card .fc-preset { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: var(--sp-1);
+  min-height: 40px; padding: 2px var(--sp-2); text-align: left; white-space: nowrap; }
+body.paper #fcScen .fc-preset > [data-icon] { grid-row: 1 / span 2; }
+body.paper #fcScen .fc-card .fc-preset svg { width: 22px; height: 22px; }
+body.paper #fcScen .fc-preset .fc-name, body.paper #fcScen .fc-preset .btn-sub { overflow: hidden; text-overflow: ellipsis; }
+body.paper #fcScen .fc-card > .src-i { top: -7px; right: -5px; }
+body.paper #fcScen .fc-custom { flex: none; width: auto; min-height: 40px; padding: 2px var(--sp-3); }
+body.paper #fcScen .fc-custom svg { width: 22px; height: 22px; }
+body.paper #fcScen .fc-custom .fc-ssp { display: none; }   /* 띠에 자리가 없어 설명은 버튼 title로 */
+/* 시간 막대: 띠 안에서는 바탕·테두리 없이 한 줄. 슬라이더가 남는 폭을 모두 갖는다 */
+body.paper.tab-future #ctlStrip .tl-bar { padding: 0; gap: var(--sp-2); background: none; border-top: 0; min-width: 0; }
+body.paper #ctlStrip .tl-bar .btn { padding: 0 var(--sp-2); gap: var(--sp-1); }   /* 1280 폭에서도 한 줄에 들어가게 버튼 안 여백만 줄인다 */
+body.paper #ctlStrip .tl-bar .tl-play { min-width: 0; }
+body.paper #ctlStrip .tl-year { flex: none; min-width: 0; }
+body.paper #ctlStrip .tl-bar input[type=range] { min-width: 120px; }
+/* '속도' 글자는 화면에서만 감춘다(목록 상자가 '10년/초'로 스스로 설명되고, 스크린리더는 label을 그대로 읽는다) — 1280 폭에서 슬라이더 자리 확보 */
+body.paper #ctlStrip .tl-speed-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* 직접 설계(레버) 패널: 3D 칸 위에 겹친다. 넓고 낮은 칸이라 레버를 여러 열로 */
+body.paper.tab-future #fcLevers { position: absolute; inset: var(--sp-2); z-index: 25; box-sizing: border-box; overflow: hidden auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 var(--sp-4); align-content: start;
+  padding: var(--sp-2) var(--sp-3); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(40, 32, 16, .14); }
+body.paper #fcLevers[hidden] { display: none; }
+body.paper #fcLevers > .fc-lever-top, body.paper #fcLevers > .fc-note, body.paper #fcLevers > .fc-result { grid-column: 1 / -1; }
+/* 탐구 중에는 예전에 #fcFree 안에서 함께 숨던 시나리오 버튼·레버 패널을 똑같이 숨긴다(탐구 단계가 시나리오를 정한다).
+   위의 display 규칙보다 뒤·더 구체적으로 둔다 */
+body.paper.tab-future.inq-on #fcScen, body.paper.tab-future.inq-on #fcLevers { display: none; }
+/* 3D 칸이 낮아져 범례를 펼치면 칸 위로 넘친다. 칸 안에서만 스크롤 (범례는 B3에서 학습지 카드로 옮겨 화면에서는 내린다) */
+body.paper.tab-current .legend3d, body.paper.tab-future .legend3d { max-height: calc(100% - 2 * var(--sp-3)); overflow: hidden auto; }
+
+/* 현재 실태 그래프 칸: 위 요약 숫자 5개 한 줄, 아래 그래프 2×2 */
+body.paper.tab-current #tab-current .stat-grid { flex: none; grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+body.paper.tab-current #tab-current .stat-box { padding: var(--sp-1) var(--sp-3); border-top: 0; border-left: 1px solid var(--rule); overflow: hidden; }
+body.paper.tab-current #tab-current .stat-box:first-child { border-left: 0; }
+body.paper.tab-current #tab-current .stat-box .label { overflow: hidden; }
+body.paper.tab-current #tab-current .stat-box .value { font-size: var(--fs-4); overflow: hidden; text-overflow: ellipsis; }
+body.paper.tab-current #tab-current .charts-2col { flex: 1 1 auto; padding: var(--sp-2) var(--sp-4); }
+
+/* 미래 예측 그래프 칸: 공용 범례 한 줄 + 그래프 2×2 (넓고 낮은 칸이라 세로 4단이면 그래프마다 높이가 너무 작다).
+   탐구 모드의 그래프 접기(js/inquiry.js applyChartLayout)는 줄 단위로 행 높이를 정한다 */
+body.paper.tab-future .fut-charts { flex: 1 1 auto; border-left: 0; padding: var(--sp-2) var(--sp-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto repeat(2, minmax(0, 1fr)); column-gap: var(--sp-4); }
+body.paper.tab-future .fut-legend { grid-column: 1 / -1; }
+
+@media (max-height: 760px) {
+  body.paper.tab-future .fut-charts { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+  body.paper.tab-current #tab-current .charts-2col { padding-top: var(--sp-1); padding-bottom: var(--sp-1); row-gap: var(--sp-2); }
+}
+
+/* ── 3차 B2 — 학습지 패널 (#worksheet, js/worksheet.js) ──────────────────
+   머리(제목 · [접기]) / 탭 셋 [탐구][나의 증거][기록] / 고른 탭 내용. 스크롤은 탭 내용 안에서만(문서 전체 스크롤 0).
+   접으면 44 px 세로 띠(body.ws-collapsed). */
+#worksheet { display: none; }
+body.paper.tab-current #worksheet, body.paper.tab-future #worksheet {
+  grid-area: ws; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; box-sizing: border-box;
+  background: var(--paper-2); color: var(--ink); border-left: 1px solid var(--rule); }
+body.paper.ws-collapsed.tab-current #app, body.paper.ws-collapsed.tab-future #app { grid-template-columns: minmax(0, 1fr) 44px; }
+body.paper .ws-head { flex: none; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); }
+body.paper .ws-title { flex: 1; min-width: 0; margin: 0; font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.paper .ws-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+body.paper .ws-body[hidden] { display: none; }
+/* 탭: 고른 탭은 밑줄(이동 영역색). 버튼 상자처럼 보이지 않게 — 3D·그래프 조작 버튼과 구분 */
+body.paper .ws-tabs { flex: none; display: flex; gap: var(--sp-1); padding: 0 var(--sp-3); border-bottom: 1px solid var(--rule); }
+body.paper .ws-tab { min-height: 40px; margin-bottom: -1px; padding: 0 var(--sp-3); font: inherit; font-size: var(--fs-2); font-weight: 600;
+  color: var(--ink-2); background: none; border: 0; border-bottom: 3px solid transparent; cursor: pointer; }
+body.paper .ws-tab:hover { color: var(--ink); }
+body.paper .ws-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ctl-nav); }
+body.paper .ws-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+body.paper .ws-panel { flex: 1 1 auto; min-height: 0; overflow: hidden auto; box-sizing: border-box; display: flex; flex-direction: column;
+  gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+body.paper .ws-panel[hidden] { display: none; }
+body.paper .ws-empty { margin: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.55; }
+body.paper.tab-future .ws-current-only { display: none; }
+body.paper .ws-evidence { margin: 0; padding: 0; list-style: none; }
+body.paper .ws-evidence:empty { display: none; }
+/* [기록] 탭: 예전 서랍(화면 오른쪽 고정·그림자)을 탭 안의 평범한 묶음으로 */
+body.paper #worksheet .rec-drawer { position: static; z-index: auto; width: auto; flex: 1 1 auto; min-height: 0; padding: 0;
+  background: none; border: 0; box-shadow: none; animation: none; }
+body.paper #worksheet .rec-head .btn { padding: 0 var(--sp-2); gap: var(--sp-1); }
+/* 표는 40 % 칸보다 넓을 수 있다: 글자를 쪼개 줄바꿈하지 않고("현재 정/책") 표 상자 안에서 가로로 스크롤 */
+body.paper #worksheet .rec-table th, body.paper #worksheet .rec-table td { padding: var(--sp-1); white-space: nowrap; }
+body.paper #worksheet .rec-inq td:nth-child(3), body.paper #worksheet .rec-inq td:nth-child(4) { white-space: normal; min-width: 10em; }
+/* 접힘: 제목과 [펼치기]를 세로로 */
+body.paper.ws-collapsed .ws-head { flex: 1; flex-direction: column-reverse; justify-content: flex-end; padding: var(--sp-2) 0; }
+body.paper.ws-collapsed .ws-title { flex: none; writing-mode: vertical-rl; font-size: var(--fs-2); color: var(--ink-2); }
+body.paper.ws-collapsed .ws-fold { writing-mode: vertical-rl; min-height: 0; padding: var(--sp-2) 0; width: 32px; }
+
+/* ── 3차 B3 — 화면 버튼 내리기 (기능 유지) ─────────────────────────────
+   3D 범례 · 자연만 있는 지구 · CO₂ 보기 · 지시약으로 보기 · Ω 함께 보기 · 바다 속 탄소 버튼에 data-ws-moved.
+   기본 화면에서만 감추고 요소·id·이벤트·함수는 그대로 둔다(탐구 동작·학습지 카드 E2에서 켠다).
+   hidden 속성 대신 CSS로 감춘다: 일부 코드가 hidden 을 상태로 읽는다(예: if (!$('popSpec').hidden)).
+   !important 인 까닭: 같은 요소에 탭별 display 규칙(.nature-toggle·.legend3d·.btn 등)이 여럿이라 하나하나 이기려면 선택자가 들쭉날쭉해진다. */
+body.paper [data-ws-moved] { display: none !important; }
+
+/* ── 3차 C2 — 그래프 작업대 (js/graph-workspace.js) ─────────────────────
+   왼쪽 약 75 % = 칸 칩·보기·기간 줄 / 분석창 / 안내 줄, 오른쪽 약 25 % = 자료 카드 덱(덱 안에서만 스크롤).
+   직접 실험 탭(다크)으로 옮길 때는 이 절을 그 탭 테마에 맞춰 옮긴다(docs/작업대_이관_가이드.md, 3차 G). */
+body.paper .gw { display: grid; grid-template-columns: minmax(0, 3fr) minmax(170px, 1fr); gap: var(--sp-3); min-height: 0; height: 100%; box-sizing: border-box; }
+body.paper .gw-main { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; min-height: 0; }
+body.paper .gw-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); flex: none; }
+body.paper .gw-slots, body.paper .gw-modes, body.paper .gw-ranges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+body.paper .gw-modes { margin-left: auto; }
+body.paper .gw-label { font-size: var(--fs-1); color: var(--ink-2); margin-right: 2px; }
+/* 칸 칩: 놓을 곳. 빈 칸은 점선 테두리, 찬 칸은 계열 색 왼쪽 띠 */
+body.paper .gw-slot { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: 30px; padding: 0 var(--sp-2); box-sizing: border-box;
+  font-size: var(--fs-1); color: var(--ink-3); border: 1.5px dashed var(--ink-3); border-radius: var(--radius); background: var(--paper); white-space: nowrap; }
+body.paper .gw-slot b { color: var(--ink-2); }
+body.paper .gw-slot.is-full { color: var(--ink); border: 1px solid var(--rule); border-left: 4px solid var(--slot-c); }
+body.paper .gw-slot:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+body.paper .gw-slot-x { border: 0; background: none; color: var(--ink-2); font: inherit; font-size: var(--fs-1); cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+body.paper .gw-slot-x:hover { background: var(--paper-3); color: var(--ink); }
+body.paper .gw.is-dragging .gw-slot, body.paper .gw.is-dragging .gw-plot { outline: 2px dashed var(--ctl-nav); outline-offset: 1px; }
+body.paper .gw .drag-over { outline: 3px solid var(--ctl-nav) !important; background: var(--ctl-nav-bg); }
+/* 분석창 */
+body.paper .gw-plot { position: relative; flex: 1 1 auto; min-height: 0; }
+body.paper .gw-plot canvas { position: absolute; inset: 0; }
+body.paper .gw-empty { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  font-size: var(--fs-3); color: var(--ink-3); border: 1.5px dashed var(--rule); border-radius: var(--radius); }
+body.paper .gw-empty[hidden] { display: none; }
+/* 고정 문구(모양 비교·산점도 r): 분석창 바로 위 한 줄 — 그래프 위에 겹치면 점·범례를 가린다.
+   뒤집기 꼬리표: 분석창 오른쪽 아래(x축 위, 오른쪽 축 안쪽) — 위쪽은 범례·자료 없음 글자·이음 표시 자리 */
+body.paper .gw-banner { flex: none; margin: 0; padding: 2px var(--sp-2); font-size: var(--fs-1); font-weight: 600; color: var(--ink); line-height: 1.35;
+  background: var(--paper-2); border-left: 3px solid var(--ink-2); }
+body.paper .gw-tag { position: absolute; right: 60px; bottom: 44px; z-index: 2; padding: 1px var(--sp-2); font-size: var(--fs-1); font-weight: 700;
+  color: var(--data-ph); background: var(--paper); border: 1.5px solid var(--data-ph); border-radius: 999px; }
+/* .btn 의 display 규칙이 hidden 을 덮지 않게 (뒤집기 버튼은 Y2에 pH가 있을 때만 — R4) */
+body.paper .gw [hidden] { display: none !important; }
+/* 자료 이음 표시: 점선 맨 위의 작은 꼬리표, 올리면(또는 초점) 설명과 출처 ⓘ */
+body.paper .gw-segs { position: absolute; inset: 0; pointer-events: none; }
+body.paper .gw-seg { position: absolute; transform: translateX(-50%); pointer-events: auto; z-index: 3; }
+body.paper .gw-seg[hidden] { display: none; }
+body.paper .gw-seg-mark { display: block; padding: 0 4px; font-size: var(--fs-1); color: var(--ink-2); background: var(--paper); border: 1px dashed var(--ink-3); border-radius: 4px; cursor: help; }
+body.paper .gw-seg-text { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); width: max-content; max-width: 280px; margin-top: 4px;
+  padding: var(--sp-1) var(--sp-2); font-size: var(--fs-1); color: var(--ink); line-height: 1.4; background: var(--paper); border: 1px solid var(--rule);
+  border-radius: var(--radius); box-shadow: 0 4px 14px rgba(40, 32, 16, .14); }
+body.paper .gw-seg:hover .gw-seg-text, body.paper .gw-seg:focus-within .gw-seg-text { display: block; }
+/* 안내 줄 */
+body.paper .gw-hint { display: flex; align-items: center; gap: var(--sp-2); flex: none; min-height: 30px; }
+body.paper .gw-hint-text { margin: 0; flex: 1; min-width: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.35; }
+body.paper .gw-hint-src { display: inline-flex; flex: none; }
+body.paper .gw-send { flex: none; }
+/* 자료 카드 덱 */
+body.paper .gw-deck { display: flex; flex-direction: column; gap: var(--sp-1); min-height: 0; overflow: hidden auto; padding-left: var(--sp-3); border-left: 1px solid var(--rule); }
+body.paper .gw-deck-help { margin: 0; font-size: var(--fs-1); color: var(--ink-3); line-height: 1.35; }
+body.paper .gw-deck-group[hidden] { display: none; }
+body.paper .gw-deck-name { margin: var(--sp-1) 0 2px; font-size: var(--fs-1); font-weight: 700; color: var(--ink-2); }
+body.paper .gw-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+body.paper .gw-card, .gw-ghost { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 var(--sp-1); padding: 3px var(--sp-2) 2px;
+  background: var(--paper); border: 1px solid var(--rule); border-left: 4px solid var(--card-c); border-radius: var(--radius); cursor: grab; user-select: none; box-sizing: border-box; }
+body.paper .gw-card:hover { border-color: var(--ink-3); }
+body.paper .gw-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .gw-card.is-on { background: var(--paper-3); box-shadow: inset 0 0 0 1px var(--ink-3); }
+body.paper .gw-card.is-locked { opacity: .4; cursor: not-allowed; }
+.gw-ghost { position: fixed; z-index: 3000; pointer-events: none; opacity: .9; box-shadow: 0 8px 22px rgba(40, 32, 16, .25); background: #fff; }
+body.paper .gw-card-head { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: var(--sp-1); }
+body.paper .gw-card-name { flex: 1; min-width: 0; font-size: var(--fs-1); font-weight: 700; line-height: 1.3; color: var(--ink); }
+body.paper .gw-card-add { flex: none; width: 24px; height: 22px; padding: 0; font: inherit; font-size: var(--fs-2); line-height: 1; color: var(--ctl-nav);
+  background: var(--ctl-nav-bg); border: 1px solid var(--ctl-nav); border-radius: 6px; cursor: pointer; }
+body.paper .gw-card-tag { grid-column: 1 / -1; justify-self: start; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.3; }
+body.paper .gw-card-tag.scope-station { color: var(--warn); font-weight: 600; }
+body.paper .gw-card-tag.scope-model::before { content: '··· '; }
+body.paper .gw-spark { grid-column: 1; width: 100%; height: 26px; }
+body.paper .gw-card-per { grid-column: 2; align-self: end; font-size: var(--fs-1); color: var(--ink-3); white-space: nowrap; }
+body.paper .gw-deck-open { width: 100%; justify-content: flex-start; flex: none; }
+
+/* ── 3차 C3 — 현재 실태에 그래프 작업대 ─────────────────────────────────
+   그래프 칸 = 위 요약 숫자 한 줄 + 아래 작업대(남는 높이 전부). 예전 그래프 2×2(.charts-2col)는 숨긴다(js/tab-current.js USE_WORKSPACE) */
+body.paper #tab-current .charts-2col[hidden], body.paper #currentWorkspace[hidden] { display: none; }
+body.paper #currentWorkspace { flex: 1 1 auto; min-height: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); }
+
+/* ── 3차 C4 — 학습지로 보내기 · [나의 증거] 카드 ───────────────────────── */
+/* 미래 예측 그래프 제목 줄: 빈칸(.ct-space)이 버튼들을 오른쪽으로 민다. 숨긴 버튼(B3)이 있어도 자리가 흔들리지 않게 margin auto 대신 */
+body.paper .fut-charts .chart-title .ct-space { flex: 1; }
+body.paper .fut-charts .chart-title .btn { margin-left: var(--sp-1); }
+body.paper .ws-msg { margin: 0; font-size: var(--fs-2); font-weight: 600; color: var(--warn); }
+body.paper .ws-msg:empty { display: none; }
+body.paper .ws-evidence { display: flex; flex-direction: column; gap: var(--sp-3); }
+body.paper .ev-card { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: var(--radius); }
+body.paper .ev-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+body.paper .ev-title { font-size: var(--fs-2); color: var(--ink); }
+body.paper .ev-tags { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); }
+body.paper .ev-tag { padding: 0 var(--sp-2); font-size: var(--fs-1); font-weight: 600; color: var(--ink-2); background: var(--paper-2);
+  border: 1px solid var(--rule); border-radius: 999px; }
+body.paper .ev-chart { position: relative; height: 170px; }
+body.paper .ev-note, body.paper .ev-src { margin: 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.4; }
+body.paper .ev-note[hidden] { display: none; }
+body.paper .ev-memo { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-1); font-weight: 600; color: var(--ink); }
+body.paper .ev-memo textarea { font: inherit; font-size: var(--fs-2); font-weight: 400; color: var(--ink); background: var(--paper); resize: vertical;
+  border: 1.5px solid var(--rule); border-radius: var(--radius); padding: var(--sp-1) var(--sp-2); box-sizing: border-box; width: 100%; }
+body.paper .ev-memo textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .ev-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+/* ── 3차 D1 — 원인(배출) → 매개(CO₂) → 결과(기온·해수온·pH) 표기 ──────── */
+body.paper .cs-label { gap: 1px; }
+body.paper .cs-label .cs-title { font-family: var(--font-title); font-size: var(--fs-2); font-weight: 700; color: var(--ink); }
+body.paper .cs-emis { display: flex; align-items: center; gap: 2px; }
+body.paper .cs-emis canvas { width: 104px; height: 22px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; }
+body.paper .cs-emis .src-i { margin: 0; }
+body.paper .fc-lever-top { align-items: center; }
+body.paper .fc-lv-h { margin: 0; flex: 1; min-width: 0; text-align: center; font-size: var(--fs-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.paper .fut-chain { font-size: var(--fs-1); color: var(--ink-2); white-space: nowrap; margin-right: var(--sp-1); }
+body.paper .fut-chain b { color: var(--ink); }
+/* 번호를 붙이면 제목 글이 줄어드는 칸이 되어 '대기 / CO₂ / (ppm)'처럼 세 줄로 접혔다 → 제목 줄은 한 줄, 좁으면 보조 문구만 말줄임 */
+body.paper .fut-charts .chart-title { white-space: nowrap; overflow: hidden; }
+body.paper .chart-title .ct-num { margin-right: 4px; color: var(--ink-2); }
+body.paper .chart-title .ct-sub { min-width: 0; margin-left: var(--sp-1); font-size: var(--fs-1); font-weight: 500; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 그래프 칸이 좁은 창(1600 px 미만, 그래프 한 칸 약 480 px 이하)에서는 [보내기]를 아이콘만 — 제목 줄이 한 줄을 넘지 않게.
+   이름은 aria-label·title('학습지로 보내기')로 남는다 */
+@media (max-width: 1599px) {
+  body.paper .fut-send .fut-send-lbl { display: none; }
+  body.paper .fut-charts .chart-title .fut-send { padding: 0 var(--sp-1); }
+}
+
+/* ── 3차 E1·E2 — 학습지 [탐구] 탭: 탐구 패널 · 보기 도구 · 카드 ───────── */
+body.paper #wsPanelInquiry .inq-panel { flex: 1 1 auto; min-height: 0; }
+body.paper .inq-away { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+body.paper .ws-tools { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--rule); }
+body.paper .ws-tools .fc-h { margin-bottom: var(--sp-1); font-size: var(--fs-3); }
+body.paper .ws-tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-1); }
+body.paper .ws-tools-grid .btn { justify-content: flex-start; }
+body.paper .ws-tools-grid .btn[aria-pressed="true"] { background: var(--ctl-view-on); color: var(--on-fill); }
+/* 카드 영역: 자유 조작이면 [탐구] 탭 끝, 탐구 단계 중이면 단계 본문 안 */
+body.paper .ws-cards { display: flex; flex-direction: column; gap: var(--sp-2); }
+body.paper .ws-cards:empty { display: none; }
+body.paper .ws-card { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); background: var(--paper);
+  border: 1px solid var(--rule); border-left: 4px solid var(--ctl-view); border-radius: var(--radius); }
+body.paper .ws-card[hidden] { display: none; }
+body.paper .ws-card-head { display: flex; align-items: center; gap: var(--sp-2); }
+body.paper .ws-card-head b { flex: 1; min-width: 0; font-size: var(--fs-2); color: var(--ink); }
+body.paper .ws-card-text { margin: 0; font-size: var(--fs-2); color: var(--ink-2); line-height: 1.5; }
+body.paper .ws-card-text b { color: var(--ink); }
+body.paper .ws-omega { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
+body.paper .ws-omega[data-tab="current"] .future-only-text, body.paper .ws-omega[data-tab="future"] .current-only-btn { display: none; }
+/* 옮겨 온 요소들: 3D·그래프 위에 겹치던 모양(절대 위치·그림자)을 카드 안의 평범한 묶음으로 */
+body.paper #wsCards .legend3d { position: static; width: auto; max-height: none; overflow: visible; padding: 0; background: none; border: 0; }
+body.paper #wsCards .legend3d .lg-head { display: none; }
+body.paper #wsCards .legend3d .lg-body { display: grid; }
+body.paper #wsCards .fut-pop { position: static; inset: auto; z-index: auto; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; }
+body.paper #wsCards .fut-pop[hidden] { display: none; }
+body.paper #wsCards .inq-cards { position: static; inset: auto; z-index: auto; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; }
+body.paper #wsCards .ic-grid { grid-template-columns: 1fr; }
+/* 증거 고르기 (askEvidence) */
+body.paper .inq-ev { display: flex; flex-direction: column; gap: var(--sp-1); }
+body.paper .inq-ev select { font: inherit; font-size: var(--fs-2); color: var(--ink); background: var(--paper); border: 1.5px solid var(--rule);
+  border-radius: var(--radius); padding: var(--sp-1) var(--sp-2); min-height: 34px; }
+body.paper .inq-ev select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+body.paper .inq-ev-acts { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+/* 1인칭 현장 기록 (3차 E4): 관찰·달라진 점은 글이 길어 줄을 바꾼다 */
+body.paper #worksheet .rec-fp td:nth-child(4), body.paper #worksheet .rec-fp td:nth-child(5) { white-space: normal; min-width: 9em; }

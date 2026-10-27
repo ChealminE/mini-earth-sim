@@ -1,4 +1,7 @@
 // ================= 현재 실태 탭 =================
+// 3차 C3: 그래프 4개(CO₂·기온·pH·화석연료) 자리를 그래프 작업대(js/graph-workspace.js)로 대체했다.
+// 예전 그래프 코드는 되돌리기 쉽게 남겨 두고, USE_WORKSPACE 가 true 면 만들지 않는다(마크업 .charts-2col 도 숨긴다).
+const USE_WORKSPACE = true;
 const sceneCurrent = sceneFor('current'); // 이 화면을 열었을 때만 실제로 만듦 (common.js sceneFor)
 
 // ── 관측 자료 ──────────────────────────────────────────────────────────
@@ -11,6 +14,7 @@ const obsCo2 = series(EARTH_DATA.co2Noaa, 'ppm');            // NOAA GML 지구 
 const obsTemp = series(EARTH_DATA.tempHadcrut, 'anom');      // HadCRUT5, 1850~1900 기준
 const obsTempLo = series(EARTH_DATA.tempHadcrut, 'lo');
 const obsTempHi = series(EARTH_DATA.tempHadcrut, 'hi');
+const obsSst = series(EARTH_DATA.sstHadsst, 'anom');       // HadSST4 편차, 1850~1900 기준
 const obsPh = series(EARTH_DATA.phHot, 'ph');                // HOT Station ALOHA, 1989~
 // 화석연료 배출: 엔진 입력과 같은 자료(GCP via OWID, GtC)를 화면 단위(백만 톤 CO2)로 되돌린다
 const MTCO2_PER_GTC = 3664;
@@ -47,14 +51,24 @@ setEarthVisual(sceneCurrent, modelNow,
   set('statTempLabel', `기온 편차 (${t1.x})`);
   set('statTemp', `${sgn(t1.y, 2)} °C`);
   set('statTempDelta', '1850~1900년 평균 대비');
+  const s1 = lastOf(obsSst);
+  set('statSstLabel', `해수온 편차 (${s1.x})`);
+  set('statSst', `${sgn(s1.y, 2)} °C`);
+  set('statSstDelta', '1850~1900년 평균 대비');
+  // pH만 전 지구 평균이 아니라 한 정점 관측이다(전 지구 재구성 자료로 바꾸는 일은 보류). 학생이 다른 세 숫자와
+  // 같은 무게로 읽지 않게 상자 안에 밝힌다. 칸이 좁아 말줄임이 되면 title로 전체를 볼 수 있게 한다.
   const p0 = obsPh[0], p1 = lastOf(obsPh);
   set('statPhLabel', `해양 pH (${p1.x})`);
   set('statPh', p1.y.toFixed(3));
-  set('statPhDelta', `${p0.x}년 대비 ${sgn(p1.y - p0.y, 3)}`);
+  set('statPhDelta', `한 지점 관측(하와이 Station ALOHA) · ${p0.x}년 대비 ${sgn(p1.y - p0.y, 3)}`);
+  document.getElementById('statPhDelta').title = document.getElementById('statPhDelta').textContent;
   const f1 = lastOf(obsFossil), f0 = obsFossil.find(p => p.x === 1988) || obsFossil[0];
   set('statFossilLabel', `화석연료 배출 (${f1.x})`);
   set('statFossil', `${Math.round(f1.y).toLocaleString('ko-KR')} 백만 톤`);
   set('statFossilDelta', `${f0.x}년 대비 ${sgn(f1.y - f0.y, 0).replace(/\d{4,}/, m => Number(m).toLocaleString('ko-KR'))} 백만 톤`);
+  // 조작 띠 안내 (3차 B1): 연도 범위를 문구에 박아 두면 자료를 갱신할 때 어긋나므로 자료에서 계산한다
+  const all = [obsCo2, obsTemp, obsSst, obsPh, obsFossil];
+  set('csObsRange', `관측 자료 ${Math.min(...all.map(a => a[0].x))}~${Math.max(...all.map(a => lastOf(a).x))} · 자료마다 시작 연도가 다릅니다`);
 }
 
 // ── 그래프 ────────────────────────────────────────────────────────────
@@ -76,13 +90,13 @@ const OBS = Theme.color('--data-obs');
 const obsLine = (label, data) => ({ label, data, borderColor: OBS, backgroundColor: OBS, borderWidth: 2, pointRadius: 0, tension: 0.15 });
 const modelLine = (label, data, token) => ({ label, data, borderColor: Theme.color(token), backgroundColor: Theme.color(token),
   borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.15 });
-const chartCo2 = new Chart(document.getElementById('chartCo2'), {
+const chartCo2 = USE_WORKSPACE ? null : new Chart(document.getElementById('chartCo2'), {
   type: 'line', data: { datasets: [
     obsLine('관측 (NOAA 지구 평균)', obsCo2),
     modelLine('모형', modelCo2, '--data-co2'),
   ] },
   options: histOpts('ppm', true, obsCo2) });
-const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
+const chartTempHist = USE_WORKSPACE ? null : new Chart(document.getElementById('chartTempHist'), {
   type: 'line', data: { datasets: [
     obsLine('관측 (HadCRUT5)', obsTemp),
     modelLine('모형 (CO₂만)', modelTemp, '--data-temp'),
@@ -92,9 +106,51 @@ const chartTempHist = new Chart(document.getElementById('chartTempHist'), {
     { label: '_불확도 하한', data: obsTempLo, borderWidth: 0, pointRadius: 0, fill: false },
   ] },
   options: histOpts('°C (1850~1900 대비)', true, obsTemp) });
-const chartPhHist = new Chart(document.getElementById('chartPhHist'), {
+const chartPhHist = USE_WORKSPACE ? null : new Chart(document.getElementById('chartPhHist'), {
   type: 'line', data: { datasets: [{ ...obsLine('관측 (HOT)', obsPh), spanGaps: true }] },
   options: histOpts('pH', false, obsPh) });
-const chartFossil = new Chart(document.getElementById('chartFossil'), {
+const chartFossil = USE_WORKSPACE ? null : new Chart(document.getElementById('chartFossil'), {
   type: 'line', data: { datasets: [obsLine('GCP', obsFossil)] },
   options: histOpts('백만 톤 CO₂', false, obsFossil) });
+
+// ── 그래프 작업대 (3차 C3) ────────────────────────────────────────────
+// 처음 상태: Y1 = 대기 CO₂, 시간 보기, 전체 기간. 3D는 지금처럼 최신 관측 상태 그대로(분석창 연도와 묶지 않음).
+const currentWorkspace = USE_WORKSPACE
+  ? GraphWorkspace.create(document.getElementById('currentWorkspace'), {
+    catalog: DATA_CATALOG,
+    onSend: cfg => Worksheet.addEvidence('workspace', cfg, 'current'),   // 학습지로 보내기 (3차 C4)
+    // 탐구 층(3차 E3): 사건 표지·학생이 고른 점을 그리고 분석창 클릭(pickPoint chart: 'ws')을 받는다. 미래 예측 그래프의
+    // inquiryLayerPlugin 과 같은 모양. js/inquiry.js 가 뒤에 읽히므로 그릴 때 있는지만 본다
+    plugins: [{ id: 'inquiryLayer',
+      beforeDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.drawUnder(chart); },
+      afterDatasetsDraw(chart) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.drawOver(chart); },
+      afterEvent(chart, args) { if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.chartEvent(chart, args.event); } }],
+  }) : null;
+if (currentWorkspace) {
+  document.querySelector('#tab-current .charts-2col').hidden = true;
+  currentWorkspace.add('co2');
+} else document.getElementById('currentWorkspace').hidden = true;
+// 칸 크기가 바뀌거나 탭을 열 때 main.js 가 부른다
+function resizeCurrentGraphs() {
+  if (currentWorkspace) currentWorkspace.resize();
+  else [chartCo2, chartTempHist, chartPhHist, chartFossil].forEach(c => c.resize());
+}
+
+// ── 학습지 [나의 증거] 카드: 작업대 구성 다시 그리기 (3차 C4, js/worksheet.js) ──
+// 그림이 아니라 구성(getConfig)만 저장되어 있어 같은 규칙(R1~R8)으로 다시 그린다(js/graph-workspace.js drawStatic)
+{
+  const item = id => DATA_CATALOG.find(it => it.id === id);
+  const shortOf = id => (item(id) ? item(id).short : id);
+  const MODE_TAG = { shape: '모양 비교', scatter: '산점도' };
+  Worksheet.registerEvidenceKind('workspace', {
+    title: cfg => cfg.series.map(shortOf).join(' · ') || '(빈 그래프)',
+    tags: cfg => [MODE_TAG[cfg.mode], ...(cfg.flips || []).map(id => `${shortOf(id)} 축 뒤집음`),
+      cfg.range !== 'all' ? `${cfg.range}년~` : null, cfg.commonOnly && cfg.mode === 'time' ? '공통 기간만' : null].filter(Boolean),
+    sources: cfg => cfg.series.flatMap(id => (item(id) ? [].concat(item(id).src) : [])),
+    draw: (canvas, cfg) => { const { chart, view } = GraphWorkspace.drawStatic(canvas, DATA_CATALOG, cfg); return { chart, note: view.banner }; },
+    // 크게 보기: 현재 실태 작업대에 그대로 불러온다 (switchTab·activeTab 은 main.js)
+    open: cfg => { if (activeTab !== 'current') switchTab('current'); if (currentWorkspace) currentWorkspace.loadConfig(cfg); },
+    csv: cfg => ({ series: cfg.series.join('+'), mode: cfg.mode, flips: (cfg.flips || []).join('+'),
+      range: (cfg.range === 'all' ? '전체' : `${cfg.range}~`) + (cfg.commonOnly && cfg.mode === 'time' ? ' 공통 기간만' : '') }),
+  });
+}

@@ -99,6 +99,8 @@
       <a class="btn btn--nav" data-tab-go="current" href="/dashboard?tab=current">현재 실태</a>
       <a class="btn btn--nav" data-tab-go="future" href="/dashboard?tab=future">미래 예측</a>
       <a class="btn btn--nav" data-tab-go="live" href="/dashboard?tab=live">직접 실험</a>
+      <!-- 3차 E4: 지금 보고 있는 배출 경로·연도로 1인칭을 연다(주소는 누르는 순간 js/main.js 가 채운다) -->
+      <a class="btn btn--nav" id="fpGo" href="/firstperson/">1인칭으로</a>
     </nav>
     <p class="tb-desc readout" id="topbarDesc"></p>
   </header>
@@ -109,15 +111,17 @@
     <div class="earth-badge readout future-only" id="earthBadge">인간활동 지구 · 현재 정책</div>
     <div class="gl-fade" id="glFade" aria-hidden="true"></div>
     <!-- 3D 보기 토글 (2차 개편 D, 종이 탭에서만 보임): 눈에 보이지 않는 것을 켰을 때만 보이게 한다 (js/common.js VIEW3D) -->
+    <!-- 3차 B3: data-ws-moved 가 붙은 요소는 기본 화면에서만 숨긴다(css/paper.css). 요소·id·이벤트·함수는 그대로이고
+         탐구 동작·학습지 카드(3차 E2)에서 켠다. hidden 속성은 쓰지 않는다 — 일부 코드가 hidden 을 상태로 읽는다 -->
     <div class="view3d paper-only" role="group" aria-label="3D 보기">
       <!-- 자연 지구 토글도 보기 조작이라 같은 묶음에 둔다 (오른쪽 아래는 범례 자리) -->
-      <button class="btn btn--view btn--sm nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false"><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
-      <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false"><span data-icon="dots"></span>CO₂ 보기</button>
-      <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false"><span data-icon="drop"></span>지시약으로 보기</button>
+      <button class="btn btn--view btn--sm nature-toggle future-only" type="button" id="natureToggle" aria-pressed="false" data-ws-moved><span data-icon="leaf"></span>자연만 있는 지구 보기</button>
+      <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false" data-ws-moved><span data-icon="dots"></span>CO₂ 보기</button>
+      <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false" data-ws-moved><span data-icon="drop"></span>지시약으로 보기</button>
     </div>
     <!-- 3D 범례 (2차 개편 D7): 3D의 무엇이 무엇을 나타내는지. 정보 표시라 버튼처럼 보이지 않게 두고, 접기 버튼만 보기 조작이다.
          줄 표시는 js/main.js updateLegend3D (보기 토글·자연 지구에 따라). 근거 수준(관측·IPCC·연출)은 줄 끝 ⓘ에서 -->
-    <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle">
+    <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle" data-ws-moved>
       <div class="lg-head">
         <h3 class="lg-title" id="legend3dTitle">3D 범례</h3>
         <button class="btn btn--view btn--sm lg-toggle" type="button" id="legend3dToggle" aria-expanded="true" aria-controls="legend3dBody">접기</button>
@@ -155,129 +159,229 @@
          스크린리더에는 옆의 #recStatus 가 "2100년 기록됨"을 한 번 읽어 준다 (js/tab-future.js playRecordFx) -->
     <div class="rec-fx future-only" id="recFx" aria-hidden="true"><div class="rec-fx-mark"><span class="rec-fx-dot"></span><span id="recFxText">기록</span></div></div>
     <div class="rec-status" id="recStatus" role="status"></div>
+    <!-- 직접 설계(레버) 패널 (3차 B1): 3D 칸 위에 겹쳐 연다. [시나리오로]를 누르면 닫히고 3D가 다시 보인다.
+       레버를 만지는 동안 3D가 가려지는 것은 괜찮다 — 레버 → 그래프 변화를 보는 게 목적 -->
+    <div class="fc-levers future-only" id="fcLevers" hidden>
+      <div class="fc-lever-top">
+        <button class="btn btn--nav fc-back" type="button" id="fcBack"><span data-icon="back"></span>시나리오로</button>
+        <h3 class="fc-h fc-lv-h">① 배출 경로 직접 설계</h3>
+        <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
+      </div>
+      <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
+      <!-- 전력 구성: 화석 | 원자력 | 재생 세 구간이 한 막대. 경계 손잡이 두 개를 끌어 합 100 %를 유지한다 -->
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="factory"></span><span class="lv-name">전력 구성</span><span class="lv-val readout">합 100 %</span></div>
+        <div class="mix-ctl" id="mixCtl">
+          <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
+          <div class="mix-handle" id="mixH1" role="slider" tabindex="0" aria-label="화석 | 원자력 경계 (화석 발전 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+          <div class="mix-handle" id="mixH2" role="slider" tabindex="0" aria-label="원자력 | 재생 경계 (화석+원자력 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="mix-legend">
+          <span class="mix-key fossil"><span class="mix-key-name"><span data-icon="factory" data-icon-size="18"></span>화석</span><span class="mix-key-val"><b class="readout" id="mixFossilVal"></b><button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button></span></span>
+          <span class="mix-key nuclear"><span class="mix-key-name"><span data-icon="atom" data-icon-size="18"></span>원자력</span><span class="mix-key-val"><b class="readout" id="mixNuclearVal"></b><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button></span></span>
+          <span class="mix-key renew"><span class="mix-key-name"><span data-icon="sun" data-icon-size="18"></span>재생</span><span class="mix-key-val"><b class="readout" id="mixRenewVal"></b><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></span></span>
+        </div>
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="car"></span><span class="lv-name">전기차 비율</span><button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
+        <input type="range" class="range range--scen" id="lvEv" min="0" max="100" step="1" aria-label="전기차 비율">
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="capture"></span><span class="lv-name">탄소 포집</span><button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
+        <input type="range" class="range range--scen" id="lvCcs" min="0" max="3" step="0.1" aria-label="탄소 포집">
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="tree"></span><span class="lv-name">산림</span><button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
+        <input type="range" class="range range--scen" id="lvForest" step="any" aria-label="산림 (토지이용 배출)">
+        <div class="lv-scale readout"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="building"></span><span class="lv-name">기타 배출 감축</span><button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
+        <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
+      </div>
+      <div class="fc-result readout" id="lvResult"></div>
+    </div>
   </div>
+
+  <!-- 조작 띠 (3차 B1): 3D 바로 아래. 현재 실태는 관측 기간 안내(C에서 작업대 모드 선택이 들어갈 자리),
+       미래 예측은 위: 시나리오 고르기 / 아래: 시간 막대. id는 예전 그대로라 js/tab-future.js 는 거의 그대로 동작한다 -->
+  <div id="ctlStrip" class="ctl-strip">
+    <p class="cs-note readout" id="csObsRange">관측 자료 · 자료마다 시작 연도가 다릅니다</p>
+    <div class="cs-scen" id="fcScen" role="group" aria-label="시나리오 (2024년부터의 배출)">
+      <!-- 3차 D1: 조작하는 것은 배출 경로(원인) — CO₂는 그 결과(매개), 기온·해수온·pH는 최종 결과. 머리말 아래에 고른 경로의 배출량 선(1750~2200) -->
+      <span class="cs-label"><span class="cs-title">① 배출 경로 고르기</span>
+        <span class="cs-emis"><canvas id="fcEmisSpark" width="240" height="40" role="img" aria-label="고른 경로의 배출량 1750~2200년, 2024년부터는 고른 경로"></canvas><span id="fcEmisSrc"></span></span></span>
+      <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
+      <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span data-icon="globe" data-icon-size="28"></span><span class="fc-name">현재 정책</span><span class="btn-sub">SSP2-4.5</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button>
+        </div>
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span data-icon="accord" data-icon-size="28"></span><span class="fc-name">파리협약 2&nbsp;°C</span><span class="btn-sub">SSP1-2.6</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button>
+        </div>
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span data-icon="target" data-icon-size="28"></span><span class="fc-name">1.5&nbsp;°C 탄소중립</span><span class="btn-sub">SSP1-1.9</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button>
+        </div>
+      </div>
+      <button class="btn btn--scen fc-custom" type="button" data-preset="custom" id="fcCustomBtn" aria-pressed="false" title="정책을 골라 나만의 미래 만들기"><span data-icon="blocks"></span><span><span class="fc-name">직접 설계</span><span class="fc-ssp">정책을 골라 나만의 미래 만들기</span></span></button>
+    </div>
+    <!-- 시간 막대 (시간·기록 영역) -->
+    <div class="tl-bar" id="tlBar">
+      <button class="btn btn--time tl-play" type="button" id="tlPlay" aria-pressed="false"><span id="tlPlayIcon" data-icon="play"></span><span id="tlPlayLabel">재생</span></button>
+      <span class="tl-year readout"><b id="tlYear">2023</b>년</span>
+      <input type="range" class="range range--time" id="tlScrub" min="1750" max="2200" step="1" value="2023" aria-label="연도">
+      <label class="tl-speed-label readout" for="tlSpeed">속도</label>
+      <select class="select select--time tl-speed" id="tlSpeed">
+        <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="20">20년/초</option>
+      </select>
+      <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
+      <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
+      <button class="btn btn--rec" type="button" id="recOpen" aria-controls="wsPanelRecord"><span data-icon="list"></span>기록 보기</button>
+    </div>
+  </div>
+
+  <!-- 학습지 (3차 B2): 오른쪽 40 % 칸. 현재 실태·미래 예측이 같은 요소를 함께 쓰고 탭에 맞게 내용만 바뀐다 (js/worksheet.js).
+       [접기]를 누르면 44 px 세로 띠로 줄고 왼쪽이 화면 전체를 쓴다. 탭 내용은 다른 파일이 id로 채운다 -->
+  <aside id="worksheet" class="ws" aria-label="학습지">
+    <div class="ws-head">
+      <h2 class="ws-title" id="wsTitle">학습지</h2>
+      <button class="btn btn--nav btn--sm ws-fold" type="button" id="wsFold" aria-expanded="true" aria-controls="wsBody">접기</button>
+    </div>
+    <div class="ws-body" id="wsBody">
+      <div class="ws-tabs" role="tablist" aria-label="학습지 내용">
+        <button class="ws-tab" type="button" role="tab" id="wsTabInquiry" aria-controls="wsPanelInquiry" aria-selected="true">탐구</button>
+        <button class="ws-tab" type="button" role="tab" id="wsTabEvidence" aria-controls="wsPanelEvidence" aria-selected="false" tabindex="-1">나의 증거</button>
+        <button class="ws-tab" type="button" role="tab" id="wsTabRecord" aria-controls="wsPanelRecord" aria-selected="false" tabindex="-1">기록</button>
+      </div>
+      <section class="ws-panel" role="tabpanel" id="wsPanelInquiry" aria-labelledby="wsTabInquiry">
+        <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 3차 E1부터 두 탭 공통). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js.
+             경로마다 tab(current|future)이 있어 지금 탭의 경로만 고를 수 있다 -->
+        <div class="inq-mode" role="group" aria-label="조작 방식">
+          <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
+          <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
+        </div>
+        <div class="inq-panel" id="inqPanel" hidden></div>
+        <!-- 자유 조작일 때만 보이는 것: 미래 예측의 고른 시나리오 설명 (탐구 중에는 inquiry.js 가 숨긴다) -->
+        <div id="fcFree">
+          <!-- 시나리오 버튼·직접 설계 버튼은 조작 띠(#ctlStrip)로, 레버 패널은 3D 칸 위로 옮겼다(3차 B1). 고른 시나리오 설명만 여기 남는다 -->
+          <div class="future-only fc" id="futureControls">
+            <div id="fcScenarioView">
+              <p class="fc-desc readout" id="fcPresetDesc"></p>
+            </div>
+          </div>
+          <!-- 보기 도구 (3차 E2): 화면에서 내린 보기 기능(B3) 여섯 개를 탐구 경로 밖에서도 켜고 끈다 (js/main.js) -->
+          <section class="ws-tools" aria-label="보기 도구">
+            <h3 class="fc-h">보기 도구 <span>화면에서 학습지로 옮긴 기능</span></h3>
+            <div class="ws-tools-grid" id="wsTools"></div>
+          </section>
+        </div>
+        <!-- 학습지 카드 영역 (3차 E2, js/worksheet.js registerCard). 탐구 단계 중에는 단계 본문 안으로 옮겨진다(js/inquiry.js) -->
+        <div class="ws-cards" id="wsCards"></div>
+      </section>
+      <!-- 나의 증거: 그래프 작업대에서 보낸 그래프가 쌓인다 (3차 C4) -->
+      <section class="ws-panel" role="tabpanel" id="wsPanelEvidence" aria-labelledby="wsTabEvidence" hidden>
+        <p class="ws-msg" id="wsEvidenceMsg" role="status"></p>
+        <ul class="ws-evidence" id="wsEvidence"></ul>
+        <p class="ws-empty" id="wsEvidenceEmpty">그래프 작업대에서 [학습지로 보내기]를 누르면 여기에 쌓입니다.</p>
+      </section>
+      <section class="ws-panel" role="tabpanel" id="wsPanelRecord" aria-labelledby="wsTabRecord" hidden>
+        <!-- 측정 기록 + 탐구 기록 (예전 기록 서랍, 3차 B2에서 학습지 [기록] 탭으로 옮김). CSV 열은 예전과 같다 -->
+        <div class="rec-drawer" id="recDrawer">
+          <div class="rec-head">
+            <b class="readout">기록 <span id="recCount2">0</span>줄</b>
+            <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>측정 기록 CSV</button>
+            <button class="btn btn--rec" type="button" id="recClear"><span data-icon="trash"></span>기록 지우기</button>
+          </div>
+          <div class="rec-table-wrap"><table class="spec-table rec-table">
+            <thead><tr><th>연도</th><th>시나리오</th><th>지구</th>
+              <th>co2_ppm<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂">ⓘ</button></th>
+              <th>air_temp<button class="src-i" type="button" data-src="model_air_temp" aria-label="출처 보기: 기온">ⓘ</button></th>
+              <th>water_temp<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 해수온">ⓘ</button></th>
+              <th>ph<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH">ⓘ</button></th></tr></thead>
+            <tbody id="recLog"></tbody>
+          </table></div>
+          <!-- 탐구 기록 묶음 (2차 개편 E5): 탐구 모드에서 고른 점·글·보기·기록 줄. js/inquiry.js 가 채운다 -->
+          <section class="rec-inq" id="recInq" hidden>
+            <div class="rec-head">
+              <b class="readout">탐구 기록 <span id="inqLogCount">0</span>줄</b>
+              <button class="btn btn--rec" type="button" id="inqCsv"><span data-icon="download"></span>탐구 기록 CSV</button>
+              <button class="btn btn--rec" type="button" id="inqClear"><span data-icon="trash"></span>탐구 기록 지우기</button>
+            </div>
+            <div class="rec-table-wrap"><table class="spec-table rec-table">
+              <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
+              <tbody id="inqLog"></tbody>
+            </table></div>
+          </section>
+          <!-- 1인칭 현장 기록 (3차 E4): 1인칭 야장 현장 과제의 관찰 글. 1인칭이 공용 저장소(worksheet.v1 의 fp)에 쓰고 여기서 읽기만 한다 -->
+          <section class="rec-inq rec-fp" id="recFp" hidden>
+            <div class="rec-head"><b class="readout">1인칭 현장 기록 <span id="recFpCount">0</span>개</b></div>
+            <div class="rec-table-wrap"><table class="spec-table rec-table">
+              <thead><tr><th>과제</th><th>조감 단계</th><th>경로</th><th>연도별 관찰</th><th>달라진 점</th></tr></thead>
+              <tbody id="recFpLog"></tbody>
+            </table></div>
+            <p class="ws-empty" id="recFpNote" hidden></p>
+          </section>
+        </div>
+      </section>
+    </div>
+  </aside>
 
   <div id="tab-header-panel">
     <a href="/" class="home-link" title="시작 화면으로">← 처음으로</a>
     <h2 id="tabHeaderTitle">현재 실태</h2>
     <div class="sub" id="tabHeaderDesc"></div>
-
-    <!-- 미래 예측 탭에서만 보임: 인간활동 지구의 배출 조작 (js/tab-future.js).
-         2024년부터의 배출을 정한다. 시나리오 목록 ↔ 직접 설계(레버) 패널을 바꿔 가며 보여 준다 -->
-    <div class="future-only fc" id="futureControls">
-      <!-- [탐구 | 자유 조작] 전환 (2차 개편 E, 이동 영역). 기본은 자유 조작. 탐구는 js/inquiry.js, 단계 내용은 js/inquiry-steps.js -->
-      <div class="inq-mode" role="group" aria-label="조작 방식">
-        <button class="btn btn--nav btn--sm" type="button" id="inqModeOn" aria-pressed="false"><span data-icon="list"></span>탐구</button>
-        <button class="btn btn--nav btn--sm" type="button" id="inqModeFree" aria-pressed="true"><span data-icon="blocks"></span>자유 조작</button>
-      </div>
-      <div class="inq-panel" id="inqPanel" hidden></div>
-      <div id="fcFree">
-      <div id="fcScenarioView">
-        <h3 class="fc-h">시나리오 <span>2024년부터의 배출</span></h3>
-        <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
-        <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span data-icon="globe" data-icon-size="28"></span><span class="fc-name">현재 정책</span><span class="btn-sub">SSP2-4.5</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button>
-          </div>
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span data-icon="accord" data-icon-size="28"></span><span class="fc-name">파리협약 2&nbsp;°C</span><span class="btn-sub">SSP1-2.6</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button>
-          </div>
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span data-icon="target" data-icon-size="28"></span><span class="fc-name">1.5&nbsp;°C 탄소중립</span><span class="btn-sub">SSP1-1.9</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button>
-          </div>
-        </div>
-        <p class="fc-desc readout" id="fcPresetDesc"></p>
-        <hr class="fc-rule">
-        <button class="btn btn--scen fc-custom" type="button" data-preset="custom" id="fcCustomBtn" aria-pressed="false"><span data-icon="blocks"></span><span><span class="fc-name">직접 설계</span><span class="fc-ssp">정책을 골라 나만의 미래 만들기</span></span></button>
-      </div>
-
-      <div class="fc-levers" id="fcLevers" hidden>
-        <div class="fc-lever-top">
-          <button class="btn btn--nav fc-back" type="button" id="fcBack"><span data-icon="back"></span>시나리오로</button>
-          <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
-        </div>
-        <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
-        <!-- 전력 구성: 화석 | 원자력 | 재생 세 구간이 한 막대. 경계 손잡이 두 개를 끌어 합 100 %를 유지한다 -->
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="factory"></span><span class="lv-name">전력 구성</span><span class="lv-val readout">합 100 %</span></div>
-          <div class="mix-ctl" id="mixCtl">
-            <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
-            <div class="mix-handle" id="mixH1" role="slider" tabindex="0" aria-label="화석 | 원자력 경계 (화석 발전 비중)" aria-valuemin="0" aria-valuemax="100"></div>
-            <div class="mix-handle" id="mixH2" role="slider" tabindex="0" aria-label="원자력 | 재생 경계 (화석+원자력 비중)" aria-valuemin="0" aria-valuemax="100"></div>
-          </div>
-          <div class="mix-legend">
-            <span class="mix-key fossil"><span class="mix-key-name"><span data-icon="factory" data-icon-size="18"></span>화석</span><span class="mix-key-val"><b class="readout" id="mixFossilVal"></b><button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button></span></span>
-            <span class="mix-key nuclear"><span class="mix-key-name"><span data-icon="atom" data-icon-size="18"></span>원자력</span><span class="mix-key-val"><b class="readout" id="mixNuclearVal"></b><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button></span></span>
-            <span class="mix-key renew"><span class="mix-key-name"><span data-icon="sun" data-icon-size="18"></span>재생</span><span class="mix-key-val"><b class="readout" id="mixRenewVal"></b><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></span></span>
-          </div>
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="car"></span><span class="lv-name">전기차 비율</span><button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
-          <input type="range" class="range range--scen" id="lvEv" min="0" max="100" step="1" aria-label="전기차 비율">
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="capture"></span><span class="lv-name">탄소 포집</span><button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
-          <input type="range" class="range range--scen" id="lvCcs" min="0" max="3" step="0.1" aria-label="탄소 포집">
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="tree"></span><span class="lv-name">산림</span><button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
-          <input type="range" class="range range--scen" id="lvForest" step="any" aria-label="산림 (토지이용 배출)">
-          <div class="lv-scale readout"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="building"></span><span class="lv-name">기타 배출 감축</span><button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
-          <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
-        </div>
-        <div class="fc-result readout" id="lvResult"></div>
-      </div>
-      </div>
-    </div>
   </div>
 
   <div id="graph-panel">
 
     <div class="tab-panel active" id="tab-current">
       <div class="stat-grid">
-        <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다 -->
+        <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다.
+             순서는 CO₂ → 기온 → 해수온 → pH(3차 결정), 화석연료 배출은 원인 쪽 자료라 맨 뒤 -->
         <div class="stat-box"><div class="label"><span id="statCo2Label">CO₂ 농도</span><button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="value co2" id="statCo2">-</div><div class="delta" id="statCo2Delta"></div></div>
         <div class="stat-box"><div class="label"><span id="statTempLabel">기온편차</span><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="value temp" id="statTemp">-</div><div class="delta" id="statTempDelta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statSstLabel">해수온 편차</span><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div><div class="value sst" id="statSst">-</div><div class="delta" id="statSstDelta"></div></div>
         <div class="stat-box"><div class="label"><span id="statPhLabel">해양 pH</span><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="value ph" id="statPh">-</div><div class="delta" id="statPhDelta"></div></div>
         <div class="stat-box"><div class="label"><span id="statFossilLabel">화석연료배출</span><button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="value" id="statFossil">-</div><div class="delta" id="statFossilDelta"></div></div>
       </div>
       <div class="charts-2col">
         <div class="chart-block"><div class="chart-title">대기 CO₂ 농도 (지구 평균)<button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비)<button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해양 pH (하와이 Station ALOHA)<button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해양 pH — 한 지점 관측(하와이 Station ALOHA)<button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">화석연료 배출량<button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
       </div>
+      <!-- 그래프 작업대 (3차 C3): 위 그래프 4개 자리를 대신한다. 내용은 js/graph-workspace.js 가 만든다(js/tab-current.js) -->
+      <div class="gw-host" id="currentWorkspace"></div>
     </div>
 
     <div class="tab-panel" id="tab-future">
       <!-- 1750~2200 타임라인. 궤적은 js/earth-system.js가 미리 계산하고 여기서는 배열을 읽기만 한다 (js/tab-future.js).
-           배치(스크롤 없음): 왼쪽 패널(#futureControls) | 3D | 그래프 열, 맨 아래 시간 막대 (css/paper.css) -->
+           배치(스크롤 없음, 3차 B1): 왼쪽 60 % = 3D · 조작 띠(#ctlStrip: 시나리오·시간 막대) · 그래프 2×2, 오른쪽 40 % = 학습지 칸 (css/paper.css) -->
       <section class="fut-charts" id="futCharts" aria-label="그래프">
         <!-- 공용 범례 + 보기 토글 (그래프마다 범례를 두면 4개가 한 화면에 들어가지 않는다) -->
         <div class="fut-legend readout" aria-label="범례">
+          <!-- 3차 D1: 원인 → 매개 → 결과 (엔진 설계와 같은 순서) -->
+          <span class="fut-chain" title="배출 → 대기 CO₂ → 기온 · 해수온 · pH"><b>① 배출</b> → <b>② CO₂</b> → <b>③ 기온·해수온·pH</b></span>
           <span class="fk"><i class="fk-line obs"></i>관측</span>
           <span class="fk"><i class="fk-line pred"></i>인간활동 지구 (예측)</span>
           <span class="fk"><i class="fk-line nature"></i>자연만 있는 지구</span>
           <span class="fk" id="futPrevKey" hidden><i class="fk-line prev"></i>이전 선택: <b id="futPrevName"></b></span>
           <button class="btn btn--view btn--sm" type="button" id="futValidateBtn" aria-pressed="false"><span data-icon="lines"></span>모형 검증 보기</button>
         </div>
-        <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂ (모형 계산)">ⓘ</button>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">②</span>대기 CO₂ (ppm)<span class="ct-sub">배출이 쌓인 결과</span><button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂ (모형 계산)">ⓘ</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSink" aria-pressed="false" aria-controls="popSink"><span data-icon="sink"></span>탄소는 어디로?</button></div>
           <div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
-          <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false">Ω 함께 보기</button>
-          <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec"><span data-icon="flask"></span>바다 속 탄소</button></div>
-          <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
+          <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false" data-ws-moved>Ω 함께 보기</button>
+          <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec" data-ws-moved><span data-icon="flask"></span>바다 속 탄소</button></div>
+          <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
 
         <!-- 보조 정보 팝오버: 그래프 열 위에 뜨고 배치를 밀지 않는다 -->
         <div class="fut-pop" id="popSink" role="dialog" aria-label="배출된 탄소는 어디로 갔나" hidden>
@@ -307,49 +411,6 @@
         </div>
       </section>
 
-      <!-- 시간 막대 (시간·기록 영역) -->
-      <div class="tl-bar" id="tlBar">
-        <button class="btn btn--time tl-play" type="button" id="tlPlay" aria-pressed="false"><span id="tlPlayIcon" data-icon="play"></span><span id="tlPlayLabel">재생</span></button>
-        <span class="tl-year readout"><b id="tlYear">2023</b>년</span>
-        <input type="range" class="range range--time" id="tlScrub" min="1750" max="2200" step="1" value="2023" aria-label="연도">
-        <label class="tl-speed-label readout" for="tlSpeed">속도</label>
-        <select class="select select--time tl-speed" id="tlSpeed">
-          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="20">20년/초</option>
-        </select>
-        <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
-        <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
-        <button class="btn btn--rec" type="button" id="recOpen" aria-controls="recDrawer" aria-expanded="false"><span data-icon="list"></span>기록 보기</button>
-      </div>
-
-      <!-- 기록 서랍: 오른쪽에서 밀려 나와 화면을 덮는다(배치를 밀지 않음). CSV 열은 예전과 같다 -->
-      <aside class="rec-drawer" id="recDrawer" aria-label="기록" hidden>
-        <div class="rec-head">
-          <b class="readout">기록 <span id="recCount2">0</span>줄</b>
-          <button class="btn btn--rec" type="button" id="recCsv"><span data-icon="download"></span>측정 기록 CSV</button>
-          <button class="btn btn--rec" type="button" id="recClear"><span data-icon="trash"></span>기록 지우기</button>
-          <button class="btn btn--nav" type="button" id="recClose"><span data-icon="close"></span>닫기</button>
-        </div>
-        <div class="rec-table-wrap"><table class="spec-table rec-table">
-          <thead><tr><th>연도</th><th>시나리오</th><th>지구</th>
-            <th>co2_ppm<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂">ⓘ</button></th>
-            <th>air_temp<button class="src-i" type="button" data-src="model_air_temp" aria-label="출처 보기: 기온">ⓘ</button></th>
-            <th>water_temp<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 해수온">ⓘ</button></th>
-            <th>ph<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH">ⓘ</button></th></tr></thead>
-          <tbody id="recLog"></tbody>
-        </table></div>
-        <!-- 탐구 기록 묶음 (2차 개편 E5): 탐구 모드에서 고른 점·글·보기·기록 줄. js/inquiry.js 가 채운다 -->
-        <section class="rec-inq" id="recInq" hidden>
-          <div class="rec-head">
-            <b class="readout">탐구 기록 <span id="inqLogCount">0</span>줄</b>
-            <button class="btn btn--rec" type="button" id="inqCsv"><span data-icon="download"></span>탐구 기록 CSV</button>
-            <button class="btn btn--rec" type="button" id="inqClear"><span data-icon="trash"></span>탐구 기록 지우기</button>
-          </div>
-          <div class="rec-table-wrap"><table class="spec-table rec-table">
-            <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
-            <tbody id="inqLog"></tbody>
-          </table></div>
-        </section>
-      </aside>
     </div>
 
     <div class="tab-panel" id="tab-live">
@@ -672,6 +733,9 @@
 <script src="js/earth-system.js?v=2"></script>
 <script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
+<script src="js/data-catalog.js"></script>
+<script src="js/graph-workspace.js"></script>
+<script src="js/worksheet.js"></script>
 <script src="js/tab-current.js?v=5"></script>
 <script src="js/tab-future.js?v=6"></script>
 <script src="js/inquiry-steps.js?v=1"></script>

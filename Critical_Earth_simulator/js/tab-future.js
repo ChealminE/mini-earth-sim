@@ -82,9 +82,10 @@ const NATURE = { width: 1.4, widthOn: 3 };   // 자연 지구를 3D로 보고 �
 const VIEW = { validate: false, omega: false, hoverYear: null, drawFrontier: LAST_OBS_YEAR };
 
 // 관측 자료: 연도 → 값 (데이터 레이블이 과거 연도에서 관측값을 찾을 때)
-const toPoints = (d, key) => d[key].map((v, i) => ({ x: d.startYear + i, y: v })).filter(p => p.y != null);
+// 자료 → 점, CO₂ 관측 잇기는 그래프 작업대와 같은 함수를 쓴다 (js/data-catalog.js DataSeries, 3차 C1)
+const toPoints = DataSeries.points;
 const OBS_PTS = {
-  co2: [...toPoints(EARTH_DATA.co2Cmip6, 'ppm'), ...toPoints(EARTH_DATA.co2Noaa, 'ppm')],
+  co2: DataSeries.co2Obs(),
   T: toPoints(EARTH_DATA.tempHadcrut, 'anom'),
   pH: toPoints(EARTH_DATA.phHot, 'ph'),
   // 해수온 관측은 편차(1850~1900 기준)로 들어 있다. 모형 해수온이 sst0 + T 이므로 같은 기준점에 얹어 절대값으로 그린다.
@@ -93,12 +94,13 @@ const OBS_PTS = {
 const OBS_BY_YEAR = Object.fromEntries(Object.entries(OBS_PTS).map(([k, pts]) => [k, new Map(pts.map(p => [p.x, p.y]))]));
 
 // 그래프 4개의 정의. key = 엔진 출력 이름, obs = 관측 계열 이름(OBS_PTS 키)
+// 순서는 프로그램 어디서나 CO₂ → 기온 → 해수온 → pH(3차 결정). 다른 코드는 이름(id·key)으로 부르므로 순서만 바꿔도 된다.
 const fmtSigned = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
 const SERIES = [
   { id: 'futChartCo2', key: 'ppm', obs: 'co2', color: '--data-co2', fmt: v => `${v.toFixed(0)} ppm`, minSpan: 40 },
   { id: 'futChartT', key: 'T', obs: 'T', color: '--data-temp', fmt: v => `${fmtSigned(v, 2)} °C`, minSpan: 0.5 },
-  { id: 'futChartPh', key: 'pH', obs: 'pH', color: '--data-ph', fmt: v => v.toFixed(3), minSpan: 0.1 },
   { id: 'futChartSst', key: 'sst', obs: 'sst', color: '--data-sst', fmt: v => `${v.toFixed(1)} °C`, minSpan: 1 },
+  { id: 'futChartPh', key: 'pH', obs: 'pH', color: '--data-ph', fmt: v => v.toFixed(3), minSpan: 0.1 },
 ];
 // 계열 순서(데이터셋 번호). Chart.js는 앞 번호를 위에 그린다 → 예측선을 맨 위에.
 const DS = { pred: 0, prev: 1, past: 2, nature: 3, obs: 4 };
@@ -267,9 +269,10 @@ const charts = SERIES.map((spec, i) => {
     // 띠 없음: 원본의 95 % 열은 편향 불확실성만의 범위라 전체 불확실성으로 오해된다 (tools/gen_earth_data.py hadsst)
     ds.push(lineDs('관측 (HadSST4)', obsC, { data: OBS_PTS.sst, borderWidth: 1.4 }));
   }
+  // 연도 눈금은 맨 아래 줄 그래프에만 (3차 B1부터 2×2 배치라 아래 줄 = 마지막 두 그래프)
   const scales = {
     x: Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
-      ticks: { display: i === SERIES.length - 1, color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v) } }),
+      ticks: { display: i >= SERIES.length - 2, color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v) } }),
     // y축 폭을 고정해 그래프 4개의 x축(연도)이 세로로 정확히 맞게 한다
     y: Theme.axis({ ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 5 }, afterFit: sc => { sc.width = Y_AXIS_W; } }),
   };
@@ -291,7 +294,7 @@ const charts = SERIES.map((spec, i) => {
   chart.$first = i === 0;
   return chart;
 });
-const [futChartCo2, futChartT, futChartPh, futChartSst] = charts;
+const [futChartCo2, futChartT, futChartSst, futChartPh] = charts;
 const drawCharts = () => charts.forEach(c => c.draw());
 
 // 누적 막대: 재생 연도까지 내보낸 탄소가 대기 / 바다 / 토양·식생에 얼마씩 있는가 (팝오버 "탄소는 어디로?")
@@ -394,6 +397,7 @@ function setOmegaView(on) {
   futChartPh.options.scales.y1.display = VIEW.omega;
   futChartPh.options.layout.padding.right = VIEW.omega ? 4 : Y1_AXIS_W + 4;   // Ω 축이 비워 둔 자리를 쓴다
   futChartPh.update('none');
+  Worksheet.syncCards();   // 학습지 'Ω 함께 보기' 카드가 이 상태를 따른다 (3차 E2)
 }
 
 // ── 탄산 화학종 분포 (팝오버 "바다 속 탄소") ──────────────────────────────
@@ -472,8 +476,9 @@ function updateSink(h) {
 
 // ── 보조 정보 팝오버 ───────────────────────────────────────────────────
 // 그래프 열 위에 뜨고 배치를 밀지 않는다(스크롤이 생기면 안 된다). 한 번에 하나만.
+// 3차 E2부터 팝오버 두 개(#popSink·#popSpec)는 학습지 카드 안에 있다(js/main.js registerCard) — #futCharts 밖이라 클래스로 찾는다
 function setPopover(id) {
-  document.querySelectorAll('#futCharts .fut-pop').forEach(p => { p.hidden = p.id !== id; });
+  document.querySelectorAll('.fut-pop').forEach(p => { p.hidden = p.id !== id; });
   document.querySelectorAll('#futCharts .fut-pop-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pop === id)));
   if (id) { futChartSink.resize(); renderFuture(); }
 }
@@ -528,17 +533,9 @@ function addRecord({ fx = 'full' } = {}) {
   playRecordFx(fx, rec.year);
   $('recStatus').textContent = `${rec.year}년 기록됨`;
 }
-function setDrawer(open) {
-  $('recDrawer').hidden = !open;
-  $('recOpen').setAttribute('aria-expanded', String(open));
-  if (open) $('recClose').focus();
-}
 $('recAdd').addEventListener('click', () => addRecord({ fx: 'full' }));
-$('recOpen').addEventListener('click', () => setDrawer($('recDrawer').hidden));
-$('recClose').addEventListener('click', () => { setDrawer(false); $('recOpen').focus(); });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('recDrawer').hidden && activeTab === 'future') { setDrawer(false); $('recOpen').focus(); }
-});
+// 3차 B2: 기록은 서랍 대신 학습지 [기록] 탭에 있다. [기록 보기]는 그 탭으로 바꾼다(학습지를 접어 두었으면 편다)
+$('recOpen').addEventListener('click', () => Worksheet.show('record'));
 $('recClear').addEventListener('click', () => {
   measRecords.length = 0;
   $('recLog').innerHTML = '';
@@ -626,8 +623,8 @@ function setNatureView(on) {
 }
 $('natureToggle').addEventListener('click', () => setNatureView(!FUT.showNature));
 
-// 왼쪽 패널: 시나리오 목록 ↔ 직접 설계(레버) 패널. 레버 패널에서 '시나리오로'를 누르면 목록으로 돌아가되
-// 궤적은 직접 설계 그대로 둔다(다른 시나리오를 고를 때 바뀐다).
+// 시나리오 목록 ↔ 직접 설계(레버) 패널. 3차 B1부터 시나리오 버튼은 조작 띠(#fcScen), 레버 패널은 3D 칸 위에 있다.
+// 레버 패널에서 '시나리오로'를 누르면 목록으로 돌아가되 궤적은 직접 설계 그대로 둔다(다른 시나리오를 고를 때 바뀐다).
 function showLeverPanel(on) {
   $('fcScenarioView').hidden = on;
   $('fcLevers').hidden = !on;
@@ -636,13 +633,13 @@ function setPreset(name) {
   // 다른 시나리오로 바꾸면 직전 궤적을 '이전 선택' 선으로 남긴다 (같은 것을 다시 누르면 그대로)
   if (FUT.human && name !== FUT.preset) { PREV.run = FUT.human; PREV.label = humanLabel(); }
   FUT.preset = name;
-  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === name)));
+  document.querySelectorAll('#fcScen [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === name)));
   $('fcPresetDesc').textContent = PRESET_DESC[name];
   if (name === 'custom') showLeverPanel(true);
   updateBadge();
   recomputeFuture();
 }
-$('futureControls').addEventListener('click', e => {
+$('fcScen').addEventListener('click', e => {
   const b = e.target.closest('[data-preset]');
   if (b) setPreset(b.dataset.preset);
 });
@@ -838,8 +835,34 @@ function updateTrack() {
 $('tlSpeed').addEventListener('change', e => { FUT.speed = Number(e.target.value); });
 
 // 화면(팝오버·세로선)을 재생 연도에 맞춘다. 3D는 0.2초 틱에서만 바꾼다.
+// 조작 띠의 배출량 선 (3차 D1): 고른 경로의 배출(화석 + 토지이용, EarthSystem.run 의 emissions 그대로).
+// 재생 위치까지 진하게, 그 뒤는 옅게(시간 막대의 과거/예측 표현과 같게). 궤적이나 연도가 바뀔 때만 다시 그린다.
+const emisSpark = { run: null, year: null, preset: null, base: null };
+function drawEmisSpark() {
+  const y = Math.round(FUT.year);
+  if (emisSpark.run === FUT.human && emisSpark.year === y) return;
+  const cv = $('fcEmisSpark'), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(cv.clientWidth * dpr), hh = Math.round(cv.clientHeight * dpr);
+  if (w && hh && (cv.width !== w || cv.height !== hh)) { cv.width = w; cv.height = hh; }
+  // 세로 범위는 세 SSP 경로를 모두 담는 값으로 고정한다(한 번만 계산) — 경로마다 제 최댓값에 맞추면 어느 경로든 높이가 같아 보여
+  // '시나리오를 바꾸면 배출이 달라진다'가 안 보인다. 직접 설계가 그 범위를 넘을 때만 넓힌다
+  if (!emisSpark.base) {
+    const v = ['ssp245', 'ssp126', 'ssp119'].flatMap(k => EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.presetEmissions(k) }).map(o => o.emissions));
+    emisSpark.base = { min: Math.min(0, ...v), max: Math.max(...v) };
+  }
+  const pts = FUT.human.map(o => ({ x: o.year, y: o.emissions }));
+  const cur = pts.map(o => o.y).filter(Number.isFinite);
+  GraphWorkspace.drawSpark(cv, pts, { color: C('--data-fossil'), split: y, mark: LAST_OBS_YEAR,
+    yMin: Math.min(emisSpark.base.min, ...cur), yMax: Math.max(emisSpark.base.max, ...cur) });
+  emisSpark.run = FUT.human; emisSpark.year = y;
+  if (emisSpark.preset !== FUT.preset) {   // ⓘ: 과거 배출(GCP) + 2024년부터 고른 경로(SSP 배출 또는 직접 설계 레버)
+    emisSpark.preset = FUT.preset;
+    $('fcEmisSrc').innerHTML = srcButton('emis_gcp') + srcButton(FUT.preset === 'custom' ? 'lever_fossil' : 'ssp_emissions');
+  }
+}
 function renderFuture() {
   const h = sampleAt(FUT.human, FUT.year);
+  drawEmisSpark();
   tlYearEl.textContent = Math.round(FUT.year);
   if (Number(tlScrub.value) !== Math.round(FUT.year)) tlScrub.value = Math.round(FUT.year);
   updateTrack();
@@ -891,7 +914,7 @@ setInterval(() => {
 // 탐구 모드를 켜면 지금 상태를 저장해 두고, 끄면 그대로 되돌린다(시나리오·레버·재생 위치·전선·토글·팝오버).
 // setPreset을 거치지 않고 직접 넣는다 - setPreset은 '이전 선택' 선을 바꾸기 때문이다.
 function futSnapshot() {
-  const open = [...document.querySelectorAll('#futCharts .fut-pop')].find(p => !p.hidden);
+  const open = [...document.querySelectorAll('.fut-pop')].find(p => !p.hidden);
   return {
     preset: FUT.preset, levers: { ...FUT.levers }, year: FUT.year, frontier: FUT.frontier, speed: FUT.speed,
     showNature: FUT.showNature, omega: VIEW.omega, validate: VIEW.validate, popover: open ? open.id : null,
@@ -904,7 +927,7 @@ function futRestore(s) {
   FUT.levers = { ...s.levers };
   leversToInputs(FUT.levers);
   showLeverValues();
-  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
+  document.querySelectorAll('#fcScen [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
   $('fcPresetDesc').textContent = PRESET_DESC[s.preset];
   showLeverPanel(s.leverPanel);
   PREV.run = s.prev.run; PREV.label = s.prev.label;
@@ -934,3 +957,72 @@ function activateFutureTab() {
 
 computeNature();
 setPreset(FUT.preset);   // 궤적 계산 + 버튼 표시
+
+// ── 학습지로 보내기 (3차 C4) ──
+// 그래프마다 [보내기]. 저장하는 것은 입력(그래프·시나리오 또는 레버·예측 전선 연도)뿐이다 — 엔진이 결정적이라
+// 학습지 [나의 증거] 카드가 EarthSystem.run 으로 같은 선을 다시 계산해 그린다(그림을 저장하지 않음, 마스터 §6-8).
+const SEND_NAME = { co2: '대기 CO₂', T: '기온 편차', sst: '표층 해수온', pH: '해수 pH' };
+const SEND_SRC = { co2: 'model_co2', T: 'model_temp', sst: 'model_sst', pH: 'model_ph' };
+const SCEN_SRC = { ssp245: 'scen_ssp245', ssp126: 'scen_ssp126', ssp119: 'scen_ssp119' };
+for (const ch of charts) {
+  const key = ch.$spec.obs, title = ch.canvas.closest('.chart-block').querySelector('.chart-title');
+  // 제목 줄 버튼들을 오른쪽으로 모으는 빈칸(숨긴 버튼이 있어도 자리가 흔들리지 않게 margin auto 대신)
+  const sp = document.createElement('span');
+  sp.className = 'ct-space';
+  title.insertBefore(sp, title.querySelector('.btn'));
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn btn--rec btn--sm fut-send';
+  b.title = '학습지로 보내기';
+  b.setAttribute('aria-label', `학습지로 보내기: ${SEND_NAME[key]} 그래프`);
+  b.innerHTML = '<span data-icon="download"></span><span class="fut-send-lbl">보내기</span>';
+  b.addEventListener('click', () => Worksheet.addEvidence('future', {
+    chart: key, preset: FUT.preset, levers: FUT.preset === 'custom' ? { ...FUT.levers } : null, toYear: Math.round(FUT.frontier),
+  }, 'future'));
+  title.appendChild(b);
+}
+Icons.fill(document.getElementById('futCharts'));
+Worksheet.registerEvidenceKind('future', {
+  title: cfg => `미래 예측 · ${SEND_NAME[cfg.chart]}`,
+  tags: cfg => [PRESET_KO[cfg.preset], cfg.toYear > LAST_OBS_YEAR ? `${cfg.toYear}년까지 예측` : '예측 없음(관측만)'],
+  sources: cfg => [SEND_SRC[cfg.chart], ...(SCEN_SRC[cfg.preset] ? [SCEN_SRC[cfg.preset]] : [])],
+  draw(canvas, cfg) {
+    const spec = SERIES.find(s => s.obs === cfg.chart);
+    const run = EarthSystem.run({ fromYear: TL_START, toYear: TL_END,
+      emissionsFn: cfg.preset === 'custom' ? EarthSystem.leverEmissions(cfg.levers) : EarthSystem.presetEmissions(cfg.preset) });
+    const to = Math.max(cfg.toYear, LAST_OBS_YEAR);
+    const pred = run.filter(o => o.year >= LAST_OBS_YEAR && o.year <= to).map(o => ({ x: o.year, y: o[spec.key] }));
+    const obs = OBS_PTS[cfg.chart];
+    const r = niceRange([...obs, ...pred].map(p => p.y), 0.06, spec.minSpan);
+    const chart = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets: [
+        { label: '관측', data: obs, showLine: true, borderColor: C('--data-obs'), backgroundColor: C('--data-obs'), borderWidth: 1.4, pointRadius: 0 },
+        { label: `${PRESET_KO[cfg.preset]} (예측)`, data: pred, showLine: true, borderColor: C(spec.color), backgroundColor: C(spec.color),
+          borderDash: [6, 4], borderWidth: 2.4, pointRadius: 0 },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: Theme.legend(), tooltip: { enabled: false } },
+        scales: {
+          x: Theme.axis({ type: 'linear', min: TL_START, max: Math.max(to, LAST_OBS_YEAR + 1), ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 7, callback: v => String(v) } }),
+          y: Theme.axis({ min: r.min, max: r.max, title: SEND_NAME[cfg.chart], ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 5 } }),
+        },
+      },
+    });
+    return { chart };
+  },
+  // 크게 보기: 미래 예측 화면을 그 시나리오(또는 레버)와 예측 전선으로 되돌린다
+  open(cfg) {
+    if (activeTab !== 'future') switchTab('future');
+    if (typeof Inquiry !== 'undefined' && Inquiry.state.on) Inquiry.setMode(false);   // 탐구 중이면 자유 조작으로 나온 뒤
+    if (cfg.preset === 'custom') { FUT.levers = { ...cfg.levers }; leversToInputs(FUT.levers); showLeverValues(); }
+    setPreset(cfg.preset);
+    cancelAnimationFrame(redrawAnim);
+    FUT.frontier = cfg.toYear;
+    VIEW.drawFrontier = cfg.toYear;
+    setYear(cfg.toYear);
+    renderFuture();
+  },
+  csv: cfg => ({ series: cfg.chart, mode: `미래 예측 ${cfg.preset}`, flips: '', range: `1750~${cfg.toYear}` }),
+});

@@ -115,10 +115,10 @@ CSS = {
 BODY = {"aerial": body_of(aerial_html), "fp": body_of(fp_html)}
 
 AERIAL_JS = ["js/earth-model.js", "js/earth-data.js", "js/sources.js", "js/theme.js", "js/icons.js",
-             "js/source-tip.js", "js/earth-system.js", "js/earth-visual.js", "js/common.js", "js/tab-current.js",
+             "js/source-tip.js", "js/earth-system.js", "js/earth-visual.js", "js/common.js", "js/data-catalog.js", "js/graph-workspace.js", "js/worksheet.js", "js/tab-current.js",
              "js/tab-future.js", "js/inquiry-steps.js", "js/inquiry.js", "js/live-fit.js", "js/xlsx-lite.js", "js/tab-live.js",
              "js/live-analysis.js", "js/live-setup.js", "js/live-file.js", "js/main.js"]
-FP_JS = ["js/earth-model.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
+FP_JS = ["js/earth-model.js", "js/earth-data.js", "js/earth-system.js", "firstperson/fp-world.js", "firstperson/fp-weather.js",
          "firstperson/fp-audio.js", "firstperson/fp-minimap.js", "firstperson/fp-field.js",
          "firstperson/fp-tools.js", "firstperson/fp-player.js", "firstperson/fp-main.js"]
 
@@ -249,6 +249,8 @@ window.__boot__ = function (w, mode, tab) {
   // 앱 스크립트들이 최상위에서 getElementById 를 부르므로 마크업이 먼저 있어야 한다
   d.body.innerHTML = A.body[mode];
 
+  // 1인칭 시작 값(배출 경로·연도). srcdoc 문서에는 주소 쿼리가 없어서 전역으로 넘긴다 (firstperson/fp-main.js FPScenario)
+  if (mode === 'fp') w.__FP_QUERY__ = tab || '';
   runIn(w, SHIM_STORAGE);
   runIn(w, A.lib.three);
   if (mode === 'aerial') runIn(w, A.lib.chart);
@@ -275,6 +277,13 @@ window.__boot__ = function (w, mode, tab) {
       a.addEventListener('click', function (e) { e.preventDefault(); w.switchTab(go); });
     });
     if (tab && typeof w.switchTab === 'function') w.switchTab(tab);
+    // [1인칭으로] (3차 E4): 서버에서는 /firstperson/?scenario=…&year=… 로 가지만, 파일 하나에서는 껍데기가 1인칭을 열고 그 값을 넘긴다
+    var fpGo = d.getElementById('fpGo');
+    if (fpGo) {
+      fpGo.removeAttribute('href');
+      fpGo.style.cursor = 'pointer';
+      fpGo.addEventListener('click', function (e) { e.preventDefault(); open_('fp', w.firstPersonQuery()); });
+    }
 
     // 센서 탭은 server.py(WebSocket)가 있어야 돈다. 단일 파일에서는 막고 이유를 알린다.
     var btn = d.getElementById('startStopBtn');

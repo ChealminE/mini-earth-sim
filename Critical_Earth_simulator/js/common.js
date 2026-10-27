@@ -17,14 +17,19 @@ const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
 // 화각은 세로 기준 38°다. 3D 칸이 세로로 길면 같은 세로 화각에서 모형 양옆이 잘린다.
 // setCameraFit(a)를 부른 화면(현재 실태·미래 예측)에서만, 칸의 종횡비가 a보다 좁을 때 세로 화각을 넓혀
 // 가로로 보이는 폭을 종횡비 a일 때와 같게 둔다. 부르지 않은 화면(직접 실험 탭·시작 화면)은 예전과 똑같다.
+// 거꾸로 칸이 넓고 낮으면(3차 B1의 좌측 위 3D 칸, 약 3.5:1) 세로 38°로는 받침대 아래가 잘린다. 그래서 세로 화각의
+// 최솟값(minFov)도 함께 받는다. 장면 크기·배치·카메라 거리는 그대로 두고 화각만 넓힌다.
 const CAM_FOV = 38;
-let camFitAspect = null;
+let camFitAspect = null, camMinFov = CAM_FOV;
 function fovForAspect(a) {
-  if (!camFitAspect || a >= camFitAspect) return CAM_FOV;
-  const halfW = Math.tan(THREE.MathUtils.degToRad(CAM_FOV / 2)) * camFitAspect;
-  return THREE.MathUtils.radToDeg(2 * Math.atan(halfW / a));
+  let fov = CAM_FOV;
+  if (camFitAspect && a < camFitAspect) {
+    const halfW = Math.tan(THREE.MathUtils.degToRad(CAM_FOV / 2)) * camFitAspect;
+    fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfW / a));
+  }
+  return Math.max(fov, camMinFov);
 }
-function setCameraFit(a) { camFitAspect = a; }
+function setCameraFit(a, minFov = CAM_FOV) { camFitAspect = a; camMinFov = minFov; }
 function fitRenderer() {
   const w = glContainer.clientWidth, h = glContainer.clientHeight;
   renderer.setSize(w, h);

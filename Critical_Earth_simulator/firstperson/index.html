@@ -29,6 +29,8 @@
   <div class="hud-line"><b id="hudZone">습지·숲</b></div>
   <div class="hud-line dim" id="hudPos">X 0m · Z 0m · 고도 0m</div>
   <div class="hud-line dim">상태: <span id="hudMode">걷기</span></div>
+  <!-- 3차 E4: 전 지구 값(조감과 같은 모형)과 이 지점의 값(1인칭 고유의 공간 차이)을 나눠 적는다 -->
+  <div class="hud-line dim" id="hudCo2">-</div>
   <div class="hud-line dim">자동차: <span id="hudCars">-</span></div>
   <div class="hud-line dim">바다: <span id="hudSea">-</span></div>
   <div class="hud-line dim">산호: <span id="hudCoral">-</span></div>
@@ -155,12 +157,32 @@
       <span class="lbl">밝기</span>
       <input type="range" id="brightnessSlider" min="0.6" max="2.4" step="0.05" value="1.15">
     </label>
+    <!-- 3차 E4: CO₂는 직접 정하지 않는다(배출의 결과 — 3차 마스터 결정 9). 배출 경로와 연도를 고르면 조감 미래 예측과 같은 모형이 계산한다 -->
+    <div class="row">
+      <span class="lbl">배출 경로</span>
+      <select id="fpScenario">
+        <option value="ssp245">현재 정책 (SSP2-4.5)</option>
+        <option value="ssp126">파리협약 2 °C (SSP1-2.6)</option>
+        <option value="ssp119">1.5 °C 탄소중립 (SSP1-1.9)</option>
+        <option value="custom" hidden>직접 설계 (조감에서 가져옴)</option>
+      </select>
+    </div>
     <label class="row">
-      <span class="lbl">CO₂ 농도</span>
-      <input type="range" id="co2Slider" min="280" max="1000" step="1" value="418">
-      <span class="val"><span id="co2Out">418</span> ppm</span>
+      <span class="lbl">연도</span>
+      <input type="range" id="fpYear" min="1750" max="2200" step="1" value="2023">
+      <span class="val"><span id="fpYearOut">2023</span>년</span>
     </label>
-    <p class="note">CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <p class="note">전 지구 평균 CO₂ <b><span id="fpGlobalCo2">418</span> ppm</b> — 조감 모드 미래 예측과 <b>같은 모형</b>으로 계산한 값입니다(2023년까지는 실제 배출, 그 뒤는 고른 경로).
+      CO₂를 올리면 하늘이 탁해지고, 전기차가 내연기관차로 바뀌며 매연이 늘어납니다.</p>
+    <details class="teacher">
+      <summary>교사용: 농도 직접 넣기</summary>
+      <label class="row">
+        <span class="lbl">CO₂ 농도</span>
+        <input type="range" id="co2Slider" min="280" max="1000" step="1" value="418">
+        <span class="val"><span id="co2Out">418</span> ppm</span>
+      </label>
+      <p class="note">시연용입니다. 직접 넣으면 배출 경로·연도와 연결이 끊기고 HUD에 '교사 입력'으로 표시됩니다.</p>
+    </details>
     <div class="row">
       <span class="lbl">바다</span>
       <span class="sea-eq" id="seaEqState">-</span>
@@ -213,8 +235,14 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<!-- three.js는 조감과 같은 vendor/three.min.js(r160)를 쓴다. CDN이면 학교 인터넷이 막혔을 때 1인칭만 뜨지 않고,
+     IR 보기 코드를 두 화면이 나눠 쓰려면 같은 파일이어야 한다. 절대 경로: /firstperson/ 아래에서도 server.py /vendor 마운트로 간다
+     (단일 HTML 빌드는 tools/build_single_html.py가 vendor에서 직접 넣으므로 이 주소를 쓰지 않는다) -->
+<script src="/vendor/three.min.js"></script>
 <script src="/js/earth-model.js"></script>
+<!-- 3차 E4: 조감 미래 예측과 같은 엔진(배출 → CO₂)으로 그 해의 전 지구 CO₂를 계산한다. 순서: earth-model → earth-data → earth-system -->
+<script src="/js/earth-data.js"></script>
+<script src="/js/earth-system.js"></script>
 <script src="fp-world.js"></script>
 <script src="fp-weather.js"></script>
 <script src="fp-audio.js"></script>
