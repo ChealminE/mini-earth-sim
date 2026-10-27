@@ -43,7 +43,7 @@ body.tab-current.paper #app {
 body.tab-current.paper #gl-container { grid-column: 1; grid-row: 2; }
 body.tab-current.paper #graph-panel, body.tab-current.paper #tab-current { display: contents; }
 
-/* 요약 숫자 4개: 정보이므로 상자·그림자 없이 평평하게, 구분선만 */
+/* 요약 숫자 5개(CO₂·기온·해수온·pH·화석연료): 정보이므로 상자·그림자 없이 평평하게, 구분선만 */
 body.paper #tab-current .stat-grid { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0; margin: 0; border-top: 1px solid var(--rule); border-right: 1px solid var(--rule); background: var(--paper); }
 body.paper #tab-current .stat-box { background: none; border-radius: 0; padding: var(--sp-2) var(--sp-4); min-width: 0; }
@@ -53,6 +53,7 @@ body.paper .stat-box .label { display: flex; align-items: center; font-size: var
 body.paper .stat-box .value { font-size: var(--fs-5); font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
 body.paper .stat-box .value.co2 { color: var(--data-co2); }
 body.paper .stat-box .value.temp { color: var(--data-temp); }
+body.paper .stat-box .value.sst { color: var(--data-sst); }
 body.paper .stat-box .value.ph { color: var(--data-ph); }
 body.paper .stat-box .delta { font-size: var(--fs-1); color: var(--ink-3); margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

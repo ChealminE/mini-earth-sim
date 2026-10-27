@@ -241,16 +241,18 @@
 
     <div class="tab-panel active" id="tab-current">
       <div class="stat-grid">
-        <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다 -->
+        <!-- 숫자는 js/tab-current.js가 관측 자료의 마지막 완전한 해로 채운다.
+             순서는 CO₂ → 기온 → 해수온 → pH(3차 결정), 화석연료 배출은 원인 쪽 자료라 맨 뒤 -->
         <div class="stat-box"><div class="label"><span id="statCo2Label">CO₂ 농도</span><button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="value co2" id="statCo2">-</div><div class="delta" id="statCo2Delta"></div></div>
         <div class="stat-box"><div class="label"><span id="statTempLabel">기온편차</span><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="value temp" id="statTemp">-</div><div class="delta" id="statTempDelta"></div></div>
+        <div class="stat-box"><div class="label"><span id="statSstLabel">해수온 편차</span><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div><div class="value sst" id="statSst">-</div><div class="delta" id="statSstDelta"></div></div>
         <div class="stat-box"><div class="label"><span id="statPhLabel">해양 pH</span><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="value ph" id="statPh">-</div><div class="delta" id="statPhDelta"></div></div>
         <div class="stat-box"><div class="label"><span id="statFossilLabel">화석연료배출</span><button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="value" id="statFossil">-</div><div class="delta" id="statFossilDelta"></div></div>
       </div>
       <div class="charts-2col">
         <div class="chart-block"><div class="chart-title">대기 CO₂ 농도 (지구 평균)<button class="src-i" type="button" data-src="co2_noaa_gl" aria-label="출처 보기: 대기 CO₂ 지구 평균">ⓘ</button></div><div class="chart-wrap"><canvas id="chartCo2"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비)<button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차">ⓘ</button></div><div class="chart-wrap"><canvas id="chartTempHist"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해양 pH (하와이 Station ALOHA)<button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">해양 pH — 한 지점 관측(하와이 Station ALOHA)<button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH">ⓘ</button></div><div class="chart-wrap"><canvas id="chartPhHist"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">화석연료 배출량<button class="src-i" type="button" data-src="emis_gcp" aria-label="출처 보기: 세계 CO₂ 배출량">ⓘ</button></div><div class="chart-wrap"><canvas id="chartFossil"></canvas></div></div>
       </div>
     </div>
@@ -272,12 +274,12 @@
           <div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
+        <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
+          <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
         <div class="chart-block"><div class="chart-title">해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
           <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false">Ω 함께 보기</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec"><span data-icon="flask"></span>바다 속 탄소</button></div>
           <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
-          <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
 
         <!-- 보조 정보 팝오버: 그래프 열 위에 뜨고 배치를 밀지 않는다 -->
         <div class="fut-pop" id="popSink" role="dialog" aria-label="배출된 탄소는 어디로 갔나" hidden>

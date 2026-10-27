@@ -11,6 +11,7 @@ const obsCo2 = series(EARTH_DATA.co2Noaa, 'ppm');            // NOAA GML 지구 
 const obsTemp = series(EARTH_DATA.tempHadcrut, 'anom');      // HadCRUT5, 1850~1900 기준
 const obsTempLo = series(EARTH_DATA.tempHadcrut, 'lo');
 const obsTempHi = series(EARTH_DATA.tempHadcrut, 'hi');
+const obsSst = series(EARTH_DATA.sstHadsst, 'anom');       // HadSST4 편차, 1850~1900 기준
 const obsPh = series(EARTH_DATA.phHot, 'ph');                // HOT Station ALOHA, 1989~
 // 화석연료 배출: 엔진 입력과 같은 자료(GCP via OWID, GtC)를 화면 단위(백만 톤 CO2)로 되돌린다
 const MTCO2_PER_GTC = 3664;
@@ -47,10 +48,17 @@ setEarthVisual(sceneCurrent, modelNow,
   set('statTempLabel', `기온 편차 (${t1.x})`);
   set('statTemp', `${sgn(t1.y, 2)} °C`);
   set('statTempDelta', '1850~1900년 평균 대비');
+  const s1 = lastOf(obsSst);
+  set('statSstLabel', `해수온 편차 (${s1.x})`);
+  set('statSst', `${sgn(s1.y, 2)} °C`);
+  set('statSstDelta', '1850~1900년 평균 대비');
+  // pH만 전 지구 평균이 아니라 한 정점 관측이다(전 지구 재구성 자료로 바꾸는 일은 보류). 학생이 다른 세 숫자와
+  // 같은 무게로 읽지 않게 상자 안에 밝힌다. 칸이 좁아 말줄임이 되면 title로 전체를 볼 수 있게 한다.
   const p0 = obsPh[0], p1 = lastOf(obsPh);
   set('statPhLabel', `해양 pH (${p1.x})`);
   set('statPh', p1.y.toFixed(3));
-  set('statPhDelta', `${p0.x}년 대비 ${sgn(p1.y - p0.y, 3)}`);
+  set('statPhDelta', `한 지점 관측(하와이 Station ALOHA) · ${p0.x}년 대비 ${sgn(p1.y - p0.y, 3)}`);
+  document.getElementById('statPhDelta').title = document.getElementById('statPhDelta').textContent;
   const f1 = lastOf(obsFossil), f0 = obsFossil.find(p => p.x === 1988) || obsFossil[0];
   set('statFossilLabel', `화석연료 배출 (${f1.x})`);
   set('statFossil', `${Math.round(f1.y).toLocaleString('ko-KR')} 백만 톤`);
