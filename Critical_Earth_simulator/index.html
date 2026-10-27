@@ -162,6 +162,7 @@
     <div class="fc-levers future-only" id="fcLevers" hidden>
       <div class="fc-lever-top">
         <button class="btn btn--nav fc-back" type="button" id="fcBack"><span data-icon="back"></span>시나리오로</button>
+        <h3 class="fc-h fc-lv-h">① 배출 경로 직접 설계</h3>
         <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
       </div>
       <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
@@ -205,7 +206,9 @@
   <div id="ctlStrip" class="ctl-strip">
     <p class="cs-note readout" id="csObsRange">관측 자료 · 자료마다 시작 연도가 다릅니다</p>
     <div class="cs-scen" id="fcScen" role="group" aria-label="시나리오 (2024년부터의 배출)">
-      <span class="cs-label">시나리오 <span>2024년부터의 배출</span></span>
+      <!-- 3차 D1: 조작하는 것은 배출 경로(원인) — CO₂는 그 결과(매개), 기온·해수온·pH는 최종 결과. 머리말 아래에 고른 경로의 배출량 선(1750~2200) -->
+      <span class="cs-label"><span class="cs-title">① 배출 경로 고르기</span>
+        <span class="cs-emis"><canvas id="fcEmisSpark" width="240" height="40" role="img" aria-label="고른 경로의 배출량 1750~2200년, 2024년부터는 고른 경로"></canvas><span id="fcEmisSrc"></span></span></span>
       <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
       <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
         <div class="fc-card">
@@ -344,20 +347,22 @@
       <section class="fut-charts" id="futCharts" aria-label="그래프">
         <!-- 공용 범례 + 보기 토글 (그래프마다 범례를 두면 4개가 한 화면에 들어가지 않는다) -->
         <div class="fut-legend readout" aria-label="범례">
+          <!-- 3차 D1: 원인 → 매개 → 결과 (엔진 설계와 같은 순서) -->
+          <span class="fut-chain" title="배출 → 대기 CO₂ → 기온 · 해수온 · pH"><b>① 배출</b> → <b>② CO₂</b> → <b>③ 기온·해수온·pH</b></span>
           <span class="fk"><i class="fk-line obs"></i>관측</span>
           <span class="fk"><i class="fk-line pred"></i>인간활동 지구 (예측)</span>
           <span class="fk"><i class="fk-line nature"></i>자연만 있는 지구</span>
           <span class="fk" id="futPrevKey" hidden><i class="fk-line prev"></i>이전 선택: <b id="futPrevName"></b></span>
           <button class="btn btn--view btn--sm" type="button" id="futValidateBtn" aria-pressed="false"><span data-icon="lines"></span>모형 검증 보기</button>
         </div>
-        <div class="chart-block"><div class="chart-title">대기 CO₂ (ppm)<button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂ (모형 계산)">ⓘ</button>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">②</span>대기 CO₂ (ppm)<span class="ct-sub">배출이 쌓인 결과</span><button class="src-i" type="button" data-src="model_co2" aria-label="출처 보기: 대기 CO₂ (모형 계산)">ⓘ</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSink" aria-pressed="false" aria-controls="popSink"><span data-icon="sink"></span>탄소는 어디로?</button></div>
           <div class="chart-wrap"><canvas id="futChartCo2"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>기온 편차 (산업화 이전 대비, °C)<button class="src-i" type="button" data-src="model_temp" aria-label="출처 보기: 기온 편차 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="temp_hadcrut5" aria-label="출처 보기: 지구 평균 기온 편차 (관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartT"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>표층 해수온 (°C)<button class="src-i" type="button" data-src="model_sst" aria-label="출처 보기: 표층 해수온 (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="obs_sst_hadsst4" aria-label="출처 보기: 표층 해수온 (HadSST4 관측)">ⓘ</button></div>
           <div class="chart-wrap"><canvas id="futChartSst"></canvas></div></div>
-        <div class="chart-block"><div class="chart-title">해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
+        <div class="chart-block"><div class="chart-title"><span class="ct-num">③</span>해수 pH<button class="src-i" type="button" data-src="model_ph" aria-label="출처 보기: 해수 pH (모형 계산)">ⓘ</button><button class="src-i" type="button" data-src="ph_hot" aria-label="출처 보기: 해수 pH (HOT 관측)">ⓘ</button>
           <button class="btn btn--view btn--sm fut-omega-btn" type="button" id="futOmegaBtn" aria-pressed="false" data-ws-moved>Ω 함께 보기</button>
           <button class="btn btn--view btn--sm fut-pop-btn" type="button" data-pop="popSpec" aria-pressed="false" aria-controls="popSpec" data-ws-moved><span data-icon="flask"></span>바다 속 탄소</button></div>
           <div class="chart-wrap"><canvas id="futChartPh"></canvas></div></div>

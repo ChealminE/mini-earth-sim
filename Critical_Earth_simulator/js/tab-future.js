@@ -833,8 +833,34 @@ function updateTrack() {
 $('tlSpeed').addEventListener('change', e => { FUT.speed = Number(e.target.value); });
 
 // 화면(팝오버·세로선)을 재생 연도에 맞춘다. 3D는 0.2초 틱에서만 바꾼다.
+// 조작 띠의 배출량 선 (3차 D1): 고른 경로의 배출(화석 + 토지이용, EarthSystem.run 의 emissions 그대로).
+// 재생 위치까지 진하게, 그 뒤는 옅게(시간 막대의 과거/예측 표현과 같게). 궤적이나 연도가 바뀔 때만 다시 그린다.
+const emisSpark = { run: null, year: null, preset: null, base: null };
+function drawEmisSpark() {
+  const y = Math.round(FUT.year);
+  if (emisSpark.run === FUT.human && emisSpark.year === y) return;
+  const cv = $('fcEmisSpark'), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(cv.clientWidth * dpr), hh = Math.round(cv.clientHeight * dpr);
+  if (w && hh && (cv.width !== w || cv.height !== hh)) { cv.width = w; cv.height = hh; }
+  // 세로 범위는 세 SSP 경로를 모두 담는 값으로 고정한다(한 번만 계산) — 경로마다 제 최댓값에 맞추면 어느 경로든 높이가 같아 보여
+  // '시나리오를 바꾸면 배출이 달라진다'가 안 보인다. 직접 설계가 그 범위를 넘을 때만 넓힌다
+  if (!emisSpark.base) {
+    const v = ['ssp245', 'ssp126', 'ssp119'].flatMap(k => EarthSystem.run({ fromYear: TL_START, toYear: TL_END, emissionsFn: EarthSystem.presetEmissions(k) }).map(o => o.emissions));
+    emisSpark.base = { min: Math.min(0, ...v), max: Math.max(...v) };
+  }
+  const pts = FUT.human.map(o => ({ x: o.year, y: o.emissions }));
+  const cur = pts.map(o => o.y).filter(Number.isFinite);
+  GraphWorkspace.drawSpark(cv, pts, { color: C('--data-fossil'), split: y, mark: LAST_OBS_YEAR,
+    yMin: Math.min(emisSpark.base.min, ...cur), yMax: Math.max(emisSpark.base.max, ...cur) });
+  emisSpark.run = FUT.human; emisSpark.year = y;
+  if (emisSpark.preset !== FUT.preset) {   // ⓘ: 과거 배출(GCP) + 2024년부터 고른 경로(SSP 배출 또는 직접 설계 레버)
+    emisSpark.preset = FUT.preset;
+    $('fcEmisSrc').innerHTML = srcButton('emis_gcp') + srcButton(FUT.preset === 'custom' ? 'lever_fossil' : 'ssp_emissions');
+  }
+}
 function renderFuture() {
   const h = sampleAt(FUT.human, FUT.year);
+  drawEmisSpark();
   tlYearEl.textContent = Math.round(FUT.year);
   if (Number(tlScrub.value) !== Math.round(FUT.year)) tlScrub.value = Math.round(FUT.year);
   updateTrack();
@@ -947,7 +973,7 @@ for (const ch of charts) {
   b.className = 'btn btn--rec btn--sm fut-send';
   b.title = '학습지로 보내기';
   b.setAttribute('aria-label', `학습지로 보내기: ${SEND_NAME[key]} 그래프`);
-  b.innerHTML = '<span data-icon="download"></span>보내기';
+  b.innerHTML = '<span data-icon="download"></span><span class="fut-send-lbl">보내기</span>';
   b.addEventListener('click', () => Worksheet.addEvidence('future', {
     chart: key, preset: FUT.preset, levers: FUT.preset === 'custom' ? { ...FUT.levers } : null, toYear: Math.round(FUT.frontier),
   }, 'future'));

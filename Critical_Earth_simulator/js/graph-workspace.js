@@ -227,6 +227,43 @@ const GraphWorkspace = (() => {
       return `${c.raw.x}년 · ${it.short} ${c.raw.y.toFixed(it.minSpan >= 2 ? 1 : 3)}${it.unit ? ' ' + it.unit : ''}`;
     };
   }
+  // 스파크라인(작은 모양선): Chart.js 인스턴스를 쓰지 않고 2D 캔버스에 직접 — 카드 10장 × 차트는 무겁다.
+  // 덱 카드와 미래 예측 조작 띠의 배출량 선(3차 D1)이 같이 쓴다.
+  // opts: color · dash(모형 점선) · minSpan · yMin/yMax(고정 범위) · split(이 x 뒤는 옅게 — 재생 중 '아직 오지 않은' 구간) · mark(세로 점선 x)
+  function drawSpark(cv, p, opts = {}) {
+    const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+    const vals = p.map(o => o.y).filter(Number.isFinite);
+    if (!vals.length) { ctx.clearRect(0, 0, w, h); return; }
+    const xs = GraphWorkspaceCore.span(p);
+    const yr = opts.yMin != null || opts.yMax != null
+      ? { min: opts.yMin ?? Math.min(...vals), max: opts.yMax ?? Math.max(...vals) }
+      : GraphWorkspaceCore.axisRange(vals, opts.minSpan || 0, 0.08);
+    const X = x => ((x - xs.from) / (xs.to - xs.from || 1)) * (w - 2) + 1;
+    const Y = y => h - 2 - ((y - yr.min) / (yr.max - yr.min || 1)) * (h - 4);
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineWidth = Math.max(1.6, h / 22);
+    if (opts.mark != null) {
+      ctx.save(); ctx.strokeStyle = Theme.alpha('--ink', 0.35); ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(X(opts.mark), 0); ctx.lineTo(X(opts.mark), h); ctx.stroke(); ctx.restore();
+    }
+    if (yr.min < 0 && yr.max > 0) {   // 0 기준선 (배출이 음수가 되는 경로)
+      ctx.save(); ctx.strokeStyle = Theme.alpha('--ink', 0.25); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(w, Y(0)); ctx.stroke(); ctx.restore();
+    }
+    const stroke = (part, alpha) => {
+      if (part.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = alpha < 1 ? Theme.alpha(opts.color, alpha) : opts.color;
+      if (opts.dash) ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      part.forEach((o, i) => (i ? ctx.lineTo(X(o.x), Y(o.y)) : ctx.moveTo(X(o.x), Y(o.y))));
+      ctx.stroke(); ctx.restore();
+    };
+    const ok = p.filter(o => Number.isFinite(o.y));
+    if (opts.split == null) stroke(ok, 1);
+    else { stroke(ok.filter(o => o.x <= opts.split), 1); stroke(ok.filter(o => o.x >= Math.floor(opts.split)), 0.3); }
+  }
+
   // 분석창 하나 = Chart.js 하나(type scatter + showLine). 축은 손으로 못 바꾼다(확대·끌기 플러그인 없음, R3)
   function chartConfig(env, modeOf, segMarks) {
     return {
@@ -327,21 +364,8 @@ const GraphWorkspace = (() => {
         <span class="gw-card-per readout">${per.from}~${per.to}</span>
       </li>`;
     }
-    // 스파크라인: Chart.js 인스턴스를 쓰지 않고 2D 캔버스에 직접 (카드 10장 × 차트 = 무거움)
-    function drawSpark(cv, it) {
-      const p = pts(it.id), ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
-      const xs = GraphWorkspaceCore.span(p), yr = GraphWorkspaceCore.axisRange(p.map(o => o.y), it.minSpan, 0.08);
-      ctx.clearRect(0, 0, w, h);
-      ctx.strokeStyle = C(it.color); ctx.lineWidth = 1.6;
-      if (it.scope === 'model') ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      p.forEach((o, i) => {
-        const x = ((o.x - xs.from) / (xs.to - xs.from || 1)) * (w - 2) + 1, y = h - 2 - ((o.y - yr.min) / (yr.max - yr.min)) * (h - 4);
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      });
-      ctx.stroke();
-    }
-    qa('.gw-card').forEach(c => drawSpark(c.querySelector('.gw-spark'), byId(c.dataset.id)));
+    qa('.gw-card').forEach(c => { const it = byId(c.dataset.id);
+      drawSpark(c.querySelector('.gw-spark'), pts(it.id), { color: C(it.color), dash: it.scope === 'model', minSpan: it.minSpan }); });
 
     // ── 그래프 (Chart.js 한 개를 계속 갱신) ──
     const plot = q('.gw-plot');
@@ -530,5 +554,5 @@ const GraphWorkspace = (() => {
     };
   }
 
-  return { create, drawStatic, chartImage, buildView, makeEnv, SCOPE_TAG, MODES };
+  return { create, drawStatic, chartImage, drawSpark, buildView, makeEnv, SCOPE_TAG, MODES };
 })();
