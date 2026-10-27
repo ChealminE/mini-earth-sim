@@ -689,9 +689,17 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
   });
 
   // 새로 고친 뒤: 저장된 응답을 되살리고, 탐구 중이었으면 그 단계로 다시 들어간다
+  // 탐구 다시 켜기는 페이지의 스크립트가 모두 읽힌 뒤(DOMContentLoaded)로 미룬다. 여기서 바로 부르면
+  // ① setMode → refreshCharts·그래프 플러그인이 아직 초기화 전인 const Inquiry 를 건드려(typeof 도 TDZ에서는 오류) 스크립트가 멈추고
+  //   화면이 booting 상태로 가려진 채 열리지 않았고(탐구를 켠 채 새로 고치면 미래 예측 탭이 안 열리던 버그),
+  // ② 자연 지구 단계(A4 등)는 뒤에 읽히는 main.js 의 updateLegend3D 를 불러 같은 식으로 멈췄다.
   const saved = load();
   renderLog();
-  if (saved && saved.on) setMode(true);
+  if (saved && saved.on) {
+    const restore = () => setMode(true);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore, { once: true });
+    else queueMicrotask(restore);
+  }
 
   return { setMode, startPath, go, state: INQ, view: QV, drawUnder, drawOver, chartEvent, refresh, playEnded, ACTIONS };
 })();

@@ -136,6 +136,16 @@ async function browser(url) {
   await page.waitForTimeout(1300);
   const after = await state();
   check(before === after, '탐구를 켰다 꺼도 자유 조작 상태가 그대로', before === after ? '' : `\n      전 ${before}\n      후 ${after}`);
+  // 탐구를 켠 채 새로 고침: 저장된 탐구로 다시 열려야 한다. 예전에는 inquiry.js 가 초기화 도중 탐구를 켜다 TDZ 오류로 멈춰
+  // 화면이 booting 에 가려진 채 미래 예측 탭이 열리지 않았다(3차 B1 중 발견)
+  await page.click('#inqModeOn');
+  await page.waitForTimeout(300);
+  await page.reload();
+  await page.waitForTimeout(1500);
+  const re = await page.evaluate(() => ({ booting: document.documentElement.classList.contains('booting'),
+    on: document.body.classList.contains('inq-on'), panel: !document.getElementById('inqPanel').hidden }));
+  check(!re.booting && re.on && re.panel, '탐구를 켠 채 새로 고쳐도 화면이 열리고 탐구가 이어짐', JSON.stringify(re));
+  await page.evaluate(() => { try { localStorage.removeItem('inquiry.v1'); } catch (e) {} });
   check(perr.length === 0, '콘솔 오류 없음', perr.join(' / '));
   await b.close();
 }
