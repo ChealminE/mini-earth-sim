@@ -368,6 +368,9 @@ function bindInput(P, canvas) {
   document.getElementById('fieldCloseBtn').addEventListener('click', closeField);
 
   window.addEventListener('keydown', e => {
+    // 야장 현장 과제의 글 칸·설정창 목록 상자에 글을 쓰는 중이면 단축키를 쓰지 않는다(3차 E4).
+    // 한글 자판에서 E = ㄷ, F = ㄹ 이라 이 검사가 없으면 글을 쓰다 야장·설정창이 닫혔다
+    if (e.target && e.target.closest && e.target.closest('input[type="text"], textarea, select')) return;
     // e.repeat 가드: 키를 누르고 있으면 keydown이 연속으로 들어와 창이 깜빡인다
     if (e.code === 'KeyE') {
       if (!e.repeat) { if (FPField.panelOpen) closeField(); else P.toggleSettings(); }

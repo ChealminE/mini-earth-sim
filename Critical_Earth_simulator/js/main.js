@@ -207,3 +207,22 @@ function updateLegend3D() {
   Worksheet.onCards(syncTools);
   Worksheet.cardsForTab(activeTab);
 }
+
+// ── [1인칭으로] (3차 E4): 지금 보고 있는 배출 경로·연도로 1인칭을 연다 ──
+// 미래 예측 = 고른 시나리오와 재생 연도, 현재 실태 = 엔진이 실제 배출로 계산하는 마지막 해(EarthSystem.LAST_HIST_YEAR).
+// 1인칭은 같은 엔진으로 그 해의 전 지구 CO₂를 다시 계산한다(firstperson/fp-main.js FPScenario). 주소는 누르는 순간 만든다.
+function firstPersonQuery() {
+  const q = new URLSearchParams();
+  if (activeTab === 'future') {
+    q.set('scenario', FUT.preset);
+    if (FUT.preset === 'custom') q.set('levers', JSON.stringify(FUT.levers));
+    q.set('year', String(Math.round(FUT.year)));
+  } else q.set('year', String(EarthSystem.LAST_HIST_YEAR));
+  return '?' + q.toString();
+}
+{
+  const a = document.getElementById('fpGo');
+  const fill = () => { a.href = '/firstperson/' + firstPersonQuery(); };
+  ['pointerdown', 'focus', 'mouseenter'].forEach(ev => a.addEventListener(ev, fill));
+  fill();
+}

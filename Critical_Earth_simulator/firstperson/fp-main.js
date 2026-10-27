@@ -12,7 +12,31 @@ renderer.toneMappingExposure = 1.15;
 const camera = new THREE.PerspectiveCamera(75, 1, 0.002, 60);
 
 buildFirstPersonWorld(renderer);
-applyWorldCO2(418);
+
+// ── 배출 경로 + 연도 → 전 지구 CO₂ (3차 E4) ─────────────────────────────────
+// 예전에는 CO₂ 슬라이더로 농도를 직접 넣었다. 조감 모드에서는 CO₂가 배출을 쌓은 '결과'라(3차 마스터 결정 9)
+// 두 화면이 같은 값을 쓰도록 조감 미래 예측과 같은 엔진(js/earth-system.js)으로 그 해의 전 지구 CO₂를 계산해 applyWorldCO2 에 넣는다.
+// 시작 값은 주소에서: /firstperson/?scenario=ssp245&year=2100 (단일 HTML 파일에서는 껍데기가 window.__FP_QUERY__ 로 넘긴다).
+// 도시 열섬·나무 밑 CO₂ 같은 공간 차이 계산은 그대로 — HUD에 '전 지구'와 '이 지점'을 나눠 적는다.
+const FPScenario = (() => {
+  const q = new URLSearchParams(window.__FP_QUERY__ || location.search);
+  const PRESETS = { ssp245: '현재 정책', ssp126: '파리협약 2 °C', ssp119: '1.5 °C 탄소중립', custom: '직접 설계' };
+  let levers = null;
+  try { levers = q.get('levers') ? JSON.parse(q.get('levers')) : null; } catch (e) { levers = null; }
+  const S = {
+    preset: PRESETS[q.get('scenario')] && (q.get('scenario') !== 'custom' || levers) ? q.get('scenario') : 'ssp245',
+    year: Math.max(1750, Math.min(2200, Math.round(Number(q.get('year')) || EarthSystem.LAST_HIST_YEAR))),
+    teacher: false,   // 교사용 농도 직접 넣기를 쓰는 중
+    PRESETS,
+  };
+  const runs = {};
+  const run = p => runs[p] || (runs[p] = EarthSystem.run({ fromYear: 1750, toYear: 2200,
+    emissionsFn: p === 'custom' ? EarthSystem.leverEmissions(levers) : EarthSystem.presetEmissions(p) }));
+  S.ppm = () => run(S.preset)[S.year - 1750].ppm;
+  S.label = () => (S.year <= EarthSystem.LAST_HIST_YEAR ? `${S.year}년 (실제 배출)` : `${PRESETS[S.preset]} ${S.year}년`);
+  return S;
+})();
+applyWorldCO2(FPScenario.ppm());
 FPPlayer.init(camera, glCanvas);
 FPTools.init(camera);   // 단축바 + 손에 든 도구 (camera를 씬에 넣는 것도 여기서 처리)
 FPWeather.init(FPWorld.scene);
@@ -51,8 +75,30 @@ const hudSea = document.getElementById('hudSea');
 const hudCoral = document.getElementById('hudCoral');
 co2Slider.addEventListener('input', () => {
   co2Out.textContent = co2Slider.value;
+  FPScenario.teacher = true;   // 직접 넣으면 배출 경로·연도와 연결이 끊긴다 (HUD '교사 입력')
   applyWorldCO2(Number(co2Slider.value));
 });
+// 배출 경로·연도 → 전 지구 CO₂ (3차 E4)
+const fpScenario = document.getElementById('fpScenario');
+const fpYear = document.getElementById('fpYear');
+const fpYearOut = document.getElementById('fpYearOut');
+const fpGlobalCo2 = document.getElementById('fpGlobalCo2');
+if (FPScenario.preset === 'custom') fpScenario.querySelector('[value="custom"]').hidden = false;
+function applyScenarioYear() {
+  FPScenario.teacher = false;
+  const ppm = FPScenario.ppm();
+  fpScenario.value = FPScenario.preset;
+  fpYear.value = FPScenario.year;
+  fpYearOut.textContent = FPScenario.year;
+  fpGlobalCo2.textContent = ppm.toFixed(0);
+  co2Slider.value = Math.round(ppm); co2Out.textContent = Math.round(ppm);
+  applyWorldCO2(ppm);
+}
+fpScenario.addEventListener('change', () => { FPScenario.preset = fpScenario.value; applyScenarioYear(); });
+fpYear.addEventListener('input', () => { FPScenario.year = Number(fpYear.value); applyScenarioYear(); });
+// 야장 현장 과제(fp-field.js)가 '이 연도로 가기'로 부른다
+FPScenario.goYear = y => { FPScenario.year = y; applyScenarioYear(); };
+applyScenarioYear();
 
 // ── 해수 평형 상태 + 즉시 평형 버튼 (해수 pCO2는 대기를 τ_sw로 천천히 따라간다) ──
 const seaEqState = document.getElementById('seaEqState');
@@ -132,6 +178,9 @@ const hudPos = document.getElementById('hudPos');
 const hudMode = document.getElementById('hudMode');
 const waterOverlay = document.getElementById('waterOverlay');
 const hudTime = document.getElementById('hudTime');
+const hudCo2 = document.getElementById('hudCo2');
+// 서 있는 구역의 대기 키 (fp-player.js currentZone 과 같은 경계)
+const zoneKeyAt = () => (FPPlayer.underwater || FPPlayer.pos.x < -FPWorld.ZONE_W / 2 ? 'ocean' : FPPlayer.pos.x > FPWorld.ZONE_W / 2 ? 'city' : 'green');
 let hudTimer = 0;
 
 // ── 프레임 루프 ─────────────────────────────────────────────────────────────
@@ -217,6 +266,9 @@ function animate() {
     hudMode.textContent = mode.length ? mode.join(' · ') : '걷기';
     hudTime.textContent = hourLabel(FPWorld.hour) + (FPWorld.timeFlowing ? '' : ' · 정지 (T)')
       + ` · ${SEASONS[FPWorld.season].ko} · ${WEATHER[FPWeather.kind].ko} · ${FPAir.windLabel()}`;
+    // 전 지구 = 조감과 같은 모형의 그 해 값 / 이 지점 = 구역 대기(열섬·광합성·해륙풍·계절이 더해진 1인칭 고유의 차이)
+    hudCo2.textContent = `CO₂ 전 지구 평균 ${FPWorld.co2.toFixed(0)} ppm (${FPScenario.teacher ? '교사 입력' : '조감과 같은 모형 · ' + FPScenario.label()})`
+      + ` · 이 지점 공기 ${FPAir.zoneCO2(zoneKeyAt()).toFixed(0)} ppm`;
     const gas = FPWorld.gasCarCount, ev = FPWorld.cars.length - gas;
     hudCars.textContent = `내연 ${gas} · 전기 ${ev}`;
     // 개방 해역 대표값. 해수 pCO2가 해양 대기와 아직 다르면 '평형 중'임을 같이 보여준다.

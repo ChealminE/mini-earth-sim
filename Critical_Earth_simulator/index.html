@@ -99,6 +99,8 @@
       <a class="btn btn--nav" data-tab-go="current" href="/dashboard?tab=current">현재 실태</a>
       <a class="btn btn--nav" data-tab-go="future" href="/dashboard?tab=future">미래 예측</a>
       <a class="btn btn--nav" data-tab-go="live" href="/dashboard?tab=live">직접 실험</a>
+      <!-- 3차 E4: 지금 보고 있는 배출 경로·연도로 1인칭을 연다(주소는 누르는 순간 js/main.js 가 채운다) -->
+      <a class="btn btn--nav" id="fpGo" href="/firstperson/">1인칭으로</a>
     </nav>
     <p class="tb-desc readout" id="topbarDesc"></p>
   </header>
@@ -312,6 +314,15 @@
               <thead><tr><th>경로</th><th>단계</th><th>질문</th><th>응답</th><th>연도</th><th>값</th></tr></thead>
               <tbody id="inqLog"></tbody>
             </table></div>
+          </section>
+          <!-- 1인칭 현장 기록 (3차 E4): 1인칭 야장 현장 과제의 관찰 글. 1인칭이 공용 저장소(worksheet.v1 의 fp)에 쓰고 여기서 읽기만 한다 -->
+          <section class="rec-inq rec-fp" id="recFp" hidden>
+            <div class="rec-head"><b class="readout">1인칭 현장 기록 <span id="recFpCount">0</span>개</b></div>
+            <div class="rec-table-wrap"><table class="spec-table rec-table">
+              <thead><tr><th>과제</th><th>조감 단계</th><th>경로</th><th>연도별 관찰</th><th>달라진 점</th></tr></thead>
+              <tbody id="recFpLog"></tbody>
+            </table></div>
+            <p class="ws-empty" id="recFpNote" hidden></p>
           </section>
         </div>
       </section>

@@ -778,3 +778,5 @@ body.paper .inq-ev select { font: inherit; font-size: var(--fs-2); color: var(--
   border-radius: var(--radius); padding: var(--sp-1) var(--sp-2); min-height: 34px; }
 body.paper .inq-ev select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 body.paper .inq-ev-acts { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+/* 1인칭 현장 기록 (3차 E4): 관찰·달라진 점은 글이 길어 줄을 바꾼다 */
+body.paper #worksheet .rec-fp td:nth-child(4), body.paper #worksheet .rec-fp td:nth-child(5) { white-space: normal; min-width: 9em; }

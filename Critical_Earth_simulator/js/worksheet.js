@@ -77,7 +77,11 @@ const Worksheet = (() => {
       } catch (e) { /* 옛 기록을 못 읽으면 새로 시작 */ }
       d.migratedInquiryV1 = true;
     }
-    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* 저장소를 못 쓰면 이번 화면에서만 */ } };
+    // fp 는 1인칭(firstperson/fp-field.js)이 쓰는 몫 — 조감은 읽기만 하므로, 쓰기 전에 저장소의 최신 fp 를 가져와 덮어쓰지 않게 한다
+    const save = () => {
+      try { const cur = JSON.parse(localStorage.getItem(KEY) || 'null'); if (cur && cur.fp) d.fp = cur.fp; } catch (e) { /* 그대로 */ }
+      try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) { /* 저장소를 못 쓰면 이번 화면에서만 */ }
+    };
     save();
     return { data: d, save };
   })();
@@ -242,6 +246,24 @@ const Worksheet = (() => {
     syncCards();
   }
   cardBox.addEventListener('click', e => { const b = e.target.closest('[data-card-close]'); if (b) closeCard(b.dataset.cardClose); });
+
+  // ── 1인칭 현장 기록 (3차 E4) ── [기록] 탭을 열 때마다 저장소에서 다시 읽는다(1인칭이 다른 화면에서 썼으므로)
+  const PRESET_KO = { ssp245: '현재 정책', ssp126: '파리협약 2 °C', ssp119: '1.5 °C 탄소중립', custom: '직접 설계' };
+  function renderFp() {
+    let fp = {};
+    try { fp = (JSON.parse(localStorage.getItem('worksheet.v1') || 'null') || {}).fp || {}; } catch (e) { fp = store.data.fp || {}; }
+    const rows = Object.values(fp.tasks || {});
+    $('recFp').hidden = !rows.length && !singleFile;
+    $('recFpCount').textContent = rows.length;
+    $('recFpLog').innerHTML = rows.map(r => `<tr><td>${esc(r.title)}</td><td>${esc(r.link)}</td><td>${esc(PRESET_KO[r.scenario] || r.scenario || '')}</td>
+      <td>${Object.entries(r.obs || {}).filter(([, v]) => String(v).trim()).map(([y, v]) => `<b>${esc(y)}</b> ${esc(v)}`).join('<br>')}</td><td>${esc(r.diff || '')}</td></tr>`).join('');
+    // 단일 HTML 파일(file://)에서는 브라우저에 따라 저장소가 화면마다 갈린다 → 1인칭 기록이 안 보이면 야장 CSV를 쓰라고 알린다
+    $('recFpNote').hidden = !(singleFile && !rows.length);
+    $('recFpNote').textContent = '단일 파일에서 1인칭 기록이 보이지 않으면 1인칭 야장(F)의 CSV로 내보내 주세요.';
+  }
+  const singleFile = location.protocol === 'about:' || location.protocol === 'file:';
+  $('wsTabRecord').addEventListener('click', renderFp);
+  renderFp();
 
   // 접힘 기억 되살리기는 맨 끝에서: setCollapsed → syncEvidence 가 위의 증거 변수(let·const)를 쓰므로 그 선언 뒤여야 한다
   // (앞에 두면 초기화 전 변수를 건드려 멈춘다 — 3차 B1의 탐구 복원 버그와 같은 종류)

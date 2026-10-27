@@ -160,6 +160,91 @@ const INQUIRY = [
     ],
   },
 ];
+// ── 현장 과제 (3차 E4) ─────────────────────────────────────────────────────
+// 조감 모드 탐구 경로 C(기온 · 시나리오 비교)와 이어진다: 같은 곳을 두 연도(지금 / 고른 배출 경로의 2100년)에서 보고 달라진 점을 쓴다.
+// 위의 측정 과제는 기록 수로 판정하지만, 이 과제는 관찰 글이 있으면 그 칸을 채운 것으로 본다(맞고 틀림은 보지 않는다).
+// 문구는 데이터로 둔다. link = 조감 탐구 경로 C의 단계 id(조감 학습지 [기록]의 '1인칭 현장 기록'에 함께 적힌다).
+// 1인칭 세계가 실제로 바꾸는 것만 묻는다: 산호 백화(수온)·냉수대 골격 용해(Ω)·빙하 곁 온도. 1인칭에는 조개가 없고
+// 유빙 크기는 계절만 따른다 — 그래서 ⑥은 냉수대 산호 골격으로, ⑦은 빙하 곁 온도로 본다.
+// 답은 localStorage['worksheet.v1'].fp.tasks 에 둔다(조감 학습지 공용 저장소와 같은 키 — js/worksheet.js).
+const FIELD_TASKS = [
+  { id: 'coral', link: 'C3', title: '⑤ 산호 — 해수온', concept: '해수온 상승 · 산호 백화', years: [2023, 2100],
+    goal: '같은 산호를 지금과 2100년에 보고 색이 어떻게 달라지는지 비교한다.',
+    how: '설정(E)에서 배출 경로를 고르고, 아래 [이 연도로 가기]로 연도를 바꿔 개방 해역 산호를 가까이서 보시오. 4번 해수분석기로 수온도 재 보세요.',
+    think: '산호가 하얗게 바래는(백화) 까닭은 무엇일까? 배출 경로를 바꾸면 2100년의 산호는 어떻게 다를까?' },
+  { id: 'shell', link: 'C3', title: '⑥ 껍데기·골격 — pH · Ω', concept: '해양 산성화 · 아라고나이트 포화도', years: [2023, 2100],
+    goal: '유빙 옆 차가운 바다(냉수대) 산호의 탄산칼슘 골격을 지금과 2100년에 보고 비교한다. (조개 껍데기와 같은 재료)',
+    how: '유빙 바로 옆 냉수대로 가서 [이 연도로 가기]로 연도를 바꿔 보시오. 2번 pH미터와 4번 해수분석기(Ω)로 재 보세요. HUD 산호 줄에 냉수대 Ω가 있습니다.',
+    think: 'Ω가 1보다 작아지면 껍데기·골격에 무슨 일이 생길까? 차가운 바다가 먼저 위험한 까닭은?' },
+  { id: 'glacier', link: 'C2', title: '⑦ 빙하 — 기온', concept: '기온 상승 · 빙하', years: [2023, 2100],
+    goal: '빙하(유빙) 곁의 온도를 지금과 2100년에 재고 비교한다.',
+    how: '유빙 곁에서 1번 온도계로 빙하 표면과 해양 대기 온도를 재시오. [이 연도로 가기]로 연도를 바꿔 다시 재세요. (이 세계의 유빙 크기는 계절만 따릅니다 — 그래서 온도를 잽니다)',
+    think: '빙하 표면이 0 °C에 가까워지면 무슨 일이 생길까? 조감 모드에서 고른 경로의 2100년 기온과 견주어 보세요.' },
+];
+// 공용 저장소의 fp 묶음 읽기·쓰기. file:// 등에서 저장소가 막히면 조용히 넘어간다(이번 화면 동안만 메모리)
+const FieldStore = {
+  key: 'worksheet.v1',
+  mem: null,
+  read() {
+    try { const d = JSON.parse(localStorage.getItem(this.key) || 'null') || {}; d.fp = d.fp || {}; d.fp.tasks = d.fp.tasks || {}; return d; }
+    catch (e) { return this.mem || (this.mem = { fp: { tasks: {} } }); }
+  },
+  setTask(id, patch) {
+    const d = this.read(), t = FIELD_TASKS.find(x => x.id === id);
+    const cur = d.fp.tasks[id] || { id, title: t.title, link: t.link, obs: {} };
+    Object.assign(cur, patch, { title: t.title, link: t.link, scenario: typeof FPScenario !== 'undefined' ? FPScenario.preset : '', time: new Date().toISOString() });
+    d.fp.tasks[id] = cur;
+    try { localStorage.setItem(this.key, JSON.stringify(d)); } catch (e) { this.mem = d; }
+  },
+};
+FPField.fieldProgress = function () {
+  const saved = FieldStore.read().fp.tasks;
+  return FIELD_TASKS.map(t => {
+    const a = saved[t.id] || { obs: {} };
+    const subs = [...t.years.map(y => ({ label: `${y}년 관찰`, ok: !!(a.obs && String(a.obs[y] || '').trim()) })),
+      { label: '달라진 점', ok: !!String(a.diff || '').trim() }];
+    return { task: t, a, subs, frac: subs.filter(x => x.ok).length / subs.length, done: subs.every(x => x.ok) };
+  });
+};
+FPField.renderFieldTasks = function () {
+  const box = document.getElementById('fieldTasks');
+  if (!box || box.contains(document.activeElement)) return;   // 글을 쓰는 중에는 다시 그리지 않는다(커서가 튄다)
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  box.insertAdjacentHTML('beforeend', `<h4 class="t-section">현장 과제 — 두 연도 비교 (조감 탐구 경로 C와 이어짐)</h4>` + this.fieldProgress().map(p => {
+    const t = p.task;
+    return `<div class="task-card field-task${p.done ? ' done' : ''}" data-ft="${t.id}">` +
+      `<div class="t-head"><span class="t-title">${t.title}</span>` +
+      `<span class="t-badge">${p.done ? '✓ 완료' : Math.round(p.frac * 100) + '%'}</span></div>` +
+      `<div class="t-concept">${t.concept} · 조감 ${t.link}</div>` +
+      `<p class="t-line"><b>목표</b> ${t.goal}</p>` +
+      `<p class="t-line"><b>방법</b> ${t.how}</p>` +
+      t.years.map(y => `<div class="ft-year"><button class="settings-btn ft-go" type="button" data-year="${y}">${y}년으로 가기</button>` +
+        `<label><span>${y}년에 본 것</span><textarea rows="2" data-obs="${y}" placeholder="본 것·잰 값을 쓰세요">${esc(p.a.obs && p.a.obs[y])}</textarea></label></div>`).join('') +
+      `<label class="ft-diff"><span>달라진 점</span><textarea rows="2" data-diff placeholder="두 연도에서 무엇이 왜 달라졌나요?">${esc(p.a.diff)}</textarea></label>` +
+      `<div class="t-subs">${p.subs.map(s => `<span class="t-sub${s.ok ? ' ok' : ''}">${s.label}</span>`).join('')}</div>` +
+      `<p class="t-think">생각해 볼 것: ${t.think}</p></div>`;
+  }).join(''));
+};
+// 글 칸·'이 연도로 가기' (한 번만 연결 — 카드는 다시 그려도 상자는 그대로)
+FPField.bindFieldTasks = function () {
+  const box = document.getElementById('fieldTasks');
+  if (!box || box.dataset.ftBound) return;
+  box.dataset.ftBound = '1';
+  box.addEventListener('input', e => {
+    const card = e.target.closest('[data-ft]');
+    if (!card) return;
+    const id = card.dataset.ft, a = FieldStore.read().fp.tasks[id] || { obs: {} };
+    if (e.target.dataset.obs) FieldStore.setTask(id, { obs: { ...(a.obs || {}), [e.target.dataset.obs]: e.target.value } });
+    else if (e.target.hasAttribute('data-diff')) FieldStore.setTask(id, { diff: e.target.value });
+  });
+  // 글을 쓰는 동안은 다시 그리지 않으므로(커서가 튄다) 글 칸을 떠날 때 진행도를 고친다
+  box.addEventListener('focusout', () => setTimeout(() => { if (!box.contains(document.activeElement)) this.renderTasks(); }, 0));
+  box.addEventListener('click', e => {
+    const b = e.target.closest('.ft-go');
+    if (b && typeof FPScenario !== 'undefined') { FPScenario.goYear(Number(b.dataset.year)); this.toast(`${b.dataset.year}년으로 바꿨습니다 (${FPScenario.label()})`, 2500); }
+  });
+};
+
 FPField.taskProgress = function () {
   return INQUIRY.map(t => {
     const subs = t.subs.map(s => {
@@ -182,7 +267,7 @@ FPField.checkTasks = function () {
 };
 FPField.renderTasks = function () {
   const box = document.getElementById('fieldTasks');
-  if (!box) return;
+  if (!box || box.contains(document.activeElement)) return;   // 현장 과제 글을 쓰는 중에는 다시 그리지 않는다
   const prog = this.taskProgress();
   const doneN = prog.filter(p => p.done).length;
   const tally = document.getElementById('fieldTaskTally');
@@ -210,6 +295,7 @@ FPField.renderTasks = function () {
       `<p class="t-think">생각해 볼 것: ${t.think}</p>` +
       `</div>`;
   }).join('');
+  this.renderFieldTasks();   // 3차 E4 현장 과제 카드 (위)
 };
 FPField.setTab = function (tab) {
   this.tab = tab;
@@ -373,6 +459,7 @@ FPField.init = function () {
   document.getElementById('fieldCloseBtn').addEventListener('click', () => this.close());
   document.querySelectorAll('.field-tabs button').forEach(b =>
     b.addEventListener('click', () => this.setTab(b.dataset.tab)));
+  this.bindFieldTasks();
   this.setTab(this.tab);
   this.refresh();
 };
