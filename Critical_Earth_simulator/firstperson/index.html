@@ -213,7 +213,10 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<!-- three.js는 조감과 같은 vendor/three.min.js(r160)를 쓴다. CDN이면 학교 인터넷이 막혔을 때 1인칭만 뜨지 않고,
+     IR 보기 코드를 두 화면이 나눠 쓰려면 같은 파일이어야 한다. 절대 경로: /firstperson/ 아래에서도 server.py /vendor 마운트로 간다
+     (단일 HTML 빌드는 tools/build_single_html.py가 vendor에서 직접 넣으므로 이 주소를 쓰지 않는다) -->
+<script src="/vendor/three.min.js"></script>
 <script src="/js/earth-model.js"></script>
 <script src="fp-world.js"></script>
 <script src="fp-weather.js"></script>
