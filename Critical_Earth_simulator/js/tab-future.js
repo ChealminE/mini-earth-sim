@@ -82,9 +82,10 @@ const NATURE = { width: 1.4, widthOn: 3 };   // 자연 지구를 3D로 보고 �
 const VIEW = { validate: false, omega: false, hoverYear: null, drawFrontier: LAST_OBS_YEAR };
 
 // 관측 자료: 연도 → 값 (데이터 레이블이 과거 연도에서 관측값을 찾을 때)
-const toPoints = (d, key) => d[key].map((v, i) => ({ x: d.startYear + i, y: v })).filter(p => p.y != null);
+// 자료 → 점, CO₂ 관측 잇기는 그래프 작업대와 같은 함수를 쓴다 (js/data-catalog.js DataSeries, 3차 C1)
+const toPoints = DataSeries.points;
 const OBS_PTS = {
-  co2: [...toPoints(EARTH_DATA.co2Cmip6, 'ppm'), ...toPoints(EARTH_DATA.co2Noaa, 'ppm')],
+  co2: DataSeries.co2Obs(),
   T: toPoints(EARTH_DATA.tempHadcrut, 'anom'),
   pH: toPoints(EARTH_DATA.phHot, 'ph'),
   // 해수온 관측은 편차(1850~1900 기준)로 들어 있다. 모형 해수온이 sst0 + T 이므로 같은 기준점에 얹어 절대값으로 그린다.
