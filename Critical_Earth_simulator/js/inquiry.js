@@ -330,13 +330,15 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
 
   // ── 그래프: 펼치기·접기 ──
   // 접은 그래프는 제목 줄만 옅게 남긴다(그래프 열 높이는 그대로라 스크롤이 생기지 않는다).
+  // 3차 B1부터 그래프가 2×2로 놓이므로 행은 '줄' 단위다: 한 줄의 그래프가 모두 접혔을 때만 그 줄을 제목 높이로 줄인다.
+  // 열 수는 CSS에서 읽는다(배치를 바꿔도 여기를 다시 고치지 않게).
   function applyChartLayout() {
+    const keys = Object.keys(InquiryCore.CHART_IDS);
+    const shown = keys.map(k => !QV.charts || QV.charts.includes(k));
+    keys.forEach((k, i) => el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !shown[i]));
+    const cols = Math.max(1, getComputedStyle(el('futCharts')).gridTemplateColumns.split(' ').length);
     const rows = ['auto'];
-    for (const k of Object.keys(InquiryCore.CHART_IDS)) {
-      const show = !QV.charts || QV.charts.includes(k);
-      el(InquiryCore.CHART_IDS[k]).closest('.chart-block').classList.toggle('inq-fold', !show);
-      rows.push(show ? 'minmax(0, 1fr)' : 'auto');
-    }
+    for (let i = 0; i < keys.length; i += cols) rows.push(shown.slice(i, i + cols).some(Boolean) ? 'minmax(0, 1fr)' : 'auto');
     el('futCharts').style.gridTemplateRows = QV.charts ? rows.join(' ') : '';
     // ResizeObserver를 기다리지 않고 바로 맞춘다(헤드리스·느린 기기에서 한동안 예전 크기로 겹쳐 그려졌다)
     charts.forEach(c => c.resize());

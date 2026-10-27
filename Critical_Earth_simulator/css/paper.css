@@ -32,6 +32,7 @@ body.paper #hint { top: var(--sp-3); left: var(--sp-3); right: auto; bottom: aut
   background: color-mix(in srgb, var(--paper) 86%, transparent); border: 1px solid var(--rule); line-height: 1.5; }
 
 /* ── 현재 실태 ───────────────────────────────────────────────────────────
+   ※ 아래 격자·칸 배치(40:60, display: contents)는 3차 B1에서 대체 — 파일 끝 '3차 B1 — 60:40 화면 셸'이 덮는다(되돌리기 쉽게 남겨 둠).
    왼쪽 열 = 3D 모형 + 그 아래 요약 숫자 2×2, 오른쪽 열 = 그래프 2×2.
    요약 숫자는 #tab-current 안에 있지만 #graph-panel·#tab-current를 display: contents 로 풀어
    #app 그리드에 바로 놓는다(마크업을 3D 칸 쪽으로 옮기면 다른 탭의 #gl-container 구조가 바뀐다). */
@@ -77,6 +78,7 @@ body.paper #topbar .home-link { display: inline-flex; font-size: var(--fs-2); ma
 body.paper #topbar .home-link:hover { color: var(--ctl-nav); }
 
 /* ── 미래 예측 (2차 개편 C1) ──────────────────────────────────────────────
+   ※ 아래 격자·칸 배치(조작 | 3D | 그래프, 맨 아래 시간 막대)는 3차 B1에서 대체 — 파일 끝 '3차 B1 — 60:40 화면 셸'이 덮는다.
    ┌ 머리줄 ─────────────────────────────────────────────┐
    │ 왼쪽 패널(시나리오·레버) │ 3D (지구 하나 + 토글) │ 그래프 열 │
    ├ 시간 막대 ──────────────────────────────────────────┤
@@ -176,7 +178,7 @@ body.paper .legend3d .src-i { margin: 0; }
 body.paper .legend3d .lg-bar { display: block; height: 10px; margin-top: 3px; border: 1px solid var(--ink-3); border-radius: 2px; }
 body.paper .legend3d .lg-ticks { display: flex; justify-content: space-between; color: var(--ink-3); }
 
-/* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 */
+/* 그래프 열: 그래프 3개를 칸 높이에 맞춰 세로로 나눈다 (3차 B1에서 대체: 2×2, 파일 끝) */
 body.paper .fut-charts { grid-column: 3; grid-row: 2; position: relative; min-height: 0; box-sizing: border-box;
   display: grid; grid-template-rows: auto repeat(4, minmax(0, 1fr)); gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3); border-left: 1px solid var(--rule); background: var(--paper); }
@@ -221,7 +223,7 @@ body.paper .buffer-note { margin: 0; padding: var(--sp-2) var(--sp-3); font-size
   background: var(--paper-2); border-left: 3px solid var(--data-ph); border-radius: 0; }
 body.paper .buffer-note b, body.paper .buffer-note b:first-child { color: var(--ink); font-size: inherit; }   /* style.css의 예전 12 px 규칙을 덮는다 */
 
-/* 시간 막대 */
+/* 시간 막대 (3차 B1에서 자리 대체: 조작 띠 #ctlStrip 안, 파일 끝) */
 body.paper .tl-bar { grid-column: 1 / -1; grid-row: 3; position: static; display: flex; align-items: center; gap: var(--sp-3);
   margin: 0; padding: var(--sp-2) var(--sp-4); background: var(--paper-2); border-top: 1px solid var(--rule); }
 body.paper .tl-bar .tl-play { width: auto; height: auto; min-width: 104px; }
@@ -486,3 +488,97 @@ body.paper .rec-inq { display: flex; flex-direction: column; gap: var(--sp-2); f
 body.paper .rec-inq[hidden] { display: none; }
 body.paper .rec-inq td:nth-child(-n+4), body.paper .rec-inq th:nth-child(-n+4) { text-align: left; }
 body.paper .rec-inq td:nth-child(3), body.paper .rec-inq td:nth-child(4) { white-space: normal; min-width: 8em; }
+
+/* ── 3차 B1 — 60:40 화면 셸 (현재 실태·미래 예측 공통) ───────────────────
+   ┌ 머리줄 ──────────────────────────────────────────────┐
+   │ 3D (#gl-container)                  │                │
+   │ 조작 띠 (#ctlStrip)                 │  학습지 칸 (ws) │
+   │ 그래프 (#graph-panel)               │                │
+   └ 좌 60 % ────────────────────────────┴ 우 40 % ───────┘
+   위의 탭별 격자(현재 실태 40:60, 미래 예측 조작 | 3D | 그래프)는 지우지 않고 여기서 덮는다(되돌리기 쉽게).
+   display: contents 를 풀고 #graph-panel 을 한 칸으로 되돌린다 — 요약 숫자·시간 막대가 더 이상 3D 열에 붙지 않으므로.
+   학습지 칸은 B2에서 #worksheet 가 차지한다. B1에서는 임시로 #tab-header-panel(탐구 전환·탐구 패널·시나리오 설명)을 둔다. */
+#ctlStrip { display: none; }
+body.paper.tab-current #app, body.paper.tab-future #app {
+  display: grid;
+  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+  grid-template-rows: auto minmax(170px, 38fr) auto minmax(0, 62fr);
+  grid-template-areas: "top top" "gl ws" "ctl ws" "graph ws";
+}
+body.paper.tab-current #topbar, body.paper.tab-future #topbar { grid-area: top; }
+body.paper.tab-current #gl-container, body.paper.tab-future #gl-container { grid-area: gl; border-right: 0; }
+body.paper.tab-current #graph-panel, body.paper.tab-future #graph-panel { grid-area: graph; display: block; min-width: 0; min-height: 0; overflow: hidden; }
+body.paper.tab-current #tab-current, body.paper.tab-future #tab-future { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+/* 학습지 칸 (임시): 패널 안에서만 세로 스크롤. 문서 전체 스크롤은 0 이어야 한다(마스터 §5-6) */
+body.paper.tab-current #tab-header-panel, body.paper.tab-future #tab-header-panel {
+  grid-area: ws; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden auto; box-sizing: border-box;
+  padding: var(--sp-3) var(--sp-4); background: var(--paper-2); color: var(--ink); border-left: 1px solid var(--rule); }
+body.paper #tab-header-panel > .home-link, body.paper #tab-header-panel > .sub { display: none; }
+body.paper.tab-current #tab-header-panel > h2, body.paper.tab-future #tab-header-panel > h2 { display: block; flex: none;
+  margin: 0 0 var(--sp-3); font-family: var(--font-title); font-size: var(--fs-4); font-weight: 700; color: var(--ink); }
+body.paper.tab-future.inq-on #futureControls { height: auto; flex: 1 1 auto; }   /* 제목 줄 아래 남은 높이만 (예전 height: 100%) */
+
+/* 조작 띠: 3D 바로 아래 한두 줄. 현재 실태 = 관측 기간 안내, 미래 예측 = 위 시나리오 / 아래 시간 막대 */
+body.paper.tab-current #ctlStrip, body.paper.tab-future #ctlStrip { grid-area: ctl; display: flex; flex-direction: column; gap: var(--sp-1);
+  min-width: 0; padding: var(--sp-1) var(--sp-3); background: var(--paper-2);
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+body.paper.tab-future #csObsRange, body.paper.tab-current #fcScen, body.paper.tab-current #tlBar { display: none; }
+body.paper .cs-note { margin: 0; padding: var(--sp-1) 0; font-size: var(--fs-1); color: var(--ink-2); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.paper.tab-future #fcScen { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+body.paper .cs-label { flex: none; display: flex; flex-direction: column; font-family: var(--font-title); font-size: var(--fs-2);
+  font-weight: 700; color: var(--ink); line-height: 1.25; white-space: nowrap; }
+body.paper .cs-label span { font-family: var(--font-body); font-size: var(--fs-1); font-weight: 500; color: var(--ink-3); }
+/* 시나리오 카드는 띠 높이에 맞춰 낮게: 아이콘 왼쪽, 이름/SSP 두 줄 */
+body.paper #fcScen .fc-presets { flex: 1 1 auto; min-width: 0; }
+body.paper #fcScen .fc-card .fc-preset { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: var(--sp-1);
+  min-height: 40px; padding: 2px var(--sp-2); text-align: left; white-space: nowrap; }
+body.paper #fcScen .fc-preset > [data-icon] { grid-row: 1 / span 2; }
+body.paper #fcScen .fc-card .fc-preset svg { width: 22px; height: 22px; }
+body.paper #fcScen .fc-preset .fc-name, body.paper #fcScen .fc-preset .btn-sub { overflow: hidden; text-overflow: ellipsis; }
+body.paper #fcScen .fc-card > .src-i { top: -7px; right: -5px; }
+body.paper #fcScen .fc-custom { flex: none; width: auto; min-height: 40px; padding: 2px var(--sp-3); }
+body.paper #fcScen .fc-custom svg { width: 22px; height: 22px; }
+body.paper #fcScen .fc-custom .fc-ssp { display: none; }   /* 띠에 자리가 없어 설명은 버튼 title로 */
+/* 시간 막대: 띠 안에서는 바탕·테두리 없이 한 줄. 슬라이더가 남는 폭을 모두 갖는다 */
+body.paper.tab-future #ctlStrip .tl-bar { padding: 0; gap: var(--sp-2); background: none; border-top: 0; min-width: 0; }
+body.paper #ctlStrip .tl-bar .btn { padding: 0 var(--sp-2); gap: var(--sp-1); }   /* 1280 폭에서도 한 줄에 들어가게 버튼 안 여백만 줄인다 */
+body.paper #ctlStrip .tl-bar .tl-play { min-width: 0; }
+body.paper #ctlStrip .tl-year { flex: none; min-width: 0; }
+body.paper #ctlStrip .tl-bar input[type=range] { min-width: 120px; }
+/* '속도' 글자는 화면에서만 감춘다(목록 상자가 '10년/초'로 스스로 설명되고, 스크린리더는 label을 그대로 읽는다) — 1280 폭에서 슬라이더 자리 확보 */
+body.paper #ctlStrip .tl-speed-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* 직접 설계(레버) 패널: 3D 칸 위에 겹친다. 넓고 낮은 칸이라 레버를 여러 열로 */
+body.paper.tab-future #fcLevers { position: absolute; inset: var(--sp-2); z-index: 25; box-sizing: border-box; overflow: hidden auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 var(--sp-4); align-content: start;
+  padding: var(--sp-2) var(--sp-3); background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(40, 32, 16, .14); }
+body.paper #fcLevers[hidden] { display: none; }
+body.paper #fcLevers > .fc-lever-top, body.paper #fcLevers > .fc-note, body.paper #fcLevers > .fc-result { grid-column: 1 / -1; }
+/* 탐구 중에는 예전에 #fcFree 안에서 함께 숨던 시나리오 버튼·레버 패널을 똑같이 숨긴다(탐구 단계가 시나리오를 정한다).
+   위의 display 규칙보다 뒤·더 구체적으로 둔다 */
+body.paper.tab-future.inq-on #fcScen, body.paper.tab-future.inq-on #fcLevers { display: none; }
+/* 3D 칸이 낮아져 범례를 펼치면 칸 위로 넘친다. 칸 안에서만 스크롤 (범례는 B3에서 학습지 카드로 옮겨 화면에서는 내린다) */
+body.paper.tab-current .legend3d, body.paper.tab-future .legend3d { max-height: calc(100% - 2 * var(--sp-3)); overflow: hidden auto; }
+
+/* 현재 실태 그래프 칸: 위 요약 숫자 5개 한 줄, 아래 그래프 2×2 */
+body.paper.tab-current #tab-current .stat-grid { flex: none; grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+body.paper.tab-current #tab-current .stat-box { padding: var(--sp-1) var(--sp-3); border-top: 0; border-left: 1px solid var(--rule); overflow: hidden; }
+body.paper.tab-current #tab-current .stat-box:first-child { border-left: 0; }
+body.paper.tab-current #tab-current .stat-box .label { overflow: hidden; }
+body.paper.tab-current #tab-current .stat-box .value { font-size: var(--fs-4); overflow: hidden; text-overflow: ellipsis; }
+body.paper.tab-current #tab-current .charts-2col { flex: 1 1 auto; padding: var(--sp-2) var(--sp-4); }
+
+/* 미래 예측 그래프 칸: 공용 범례 한 줄 + 그래프 2×2 (넓고 낮은 칸이라 세로 4단이면 그래프마다 높이가 너무 작다).
+   탐구 모드의 그래프 접기(js/inquiry.js applyChartLayout)는 줄 단위로 행 높이를 정한다 */
+body.paper.tab-future .fut-charts { flex: 1 1 auto; border-left: 0; padding: var(--sp-2) var(--sp-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto repeat(2, minmax(0, 1fr)); column-gap: var(--sp-4); }
+body.paper.tab-future .fut-legend { grid-column: 1 / -1; }
+
+@media (max-height: 760px) {
+  body.paper.tab-future .fut-charts { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
+  body.paper.tab-current #tab-current .charts-2col { padding-top: var(--sp-1); padding-bottom: var(--sp-1); row-gap: var(--sp-2); }
+}

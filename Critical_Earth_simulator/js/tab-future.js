@@ -268,9 +268,10 @@ const charts = SERIES.map((spec, i) => {
     // 띠 없음: 원본의 95 % 열은 편향 불확실성만의 범위라 전체 불확실성으로 오해된다 (tools/gen_earth_data.py hadsst)
     ds.push(lineDs('관측 (HadSST4)', obsC, { data: OBS_PTS.sst, borderWidth: 1.4 }));
   }
+  // 연도 눈금은 맨 아래 줄 그래프에만 (3차 B1부터 2×2 배치라 아래 줄 = 마지막 두 그래프)
   const scales = {
     x: Theme.axis({ type: 'linear', min: TL_START, max: TL_END,
-      ticks: { display: i === SERIES.length - 1, color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v) } }),
+      ticks: { display: i >= SERIES.length - 2, color: C('--ink-3'), font: Theme.font(), stepSize: 50, callback: v => String(v) } }),
     // y축 폭을 고정해 그래프 4개의 x축(연도)이 세로로 정확히 맞게 한다
     y: Theme.axis({ ticks: { color: C('--ink-3'), font: Theme.font(), maxTicksLimit: 5 }, afterFit: sc => { sc.width = Y_AXIS_W; } }),
   };
@@ -627,8 +628,8 @@ function setNatureView(on) {
 }
 $('natureToggle').addEventListener('click', () => setNatureView(!FUT.showNature));
 
-// 왼쪽 패널: 시나리오 목록 ↔ 직접 설계(레버) 패널. 레버 패널에서 '시나리오로'를 누르면 목록으로 돌아가되
-// 궤적은 직접 설계 그대로 둔다(다른 시나리오를 고를 때 바뀐다).
+// 시나리오 목록 ↔ 직접 설계(레버) 패널. 3차 B1부터 시나리오 버튼은 조작 띠(#fcScen), 레버 패널은 3D 칸 위에 있다.
+// 레버 패널에서 '시나리오로'를 누르면 목록으로 돌아가되 궤적은 직접 설계 그대로 둔다(다른 시나리오를 고를 때 바뀐다).
 function showLeverPanel(on) {
   $('fcScenarioView').hidden = on;
   $('fcLevers').hidden = !on;
@@ -637,13 +638,13 @@ function setPreset(name) {
   // 다른 시나리오로 바꾸면 직전 궤적을 '이전 선택' 선으로 남긴다 (같은 것을 다시 누르면 그대로)
   if (FUT.human && name !== FUT.preset) { PREV.run = FUT.human; PREV.label = humanLabel(); }
   FUT.preset = name;
-  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === name)));
+  document.querySelectorAll('#fcScen [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === name)));
   $('fcPresetDesc').textContent = PRESET_DESC[name];
   if (name === 'custom') showLeverPanel(true);
   updateBadge();
   recomputeFuture();
 }
-$('futureControls').addEventListener('click', e => {
+$('fcScen').addEventListener('click', e => {
   const b = e.target.closest('[data-preset]');
   if (b) setPreset(b.dataset.preset);
 });
@@ -905,7 +906,7 @@ function futRestore(s) {
   FUT.levers = { ...s.levers };
   leversToInputs(FUT.levers);
   showLeverValues();
-  document.querySelectorAll('#futureControls [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
+  document.querySelectorAll('#fcScen [data-preset]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.preset === s.preset)));
   $('fcPresetDesc').textContent = PRESET_DESC[s.preset];
   showLeverPanel(s.leverPanel);
   PREV.run = s.prev.run; PREV.label = s.prev.label;

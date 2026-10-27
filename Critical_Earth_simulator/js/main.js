@@ -13,6 +13,8 @@ const TAB_HEADERS = {
 const PAPER_TABS = ['current', 'future'];
 // 모형 전체가 가로로 들어오는 종횡비(실측: 1.07에서는 바다 왼쪽 끝이 잘렸다)
 const PAPER_CAM_FIT = 1.4;
+// 3차 B1: 3D 칸이 넓고 낮아져(1280×720에서 768×220) 세로 38°로는 받침대 아래가 잘린다. 실측: 46°에서 받침대가 겨우 다 들어와 여유를 둔다
+const PAPER_MIN_FOV = 48;
 
 // ── 탭 전환 ──────────────────────────────────────
 function switchTab(name) {
@@ -36,7 +38,7 @@ function switchTab(name) {
   document.body.classList.toggle('paper', paper);
   setSceneBackdrop(paper ? Theme.hex('--paper') : LIVE_BACKDROP);
   // 종이 테마 화면은 3D 칸이 세로로 길 수 있다 - 모형 전체(물·숲·도시)가 가로로 들어오게 (common.js)
-  setCameraFit(paper ? PAPER_CAM_FIT : null);
+  setCameraFit(paper ? PAPER_CAM_FIT : null, paper ? PAPER_MIN_FOV : undefined);
   // 직접 실험 탭은 아크릴을 화면 가득 두고 그 위에 띄운다: 처음엔 '실험 준비'(body.live-setup),
   // 실험을 시작하면 '실험 화면'(body.live-run) - js/live-setup.js가 전환
   if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
@@ -71,6 +73,15 @@ animate();
 document.documentElement.classList.remove('booting'); // 화면이 정해졌으니 보이기 (index.html 머리의 booting 참고)
 
 window.addEventListener('resize', fitRenderer);
+// 3차 B1: 3D 칸·그래프 칸 크기는 창 크기만이 아니라 학습지 접기(B2)로도 바뀐다. 창 resize 이벤트로는 그걸 못 잡으므로
+// 칸 자체를 지켜본다. 직접 실험 탭 그래프는 예전처럼 Chart.js 자체 반응형에 맡긴다(범위 밖).
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(() => fitRenderer()).observe(glContainer);
+  new ResizeObserver(() => {
+    if (activeTab === 'current') [chartCo2, chartTempHist, chartPhHist, chartFossil].forEach(c => c.resize());
+    else if (activeTab === 'future') [...charts, futChartSink].forEach(c => c.resize());
+  }).observe(document.getElementById('graph-panel'));
+}
 
 // ── 3D 보기 토글 (2차 개편 D, 종이 탭) ─────────────────────────────
 // 값은 common.js VIEW3D 하나에 둔다. 지금 그리는 씬에 바로 반영하고, 다른 씬은 다음 applyState(탭 전환·0.2초 틱)에서 따라온다.

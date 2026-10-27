@@ -155,6 +155,85 @@
          스크린리더에는 옆의 #recStatus 가 "2100년 기록됨"을 한 번 읽어 준다 (js/tab-future.js playRecordFx) -->
     <div class="rec-fx future-only" id="recFx" aria-hidden="true"><div class="rec-fx-mark"><span class="rec-fx-dot"></span><span id="recFxText">기록</span></div></div>
     <div class="rec-status" id="recStatus" role="status"></div>
+    <!-- 직접 설계(레버) 패널 (3차 B1): 3D 칸 위에 겹쳐 연다. [시나리오로]를 누르면 닫히고 3D가 다시 보인다.
+       레버를 만지는 동안 3D가 가려지는 것은 괜찮다 — 레버 → 그래프 변화를 보는 게 목적 -->
+    <div class="fc-levers future-only" id="fcLevers" hidden>
+      <div class="fc-lever-top">
+        <button class="btn btn--nav fc-back" type="button" id="fcBack"><span data-icon="back"></span>시나리오로</button>
+        <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
+      </div>
+      <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
+      <!-- 전력 구성: 화석 | 원자력 | 재생 세 구간이 한 막대. 경계 손잡이 두 개를 끌어 합 100 %를 유지한다 -->
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="factory"></span><span class="lv-name">전력 구성</span><span class="lv-val readout">합 100 %</span></div>
+        <div class="mix-ctl" id="mixCtl">
+          <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
+          <div class="mix-handle" id="mixH1" role="slider" tabindex="0" aria-label="화석 | 원자력 경계 (화석 발전 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+          <div class="mix-handle" id="mixH2" role="slider" tabindex="0" aria-label="원자력 | 재생 경계 (화석+원자력 비중)" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="mix-legend">
+          <span class="mix-key fossil"><span class="mix-key-name"><span data-icon="factory" data-icon-size="18"></span>화석</span><span class="mix-key-val"><b class="readout" id="mixFossilVal"></b><button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button></span></span>
+          <span class="mix-key nuclear"><span class="mix-key-name"><span data-icon="atom" data-icon-size="18"></span>원자력</span><span class="mix-key-val"><b class="readout" id="mixNuclearVal"></b><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button></span></span>
+          <span class="mix-key renew"><span class="mix-key-name"><span data-icon="sun" data-icon-size="18"></span>재생</span><span class="mix-key-val"><b class="readout" id="mixRenewVal"></b><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></span></span>
+        </div>
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="car"></span><span class="lv-name">전기차 비율</span><button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
+        <input type="range" class="range range--scen" id="lvEv" min="0" max="100" step="1" aria-label="전기차 비율">
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="capture"></span><span class="lv-name">탄소 포집</span><button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
+        <input type="range" class="range range--scen" id="lvCcs" min="0" max="3" step="0.1" aria-label="탄소 포집">
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="tree"></span><span class="lv-name">산림</span><button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
+        <input type="range" class="range range--scen" id="lvForest" step="any" aria-label="산림 (토지이용 배출)">
+        <div class="lv-scale readout"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
+      </div>
+      <div class="lv">
+        <div class="lv-head"><span class="lv-icon" data-icon="building"></span><span class="lv-name">기타 배출 감축</span><button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
+        <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
+      </div>
+      <div class="fc-result readout" id="lvResult"></div>
+    </div>
+  </div>
+
+  <!-- 조작 띠 (3차 B1): 3D 바로 아래. 현재 실태는 관측 기간 안내(C에서 작업대 모드 선택이 들어갈 자리),
+       미래 예측은 위: 시나리오 고르기 / 아래: 시간 막대. id는 예전 그대로라 js/tab-future.js 는 거의 그대로 동작한다 -->
+  <div id="ctlStrip" class="ctl-strip">
+    <p class="cs-note readout" id="csObsRange">관측 자료 · 자료마다 시작 연도가 다릅니다</p>
+    <div class="cs-scen" id="fcScen" role="group" aria-label="시나리오 (2024년부터의 배출)">
+      <span class="cs-label">시나리오 <span>2024년부터의 배출</span></span>
+      <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
+      <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span data-icon="globe" data-icon-size="28"></span><span class="fc-name">현재 정책</span><span class="btn-sub">SSP2-4.5</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button>
+        </div>
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span data-icon="accord" data-icon-size="28"></span><span class="fc-name">파리협약 2&nbsp;°C</span><span class="btn-sub">SSP1-2.6</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button>
+        </div>
+        <div class="fc-card">
+          <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span data-icon="target" data-icon-size="28"></span><span class="fc-name">1.5&nbsp;°C 탄소중립</span><span class="btn-sub">SSP1-1.9</span></button>
+          <button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button>
+        </div>
+      </div>
+      <button class="btn btn--scen fc-custom" type="button" data-preset="custom" id="fcCustomBtn" aria-pressed="false" title="정책을 골라 나만의 미래 만들기"><span data-icon="blocks"></span><span><span class="fc-name">직접 설계</span><span class="fc-ssp">정책을 골라 나만의 미래 만들기</span></span></button>
+    </div>
+    <!-- 시간 막대 (시간·기록 영역) -->
+    <div class="tl-bar" id="tlBar">
+      <button class="btn btn--time tl-play" type="button" id="tlPlay" aria-pressed="false"><span id="tlPlayIcon" data-icon="play"></span><span id="tlPlayLabel">재생</span></button>
+      <span class="tl-year readout"><b id="tlYear">2023</b>년</span>
+      <input type="range" class="range range--time" id="tlScrub" min="1750" max="2200" step="1" value="2023" aria-label="연도">
+      <label class="tl-speed-label readout" for="tlSpeed">속도</label>
+      <select class="select select--time tl-speed" id="tlSpeed">
+        <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="20">20년/초</option>
+      </select>
+      <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
+      <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
+      <button class="btn btn--rec" type="button" id="recOpen" aria-controls="recDrawer" aria-expanded="false"><span data-icon="list"></span>기록 보기</button>
+    </div>
   </div>
 
   <div id="tab-header-panel">
@@ -172,66 +251,9 @@
       </div>
       <div class="inq-panel" id="inqPanel" hidden></div>
       <div id="fcFree">
+      <!-- 시나리오 버튼·직접 설계 버튼은 조작 띠(#ctlStrip)로, 레버 패널은 3D 칸 위로 옮겼다(3차 B1). 고른 시나리오 설명만 여기 남는다 -->
       <div id="fcScenarioView">
-        <h3 class="fc-h">시나리오 <span>2024년부터의 배출</span></h3>
-        <!-- 시나리오 3개를 한 덩어리 아이콘 카드로 (피드백 4). ⓘ는 카드 밖 모서리에 둔다(버튼 안에 버튼을 넣을 수 없다) -->
-        <div class="fc-presets" id="fcPresets" role="group" aria-label="배출 시나리오">
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp245" aria-pressed="false"><span data-icon="globe" data-icon-size="28"></span><span class="fc-name">현재 정책</span><span class="btn-sub">SSP2-4.5</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp245" aria-label="출처 보기: 현재 정책 (SSP2-4.5)">ⓘ</button>
-          </div>
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp126" aria-pressed="false"><span data-icon="accord" data-icon-size="28"></span><span class="fc-name">파리협약 2&nbsp;°C</span><span class="btn-sub">SSP1-2.6</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp126" aria-label="출처 보기: 파리협약 2 °C (SSP1-2.6)">ⓘ</button>
-          </div>
-          <div class="fc-card">
-            <button class="btn btn--scen btn--stack fc-preset" type="button" data-preset="ssp119" aria-pressed="false"><span data-icon="target" data-icon-size="28"></span><span class="fc-name">1.5&nbsp;°C 탄소중립</span><span class="btn-sub">SSP1-1.9</span></button>
-            <button class="src-i" type="button" data-src="scen_ssp119" aria-label="출처 보기: 1.5 °C 탄소중립 (SSP1-1.9)">ⓘ</button>
-          </div>
-        </div>
         <p class="fc-desc readout" id="fcPresetDesc"></p>
-        <hr class="fc-rule">
-        <button class="btn btn--scen fc-custom" type="button" data-preset="custom" id="fcCustomBtn" aria-pressed="false"><span data-icon="blocks"></span><span><span class="fc-name">직접 설계</span><span class="fc-ssp">정책을 골라 나만의 미래 만들기</span></span></button>
-      </div>
-
-      <div class="fc-levers" id="fcLevers" hidden>
-        <div class="fc-lever-top">
-          <button class="btn btn--nav fc-back" type="button" id="fcBack"><span data-icon="back"></span>시나리오로</button>
-          <button class="btn btn--scen" type="button" id="lvReset">지금 값으로</button>
-        </div>
-        <p class="fc-note readout">2024년부터 적용 · 값은 <b>2050년 목표</b></p>
-        <!-- 전력 구성: 화석 | 원자력 | 재생 세 구간이 한 막대. 경계 손잡이 두 개를 끌어 합 100 %를 유지한다 -->
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="factory"></span><span class="lv-name">전력 구성</span><span class="lv-val readout">합 100 %</span></div>
-          <div class="mix-ctl" id="mixCtl">
-            <div class="mix-bar"><div class="mix-seg fossil" id="mixFossil"></div><div class="mix-seg nuclear" id="mixNuclear"></div><div class="mix-seg renew" id="mixRenew"></div></div>
-            <div class="mix-handle" id="mixH1" role="slider" tabindex="0" aria-label="화석 | 원자력 경계 (화석 발전 비중)" aria-valuemin="0" aria-valuemax="100"></div>
-            <div class="mix-handle" id="mixH2" role="slider" tabindex="0" aria-label="원자력 | 재생 경계 (화석+원자력 비중)" aria-valuemin="0" aria-valuemax="100"></div>
-          </div>
-          <div class="mix-legend">
-            <span class="mix-key fossil"><span class="mix-key-name"><span data-icon="factory" data-icon-size="18"></span>화석</span><span class="mix-key-val"><b class="readout" id="mixFossilVal"></b><button class="src-i" type="button" data-src="lever_fossil" aria-label="출처 보기: 화석연료 발전 비중">ⓘ</button></span></span>
-            <span class="mix-key nuclear"><span class="mix-key-name"><span data-icon="atom" data-icon-size="18"></span>원자력</span><span class="mix-key-val"><b class="readout" id="mixNuclearVal"></b><button class="src-i" type="button" data-src="lever_nuclear" aria-label="출처 보기: 원자력 발전 비중">ⓘ</button></span></span>
-            <span class="mix-key renew"><span class="mix-key-name"><span data-icon="sun" data-icon-size="18"></span>재생</span><span class="mix-key-val"><b class="readout" id="mixRenewVal"></b><button class="src-i" type="button" data-src="lever_renew" aria-label="출처 보기: 재생에너지 발전 비중">ⓘ</button></span></span>
-          </div>
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="car"></span><span class="lv-name">전기차 비율</span><button class="src-i" type="button" data-src="lever_ev" aria-label="출처 보기: 전기차 비율">ⓘ</button><button class="src-i" type="button" data-src="lever_k_ev" aria-label="출처 보기: 전기차 배출비">ⓘ</button><span class="lv-val readout" id="lvEvVal"></span></div>
-          <input type="range" class="range range--scen" id="lvEv" min="0" max="100" step="1" aria-label="전기차 비율">
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="capture"></span><span class="lv-name">탄소 포집</span><button class="src-i" type="button" data-src="lever_ccs" aria-label="출처 보기: 탄소 포집">ⓘ</button><span class="lv-val readout" id="lvCcsVal"></span></div>
-          <input type="range" class="range range--scen" id="lvCcs" min="0" max="3" step="0.1" aria-label="탄소 포집">
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="tree"></span><span class="lv-name">산림</span><button class="src-i" type="button" data-src="lever_forest" aria-label="출처 보기: 산림 (토지이용 배출)">ⓘ</button><span class="lv-val readout" id="lvForestVal"></span></div>
-          <input type="range" class="range range--scen" id="lvForest" step="any" aria-label="산림 (토지이용 배출)">
-          <div class="lv-scale readout"><span>대규모 조림</span><span>벌채 중단</span><span>벌채 지속</span></div>
-        </div>
-        <div class="lv">
-          <div class="lv-head"><span class="lv-icon" data-icon="building"></span><span class="lv-name">기타 배출 감축</span><button class="src-i" type="button" data-src="lever_other" aria-label="출처 보기: 기타 부문 감축">ⓘ</button><span class="lv-val readout" id="lvOtherVal"></span></div>
-          <input type="range" class="range range--scen" id="lvOther" min="0" max="100" step="1" aria-label="기타 배출 감축">
-        </div>
-        <div class="fc-result readout" id="lvResult"></div>
       </div>
       </div>
     </div>
@@ -259,7 +281,7 @@
 
     <div class="tab-panel" id="tab-future">
       <!-- 1750~2200 타임라인. 궤적은 js/earth-system.js가 미리 계산하고 여기서는 배열을 읽기만 한다 (js/tab-future.js).
-           배치(스크롤 없음): 왼쪽 패널(#futureControls) | 3D | 그래프 열, 맨 아래 시간 막대 (css/paper.css) -->
+           배치(스크롤 없음, 3차 B1): 왼쪽 60 % = 3D · 조작 띠(#ctlStrip: 시나리오·시간 막대) · 그래프 2×2, 오른쪽 40 % = 학습지 칸 (css/paper.css) -->
       <section class="fut-charts" id="futCharts" aria-label="그래프">
         <!-- 공용 범례 + 보기 토글 (그래프마다 범례를 두면 4개가 한 화면에 들어가지 않는다) -->
         <div class="fut-legend readout" aria-label="범례">
@@ -308,20 +330,6 @@
           <p class="buffer-note readout"><b>완충 반응 CO₂ + CO₃²⁻ + H₂O → 2 HCO₃⁻</b> 바다에 녹아든 CO₂는 대부분 탄산이온(CO₃²⁻)과 반응해 중탄산이온(HCO₃⁻)이 됩니다. 이 반응이 pH 하락을 줄이지만(<b>완충</b>), 그 대가로 <b>CO₃²⁻가 줄고 Ω가 함께 떨어집니다.</b> 바다의 완충 능력(1750 대비): <b id="bufferVal">-</b></p>
         </div>
       </section>
-
-      <!-- 시간 막대 (시간·기록 영역) -->
-      <div class="tl-bar" id="tlBar">
-        <button class="btn btn--time tl-play" type="button" id="tlPlay" aria-pressed="false"><span id="tlPlayIcon" data-icon="play"></span><span id="tlPlayLabel">재생</span></button>
-        <span class="tl-year readout"><b id="tlYear">2023</b>년</span>
-        <input type="range" class="range range--time" id="tlScrub" min="1750" max="2200" step="1" value="2023" aria-label="연도">
-        <label class="tl-speed-label readout" for="tlSpeed">속도</label>
-        <select class="select select--time tl-speed" id="tlSpeed">
-          <option value="5">5년/초</option><option value="10" selected>10년/초</option><option value="20">20년/초</option>
-        </select>
-        <button class="btn btn--time" type="button" id="tlClear"><span data-icon="eraser"></span>예측 지우기</button>
-        <button class="btn btn--rec" type="button" id="recAdd"><span data-icon="record"></span>기록 <span class="rec-count" id="recCount">0</span></button>
-        <button class="btn btn--rec" type="button" id="recOpen" aria-controls="recDrawer" aria-expanded="false"><span data-icon="list"></span>기록 보기</button>
-      </div>
 
       <!-- 기록 서랍: 오른쪽에서 밀려 나와 화면을 덮는다(배치를 밀지 않음). CSV 열은 예전과 같다 -->
       <aside class="rec-drawer" id="recDrawer" aria-label="기록" hidden>

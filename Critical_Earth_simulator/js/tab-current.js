@@ -63,6 +63,9 @@ setEarthVisual(sceneCurrent, modelNow,
   set('statFossilLabel', `화석연료 배출 (${f1.x})`);
   set('statFossil', `${Math.round(f1.y).toLocaleString('ko-KR')} 백만 톤`);
   set('statFossilDelta', `${f0.x}년 대비 ${sgn(f1.y - f0.y, 0).replace(/\d{4,}/, m => Number(m).toLocaleString('ko-KR'))} 백만 톤`);
+  // 조작 띠 안내 (3차 B1): 연도 범위를 문구에 박아 두면 자료를 갱신할 때 어긋나므로 자료에서 계산한다
+  const all = [obsCo2, obsTemp, obsSst, obsPh, obsFossil];
+  set('csObsRange', `관측 자료 ${Math.min(...all.map(a => a[0].x))}~${Math.max(...all.map(a => lastOf(a).x))} · 자료마다 시작 연도가 다릅니다`);
 }
 
 // ── 그래프 ────────────────────────────────────────────────────────────
