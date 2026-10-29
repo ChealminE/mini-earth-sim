@@ -105,5 +105,41 @@ check('지시약: 7.6·8.2 끝 색, 범위 밖은 끝 색', String(V.phIndicator
     && /setPredictFx\(sceneFuture, now\)/.test(fut) && /setPredictFx\(sceneNature, now\)/.test(fut));
 }
 
+// ── 3차 F 적외선 보기 (js/ir-scope.js IRScopeCore — 엔진 값 → 화살표·밝기·빛망울) ──
+{
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'ir-scope.js'), 'utf8') + ';this.IRScopeCore = IRScopeCore; this.IRScope = IRScope;', ctx, { filename: 'js/ir-scope.js' });
+  const C = ctx.IRScopeCore, P = ES.PARAMS, cur = RUNS.ssp245;
+  const fx = y => { const s = at(cur, y); return C.fluxes(s.ppm, s.T, P); };
+  check('적외선: three.js 없는 node 에서는 화면 부품을 만들지 않음 (IRScope = null)', ctx.IRScope === null);
+  check('적외선: 4σT₀³ ≈ 5.4 W/m²/°C (슈테판-볼츠만 선형화)', Math.abs(C.DLW_PER_K - 5.42) < 0.02, C.DLW_PER_K.toFixed(3));
+  const f1750 = fx(1750);
+  check('적외선: 1750 (ppm ≈ c0, T ≈ 0) 변화분 ≈ 0', ['surfLw', 'backLw', 'olr'].every(k => Math.abs(f1750[k].delta) < 0.05),
+    `ppm ${at(cur, 1750).ppm.toFixed(1)} · ③ ${f1750.surfLw.delta.toFixed(3)} ④ ${f1750.backLw.delta.toFixed(3)} ⑤ ${f1750.olr.delta.toFixed(3)}`);
+  const f2023 = fx(2023), f2100 = fx(2100), f2200 = fx(2200);
+  check('적외선: F > 0 이면 ④(되돌림 장파) 증가 = F', f2023.F > 0 && f2023.backLw.delta === f2023.F, `2023 F ${f2023.F.toFixed(3)} W/m²`);
+  check('적외선: ⑤ = 기준 − N, N = F − λT', Math.abs(f2023.olr.delta + (f2023.F - P.lam * at(cur, 2023).T)) < 1e-12, `2023 N ${f2023.N.toFixed(3)}`);
+  check('적외선: ①② 는 엔진에 반사율 변화가 없어 그대로', [f2023, f2200].every(f => f.sunIn.delta === 0 && f.sunOut.delta === 0));
+  // 기온이 따라 오르면 부족분이 다시 줄어든다 — '열이 영원히 갇힌다' 오개념을 막는 핵심
+  check('적외선: 현재 정책 2200의 N < 2100의 N (기온이 따라잡아 ⑤ 회복)', f2200.N < f2100.N,
+    `N 2023 ${f2023.N.toFixed(3)} · 2100 ${f2100.N.toFixed(3)} · 2200 ${f2200.N.toFixed(3)} W/m²`);
+  check('적외선: 밝기 = 온도 (T 0 → 1, 오를수록 밝음)', C.glow(0) === 1 && C.glow(at(cur, 2100).T) > C.glow(at(cur, 2023).T),
+    `glow 2023 ${C.glow(at(cur, 2023).T).toFixed(3)} · 2100 ${C.glow(at(cur, 2100).T).toFixed(3)} · 2200 ${C.glow(at(cur, 2200).T).toFixed(3)}`);
+  const sums = [280, 418, 1000, 5000].map(p => { const n = V.co2DotCount(p); return C.layerCounts(n).reduce((a, b) => a + b, 0) === n; });
+  check('적외선: 빛망울 세 겹 개수 합 = CO₂ 보기 점 개수', sums.every(Boolean), `280 ppm → ${C.layerCounts(V.co2DotCount(280)).join('+')}`);
+  check('적외선: 겹마다 미리 만드는 자리 ≥ 상한에서의 개수', C.layerCounts(V.CO2_DOTS.MAX).every((n, i) => n <= Math.ceil(V.CO2_DOTS.MAX * C.LAYERS[i].share) + 1));
+}
+// 생성·되돌리기 조건 (소스 조건식 — 2차 F7 방식)
+{
+  const ir = fs.readFileSync(path.join(ROOT, 'js', 'ir-scope.js'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  check('적외선 생성: 입자·화살표는 만들 때 visible = false', /pts\.visible = false;/.test(ir) && /m\.visible = false;/.test(ir));
+  check('적외선 생성: 뚜껑 숨김 · 끌 때 복원 쌍', /sv\.lid = S\.lid\.visible; S\.lid\.visible = false;/.test(ir) && /S\.lid\.visible = sv\.lid;/.test(ir));
+  check('적외선 생성: 옆벽 transmission 0 · 끌 때 저장값 복원', /am\.transmission = 0;/.test(ir) && /Object\.assign\(S\.acrylicMat, sv\.acrylic\)/.test(ir));
+  check('적외선 생성: 움직임 줄이기면 입자·줄무늬 멈춤', /if \(!still\) P\.layers\.forEach/.test(ir) && /uTime\.value = still \? 0 : t/.test(ir));
+  // 화면에 나가는 글(index.html·출처 등록부)만 본다 — ir-scope.js 머리 주석은 금지 문구를 설명하느라 그 글자를 담고 있다
+  const srcs = fs.readFileSync(path.join(ROOT, 'js', 'sources.js'), 'utf8');
+  check('적외선 문구: 화면에 "약 15 μm", "8~15 μm" 없음', /CO₂ 흡수대 약 15 μm/.test(html) && !/8\s*[~–-]\s*15\s*μm/.test(html + srcs));
+}
+
 console.log(fails ? `\n${fails}개 실패` : '\n전부 통과');
 process.exit(fails ? 1 : 0);

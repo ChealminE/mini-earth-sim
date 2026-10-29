@@ -48,7 +48,8 @@
 //                                                          'seen' = 이 경로에서 학생이 재생한 시나리오들이 도달한 수준
 //   { do: 'record' }                                       지금 상태를 기록 서랍에 한 줄 저장 (버튼을 보인다)
 //  ── 3차 E2: 화면에서 학습지로 옮긴 기능 ──
-//   { do: 'view3d', mode: 'co2' }                          3D 보기: co2(CO₂ 점) · indicator(지시약 색, 범례 카드도 연다) · visible(둘 다 끔)
+//   { do: 'view3d', mode: 'co2' }                          3D 보기: co2(CO₂ 점) · indicator(지시약 색, 범례 카드도 연다) ·
+//                                                          ir(적외선 보기, 범례 카드도 연다 — 3차 F) · visible(모두 끔 = 가시광)
 //   { do: 'card', id: 'spec' }                             학습지 카드: legend3d(3D 범례) · spec(바다 속 탄소) · omega(Ω) ·
 //                                                          sink(탄소는 어디로?, 미래 예측) · impacts(기온 수준별 영향, 미래 예측)
 //   { do: 'ws', load: ['co2', 'fossil'], mode: 'time', range: 'all', lock: true }

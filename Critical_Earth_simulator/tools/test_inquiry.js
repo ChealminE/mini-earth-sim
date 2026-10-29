@@ -101,6 +101,15 @@ check(errs3.some(e => e.includes('next "A3"')), '지운 단계를 next로 가리
   const miss = want.filter(w => !e.includes(w));
   check(!miss.length, '탭에 맞지 않는 동작·tab 없는 경로·목록에 없는 자료를 검사가 알림', miss.length ? '못 잡음: ' + miss.join(', ') : `${want.length}종`);
 }
+// 3D 보기 동작 view3d 의 mode (3차 F에서 'ir' 추가): 두 탭 모두에서 쓸 수 있고, 목록에 없는 mode 는 알린다
+{
+  const step = mode => [{ id: 'V', tab: 'current', title: 't', steps: [{ id: 'V1', title: 't', question: 'q', actions: [{ do: 'view3d', mode }] }] },
+    { id: 'W', tab: 'future', title: 't', steps: [{ id: 'W1', title: 't', question: 'q', actions: [{ do: 'view3d', mode }] }] }];
+  const ok = InquiryCore.validate(step('ir'), { catalog: CATALOG_IDS });
+  const bad = InquiryCore.validate(step('xray'), { catalog: CATALOG_IDS }).join(' / ');
+  check(ok.length === 0 && InquiryCore.VIEW3D_MODES.includes('ir') && bad.includes('view3d mode'),
+    "view3d mode 'ir'(적외선 보기)는 두 탭에서 통과, 없는 mode 는 검사가 알림", ok.join(' / ') || bad);
+}
 for (const p of D.INQUIRY_PATHS) console.log(`      경로 ${p.id} → ${p.tab}`);
 
 // ── 3) 탐구 기록 CSV ──

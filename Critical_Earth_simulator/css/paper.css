@@ -780,3 +780,48 @@ body.paper .inq-ev select:focus-visible { outline: 2px solid var(--focus); outli
 body.paper .inq-ev-acts { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 /* 1인칭 현장 기록 (3차 E4): 관찰·달라진 점은 글이 길어 줄을 바꾼다 */
 body.paper #worksheet .rec-fp td:nth-child(4), body.paper #worksheet .rec-fp td:nth-child(5) { white-space: normal; min-width: 9em; }
+
+/* ── 3차 F — 페트로바 스코프 (적외선 보기) ─────────────────────────────
+   토글은 3D 칸 오른쪽 위(미래 예측의 예측 배지는 그 아래 64 px), 덮개는 3D 위 전체에 pointer-events: none.
+   장면 톤은 캔버스 하나에 CSS filter — 셰이더를 새로 쓰지 않고 장면 전체를 밝기 → 진홍 단색으로 바꾸는 가장 싼 방법이다.
+   덮개 글자는 캔버스 밖 HTML 이라 필터를 타지 않는다(13 px 이상, --ir-ink / --ir-bg 대비 검사). */
+.ir-toggle, .ir-veil { display: none; }
+.ir-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+body.paper .ir-toggle { display: inline-flex; position: absolute; top: var(--sp-3); right: var(--sp-3); z-index: 3; gap: 0; }
+body.paper .ir-toggle .btn { background: color-mix(in srgb, var(--paper) 92%, transparent); border-radius: 0; }
+body.paper .ir-toggle .btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+body.paper .ir-toggle .btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+body.paper .ir-toggle .btn[aria-pressed="true"] { background: var(--ctl-view-on); color: var(--on-fill); }
+body.paper.ir-on #gl { filter: var(--ir-filter); }
+body.paper.ir-on .ir-veil { display: block; position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden;
+  background: radial-gradient(ellipse at center, transparent 55%, color-mix(in srgb, var(--ir-bg) 85%, transparent) 100%); }
+/* 눈금 테두리: 안쪽 얇은 선 + 위·아래 가장자리 눈금 */
+body.paper.ir-on .ir-veil::before { content: ''; position: absolute; inset: 10px; border: 1px solid color-mix(in srgb, var(--ir-ink) 35%, transparent); }
+body.paper.ir-on .ir-veil::after { content: ''; position: absolute; left: 10px; right: 10px; top: 10px; bottom: 10px;
+  background: repeating-linear-gradient(to right, color-mix(in srgb, var(--ir-ink) 45%, transparent) 0 1px, transparent 1px 40px) top / 100% 6px no-repeat,
+    repeating-linear-gradient(to right, color-mix(in srgb, var(--ir-ink) 45%, transparent) 0 1px, transparent 1px 40px) bottom / 100% 6px no-repeat; }
+body.paper.ir-on .ir-cap { position: absolute; left: var(--sp-3); bottom: var(--sp-3); margin: 0; z-index: 1; max-width: 60%;
+  padding: var(--sp-1) var(--sp-2); font-size: var(--fs-1); line-height: 1.35; color: var(--ir-ink);
+  background: color-mix(in srgb, var(--ir-bg) 88%, transparent); border-left: 3px solid var(--ir-dot); }
+body.paper.ir-on .ir-labels { position: absolute; inset: 0; }
+body.paper.ir-on .ir-lbl { position: absolute; left: 0; top: 0; translate: -50% -100%; white-space: nowrap;
+  padding: 1px 6px; font-size: var(--fs-1); color: var(--ir-ink); background: color-mix(in srgb, var(--ir-bg) 80%, transparent); border-radius: 3px; }
+body.paper.ir-on .ir-lbl--sw { border: 1px dashed color-mix(in srgb, var(--ir-ink) 55%, transparent); }   /* 단파 = 외곽선만 화살표와 맞춤 */
+body.paper.ir-on .ir-lbl[hidden] { display: none; }
+body.paper.ir-on .ir-labels.compact .ir-name { display: none; }
+/* ②·⑤는 끝점이 둘 다 상자 위라 이름표가 겹친다 — ②는 끝점 오른쪽으로, ⑤는 왼쪽으로 붙인다 */
+body.paper.ir-on .ir-lbl[data-ir="sunOut"] { translate: 4px -100%; }
+body.paper.ir-on .ir-lbl[data-ir="olr"] { translate: calc(-100% - 4px) -100%; }
+/* 적외선 바탕에서는 종이색 위 글자(조작 안내)가 안 읽힌다 — 숨긴다 */
+body.paper.ir-on #hint { display: none; }
+/* 학습지 3D 범례 카드의 적외선 절 */
+body.paper .legend3d .lg-ir .lg-text { display: grid; gap: 3px; }
+body.paper .legend3d .ir-key { color: var(--ink-2); }
+body.paper .legend3d .ir-table { border-collapse: collapse; font-size: var(--fs-1); width: 100%; }
+body.paper .legend3d .ir-table th, body.paper .legend3d .ir-table td { padding: 2px 4px; border-bottom: 1px solid var(--rule); text-align: right; font-weight: 400; }
+body.paper .legend3d .ir-table th:first-child { text-align: left; }
+body.paper .legend3d .ir-table thead th { color: var(--ink-3); }
+body.paper .legend3d .ir-band { color: var(--ink-3); }
+body.paper .legend3d .ir-n { color: var(--ink); font-weight: 700; }
+body.paper .legend3d .ir-note { color: var(--ink-3); }
+body.paper .legend3d .ir-srcs { display: grid; gap: 2px; }

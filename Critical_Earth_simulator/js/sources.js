@@ -599,6 +599,40 @@ const SOURCES = {
       '"차가운 극지 바다는 CO₂가 더 잘 녹고 탄산 이온이 적어 Ω가 더 낮다"는 설명은 발췌본에 근거가 없다(발췌 추가 필요: 예) IPCC AR6 WG1 5장 또는 SROCC의 극지 아라고나이트 포화도).',
     related: ['ksp_mucci', 'model_omega', 'shell_fade'],
   },
+  // ── 적외선 보기 (3차 F, js/ir-scope.js) ──
+  energy_budget_ar6: {
+    label: '지구 에너지 수지 기준값 (적외선 보기 화살표)',
+    summary: '적외선 보기 화살표 다섯 개의 기준 굵기입니다. 전 지구 평균으로 들어오는 햇빛, 반사되는 햇빛, 지표가 내보내는 열, 대기가 되돌려 보내는 열, 우주로 나가는 열(W/m²).',
+    kind: 'param',
+    org: 'IPCC',
+    dataset: 'AR6 WG1 Chapter 7, Figure 7.2 (Schematic representation of the global mean energy budget of the Earth)',
+    version: '2021',
+    cite: 'Forster, P. et al. (2021) The Earth’s Energy Budget, Climate Feedbacks, and Climate Sensitivity. In Climate Change 2021: The Physical Science Basis. Cambridge University Press. doi:10.1017/9781009157896.009',
+    citeChecked: false,
+    url: 'https://www.ipcc.ch/report/ar6/wg1/chapter/chapter-7/',
+    license: 'IPCC 저작물 (인용)',
+    status: 'unverified',
+    note: '기준값 340 / 100 / 398 / 342 / 239 W/m²(들어옴 / 반사 / 지표 장파 / 되돌림 장파 / 우주로 나감)은 그림 7.2 값을 기억에서 옮긴 것이라 원문 쪽과 대조하지 못했다. ' +
+      '발췌 추가 필요: AR6 WG1 7장 그림 7.2 쪽 이미지를 docs/refs/발췌/ 에 올리면 대조해서 verified 로 바꾼다. ' +
+      '해마다 바뀌는 부분은 이 프로그램의 엔진 값이다: ③ + 4σT₀³·T(T₀ = 288 K, 약 5.4 W/m²/°C), ④ + F(강제력, forcing_myhre — 강제력만큼 늘어난 것으로 단순화), ⑤ − N(N = F − λT, 대기 꼭대기 불균형, λ = ebm_params). ①② 는 엔진에 반사율 변화가 없어 바뀌지 않는다.',
+    related: ['forcing_myhre', 'ebm_params', 'model_temp'],
+  },
+  ir_zone_offset: {
+    label: '적외선 보기 — 표현 규칙 (밝기·배율·빛망울)',
+    summary: '적외선 보기의 밝기는 기온을, 빛망울 개수는 CO₂의 양을, 화살표 굵기는 에너지 흐름을 나타냅니다. 변화는 20배로 키워 보였고, 구역끼리의 밝기 차이는 설명용입니다.',
+    kind: 'assumption',
+    org: '이 프로그램',
+    dataset: 'IRScopeCore (js/ir-scope.js)',
+    version: '-',
+    cite: '이 프로그램의 표현 규칙: 밝기 = 기준 × (1 + 20 × ((T₀+T)⁴/T₀⁴ − 1)) × (1 + 구역 오프셋), 구역 오프셋 도시 +0.25 · 바다 0 · 숲 −0.15. 빛망울 개수 합 = CO₂ 보기 점 개수(co2_dots), 세 겹 62 % · 28 % · 10 %. 화살표 변화 띠 = 변화량 × 20',
+    url: REPO_URL + 'js/ir-scope.js',
+    license: '-',
+    status: 'verified',
+    note: '구역끼리의 밝기 차이(도시 > 바다 > 숲)는 도시 열섬 같은 차이를 설명하려고 정한 고정값이고 모형이 계산한 것이 아니다 — 전체 밝기가 해마다 바뀌는 부분만 모형 값(기온 편차 T)이다. ' +
+      '실제 열화상처럼 지표 온도를 재거나 계산한 것이 아니다. 지표가 내보내는 에너지 σ(T₀+T)⁴ 의 변화는 1 °C에 약 1.4 %라 실제 비율로는 눈에 띄지 않아, 화살표 변화 띠와 같은 20배를 곱했다(화면 자막에 적음). ' +
+      '이 보기는 가시광으로는 보이지 않는 CO₂를 장파 복사로 본다는 비유다. CO₂가 흡수하는 장파 대역은 약 15 μm이고, 8~13 μm는 CO₂가 거의 흡수하지 않는 대기의 창이다.',
+    related: ['co2_dots', 'model_temp', 'energy_budget_ar6'],
+  },
   shell_fade: {
     label: '껍데기 색이 옅어짐 (연출)',
     summary: 'Ω가 1보다 큰 동안에는 껍데기가 온전합니다. Ω가 산업화 이전 값에서 1로 내려갈수록 색만 조금씩 옅게 보이게 연출했습니다.',

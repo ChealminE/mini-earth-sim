@@ -38,12 +38,12 @@ const InquiryCore = (() => {
     impactCards: [],
     record: [],
     // 3차 E2: 화면에서 학습지로 옮긴 기능
-    view3d: ['mode'],          // 3D 보기: co2 · indicator · visible(둘 다 끔)
+    view3d: ['mode'],          // 3D 보기: co2 · indicator · ir(적외선, 3차 F) · visible(모두 끔 = 가시광)
     card: ['id'],              // 학습지 카드: legend3d · spec · omega · sink · impacts
     ws: ['load'],              // 그래프 작업대(현재 실태) 구성
     askEvidence: ['saveAs'],   // 나의 증거 하나를 붙이고 주장 한 줄
   };
-  const VIEW3D_MODES = ['co2', 'indicator', 'visible'];
+  const VIEW3D_MODES = ['co2', 'indicator', 'ir', 'visible'];
   // 미래 예측 그래프·시간 막대·시나리오에 묶인 동작 — 현재 실태 경로에서는 쓸 수 없다 (3차 E3)
   const FUTURE_ONLY = ['showCharts', 'timeRange', 'overlay', 'setScenario', 'play', 'toggleNature', 'omega', 'modelPast', 'record', 'impactCards'];
   const CARDS = ['legend3d', 'spec', 'omega', 'sink', 'impacts'];
@@ -284,7 +284,7 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     if (QV.focused) { setCameraView(CAM_TARGETS.overview); QV.focused = false; }
     el('inqCards').hidden = true;
     // 3차 E2 동작이 바꾼 것 되돌리기
-    if (QV.view3d) { setView3D('co2', false); setView3D('indicator', false); QV.view3d = false; }
+    if (QV.view3d) { setView3D('co2', false); setView3D('indicator', false); if (IRScope) IRScope.set(false); QV.view3d = false; }
     for (const id of QV.cards) Worksheet.closeCard(id);
     QV.cards.clear();
     if (QV.ws && wsNow()) wsNow().lock(null);
@@ -783,9 +783,11 @@ const Inquiry = typeof document === 'undefined' ? null : (() => {
     // ── 3차 E2 ──
     view3d(a) {
       QV.view3d = true;
-      if (a.mode === 'visible') { setView3D('co2', false); setView3D('indicator', false); } else setView3D(a.mode, true);
-      // 지시약을 켜면 범례 카드가 따라 열린다(main.js) — 이 단계가 연 카드로 쳐서 단계를 나갈 때 함께 닫는다
-      if (a.mode === 'indicator' && Worksheet.cardOpen('legend3d')) QV.cards.add('legend3d');
+      if (a.mode === 'visible') { setView3D('co2', false); setView3D('indicator', false); if (IRScope) IRScope.set(false); }
+      else if (a.mode === 'ir') { if (IRScope) IRScope.set(true); }   // 적외선 보기(3차 F, js/ir-scope.js) — 화면 공용 상태 하나
+      else setView3D(a.mode, true);
+      // 지시약·적외선을 켜면 범례 카드가 따라 열린다(main.js · ir-scope.js) — 이 단계가 연 카드로 쳐서 단계를 나갈 때 함께 닫는다
+      if ((a.mode === 'indicator' || a.mode === 'ir') && Worksheet.cardOpen('legend3d')) QV.cards.add('legend3d');
     },
     card(a) {
       if (a.id === 'impacts') { showCards(a.levels); QV.cards.add('impacts'); return; }

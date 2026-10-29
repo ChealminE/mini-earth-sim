@@ -36,6 +36,18 @@
   --data-luc: #2b7a4b;     /* 초록 — 토지이용 배출 (그래프 작업대, 3차 C1) */
   --data-ocean: #1f5fa6;   /* 파랑 — 바다가 흡수한 탄소 (그래프 작업대, 3차 C1) */
 
+  /* ── 적외선 보기 (3차 F 페트로바 스코프, js/ir-scope.js). 기준 그림 docs/refs/petrovascope.webp: 어두운 진홍 + 보케 빛망울 ── */
+  --ir-bg: #24070f;        /* 3D 바탕 (어두운 진홍) */
+  --ir-ink: #ffe6ec;       /* 덮개 글자 — --ir-bg 위 */
+  --ir-dot: #ffc4d0;       /* CO₂ 빛망울 (가산 혼합이라 겹칠수록 밝아짐). 캔버스 필터가 밝기로 색을 정하므로 밝은 색이어야 분홍빛 흰 보케가 된다 */
+  --ir-arrow: #ffc2cf;     /* 에너지 화살표 기준 부분 */
+  --ir-delta: #ffffff;     /* 화살표 변화 띠 (기준보다 밝게 — 캔버스 필터를 지나면 밝기 차이로 구분된다) */
+  --ir-edge: #c98a96;      /* 상자 테두리선 */
+  /* 장면 전체를 밝기 → 진홍 단색으로 (셰이더 없이 #gl 캔버스에 CSS filter 하나). 지시서 출발값 grayscale·sepia·saturate·hue-rotate 는
+     밝은 곳이 노랗게 넘쳐(saturate 가 잘림) 기준 그림의 분홍빛 흰 하이라이트가 안 나왔다 → index.html 의 SVG 필터 #irFilter
+     (휘도 → 채널별 곡선: 어두운 진홍 → 진홍 → 분홍빛 흰색). 곡선 값은 그 SVG 에서 고친다 */
+  --ir-filter: url(#irFilter);
+
   /* ── 조작 영역 5색: 테두리·글자 / 옅은 바탕 / 눌린 상태 ── */
   --ctl-nav: #2f3742;   --ctl-nav-bg: #ebe7de;   --ctl-nav-on: #2f3742;
   --ctl-time: #1c4fbf;  --ctl-time-bg: #e4ebfa;  --ctl-time-on: #1c4fbf;
