@@ -119,6 +119,31 @@
       <button class="btn btn--view btn--sm" type="button" id="view3dCo2" aria-pressed="false" data-ws-moved><span data-icon="dots"></span>CO₂ 보기</button>
       <button class="btn btn--view btn--sm" type="button" id="view3dIndicator" aria-pressed="false" data-ws-moved><span data-icon="drop"></span>지시약으로 보기</button>
     </div>
+    <!-- 3차 F 페트로바 스코프: [가시광 | 적외선] 분할 토글. B3에서 내린 [CO₂ 보기] 자리를 대신한다(그 기능은 학습지에 그대로).
+         켜고 끄기·장면 바꾸기는 js/ir-scope.js, 장면 톤은 #gl 캔버스의 CSS filter(--ir-filter) -->
+    <div class="ir-toggle paper-only" role="group" aria-label="3D 보기 — 빛의 종류">
+      <button class="btn btn--view btn--sm" type="button" data-ir-mode="visible" aria-pressed="true">가시광</button>
+      <button class="btn btn--view btn--sm" type="button" data-ir-mode="ir" aria-pressed="false">적외선</button>
+    </div>
+    <!-- 적외선 보기 덮개: 가장자리 비네팅 · 눈금 테두리 · 화살표 이름표 · 자막. 3D 조작을 막지 않게 pointer-events: none (css/paper.css).
+         이름표 자리는 js/ir-scope.js placeLabels 가 화살표 가운데를 화면 좌표로 옮겨 정한다 -->
+    <!-- 적외선 보기 장면 톤 (css/theme.css --ir-filter): 밝기(휘도)만 남긴 뒤 채널별 곡선으로 어두운 진홍 → 진홍 → 분홍빛 흰색.
+         sRGB 에서 계산해야 곡선 값이 화면 색과 맞는다(기본 linearRGB 면 어두운 쪽이 뜬다) -->
+    <svg class="ir-defs" width="0" height="0" aria-hidden="true" focusable="false"><filter id="irFilter" color-interpolation-filters="sRGB">
+      <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0  0.2126 0.7152 0.0722 0 0  0.2126 0.7152 0.0722 0 0  0 0 0 1 0"/>
+      <feComponentTransfer><feFuncR type="table" tableValues="0.07 0.42 0.78 0.97 1"/><feFuncG type="table" tableValues="0.01 0.04 0.13 0.4 0.88"/>
+        <feFuncB type="table" tableValues="0.03 0.09 0.2 0.42 0.88"/></feComponentTransfer>
+    </filter></svg>
+    <div class="ir-veil paper-only" id="irVeil">
+      <div class="ir-labels" id="irLabels" aria-hidden="true">
+        <span class="ir-lbl ir-lbl--sw" data-ir="sunIn">①<span class="ir-name"> 햇빛(단파)</span></span>
+        <span class="ir-lbl ir-lbl--sw" data-ir="sunOut">②<span class="ir-name"> 햇빛 반사(단파)</span></span>
+        <span class="ir-lbl" data-ir="surfLw">③<span class="ir-name"> 지표가 내보내는 열</span></span>
+        <span class="ir-lbl" data-ir="backLw">④<span class="ir-name"> 대기가 되돌려 보내는 열</span></span>
+        <span class="ir-lbl" data-ir="olr">⑤<span class="ir-name"> 우주로 나가는 열</span></span>
+      </div>
+      <p class="ir-cap readout">적외선(장파 복사) 보기 · CO₂ 흡수대 약 15 μm<br><span id="irCapScale">변화 띠·밝기 변화 ×20 확대</span></p>
+    </div>
     <!-- 3D 범례 (2차 개편 D7): 3D의 무엇이 무엇을 나타내는지. 정보 표시라 버튼처럼 보이지 않게 두고, 접기 버튼만 보기 조작이다.
          줄 표시는 js/main.js updateLegend3D (보기 토글·자연 지구에 따라). 근거 수준(관측·IPCC·연출)은 줄 끝 ⓘ에서 -->
     <section class="legend3d paper-only" id="legend3d" aria-labelledby="legend3dTitle" data-ws-moved>
@@ -146,6 +171,18 @@
           <span class="lg-text"><span class="lg-off"><b>바다 색</b> — 자연색 (pH로 바뀌지 않음)</span><span class="lg-on"><b>지시약 색</b> — 실제 바다 색이 아니라 지시약처럼 pH를 색으로 나타낸 것, 범위를 확대함
             <span class="lg-bar" id="legend3dBar" aria-hidden="true"></span><span class="lg-ticks readout"><span>7.6</span><span>7.9</span><span>8.2</span></span></span></span>
           <button class="src-i" type="button" data-src="ph_indicator" aria-label="출처 보기: 지시약으로 보기 (pH 색)">ⓘ</button></li>
+        <!-- 3차 F: 적외선 보기 절. 켜져 있을 때만 보인다(js/ir-scope.js syncUi). 값 표는 renderLegend 가 그해 엔진 값으로 채운다 -->
+        <li class="lg-row lg-ir" data-row="ir" hidden><span class="lg-pic" data-icon="sun" data-icon-size="20"></span>
+          <span class="lg-text"><span><b>적외선 보기</b> — 지구가 스스로 내보내는 열(장파 복사)을 본 모습입니다. 햇빛은 주로 단파라 이 보기에서는 밝지 않습니다.</span>
+            <span class="ir-key"><b>빛망울 개수</b> = 대기 CO₂의 양 · <b>화살표 굵기</b> = 에너지 흐름(W/m²) · <b>밝기</b> = 기온</span>
+            <table class="ir-table">
+              <thead><tr><th scope="col">화살표 (W/m²)</th><th scope="col">기준</th><th scope="col">그해 변화</th></tr></thead>
+              <tbody id="irLegendRows"></tbody>
+            </table>
+            <span class="ir-n readout" id="irLegendN"></span>
+            <span class="ir-note" id="irLegendNote">변화 띠와 밝기 변화는 ×20 확대했습니다(기준 부분은 실제 비율). ④는 강제력만큼 늘어난 것으로 단순화했습니다. 구역끼리의 밝기 차이(도시 &gt; 바다 &gt; 숲)는 설명용입니다.</span></span>
+          <span class="ir-srcs"><button class="src-i" type="button" data-src="energy_budget_ar6" aria-label="출처 보기: 지구 에너지 수지 기준값">ⓘ</button>
+            <button class="src-i" type="button" data-src="ir_zone_offset" aria-label="출처 보기: 적외선 보기 표현 규칙">ⓘ</button></span></li>
       </ul>
     </section>
     <!-- 예측 전환 효과 (C6, 2차 F6): 재생 위치가 2023을 넘어 미래로 들어갈 때 한 번 뜨는 띠, 미래 구간 동안의 파란 테두리(도는 빛·모서리 표시)·배지.
@@ -733,6 +770,7 @@
 <script src="js/earth-system.js?v=2"></script>
 <script src="js/earth-visual.js?v=1"></script>
 <script src="js/common.js?v=4"></script>
+<script src="js/ir-scope.js"></script>
 <script src="js/data-catalog.js"></script>
 <script src="js/graph-workspace.js"></script>
 <script src="js/worksheet.js"></script>

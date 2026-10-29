@@ -49,6 +49,7 @@ function switchTab(name) {
   if (name !== 'live') document.body.classList.remove('live-setup', 'live-run');
   activeTab = name;
   if (typeof Inquiry !== 'undefined' && Inquiry) Inquiry.onTab(name);   // 탐구 경로는 탭마다 다르다 (3차 E1, js/inquiry.js)
+  if (IRScope) IRScope.onTab(name);   // 적외선 보기(3차 F): 위에서 종이색으로 칠한 3D 바탕을 켬 상태에 맞춘다 (js/ir-scope.js)
   fitRenderer();   // 탭에 따라 3D 칸 크기가 달라진다
   if (name === 'future') {
     activateFutureTab();   // 그래프 크기 맞추기 + 재생 연도의 엔진 값을 3D에 반영 (js/tab-future.js)

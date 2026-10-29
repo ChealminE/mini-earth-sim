@@ -33,6 +33,7 @@ for (const d of ['co2', 'temp', 'ph', 'sst', 'omega', 'obs', 'fossil', 'luc', 'o
 for (const k of ['obs', 'model', 'param', 'assumption', 'calibrated']) pairs.push(['--on-fill', `--kind-${k}`, 'ⓘ 종류 배지']);
 pairs.push(['--warn', '--warn-bg', 'ⓘ 미확인 경고']);
 pairs.push(['--ctl-time', '--paper', 'ⓘ 링크']);
+pairs.push(['--ir-ink', '--ir-bg', '적외선 보기 덮개 글자(3차 F)']);
 // 자연 지구 회색은 선 색으로만 쓴다(글자에는 쓰지 않음) — 3:1(그래픽 요소 기준)만 본다
 const graphic = [['--data-nature', '--paper', '자연 지구 선(그래픽, 3:1)']];
 

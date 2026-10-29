@@ -186,6 +186,32 @@ function seededRandom(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
+// 상자 공기 부피 안에 점 N개를 고르게 흩뿌린다 (지형 위 ~ 뚜껑 아래, 벽에서 0.1 띄움).
+// [CO₂ 보기] 점 구름과 적외선 보기 입자(js/ir-scope.js)가 같이 쓴다 — CO₂는 고르게 섞인 기체라 어느 한곳에 모으지 않는다.
+// base = 제자리(xyz), seed = 떠다니는 위상·속도(2개씩). rnd 를 넘기면 그 난수로(같은 배치를 다시 만들 때)
+function scatterInAir(N, dims, rnd = Math.random) {
+  const { BOX_W, BOX_D, BOX_H, TERRAIN_TOP } = dims;
+  const base = new Float32Array(N * 3), seed = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    base[i * 3] = (rnd() - 0.5) * (BOX_W - 0.2);
+    base[i * 3 + 1] = TERRAIN_TOP + 0.08 + rnd() * (BOX_H - TERRAIN_TOP - 0.18);
+    base[i * 3 + 2] = (rnd() - 0.5) * (BOX_D - 0.2);
+    seed[i * 2] = rnd() * Math.PI * 2;
+    seed[i * 2 + 1] = 0.3 + rnd() * 0.6;
+  }
+  return { base, seed };
+}
+// 점 구름 한 프레임 떠다니기: 앞에서부터 보이는 n개만. [CO₂ 보기]와 적외선 입자가 같은 움직임을 쓴다
+function driftPoints(points, n) {
+  const cp = points.geometry.attributes.position, { base, seed } = points.userData;
+  for (let i = 0; i < n; i++) {
+    const ph = seed[i * 2], sp = seed[i * 2 + 1];
+    cp.array[i * 3] = base[i * 3] + Math.sin(t * sp + ph) * 0.05;
+    cp.array[i * 3 + 1] = base[i * 3 + 1] + Math.sin(t * sp * 0.7 + ph * 1.3) * 0.03;
+    cp.array[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * sp + ph) * 0.05;
+  }
+  cp.needsUpdate = true;
+}
 // 여러 지오메트리를 하나로 합친다(위치·법선만). 자동차처럼 부품이 여러 개인 모형을 InstancedMesh 하나로 그리려고
 // 쓴다 - three.js 코어(r160)에는 BufferGeometryUtils.mergeGeometries가 없다(예제 모듈이라 전역 스크립트 구조에서 못 씀).
 // 모든 부품에 uv가 있으면 uv도 합친다(조개 껍데기의 구멍 무늬 alphaMap에 필요).
@@ -527,6 +553,7 @@ function applyCity(S, c) {
 function setEarthVisual(S, s, soc) {
   const st = S.state, fossil = s.fossil || 0;
   st.T = s.T;          // 기온 편차 → 빙하(연출)·산호(SR1.5)
+  st.ppmModel = s.ppm; // 같은 엔진 표본의 CO₂ — 적외선 보기 화살표(강제력 F)가 기온 T와 같은 계산에서 나오게 (3차 F)
   st.omega = s.omega;  // 아라고나이트 포화도 → 조개 껍데기 (D5)
   st.ph = s.pH;        // [지시약으로 보기] (D5)
   if (!soc) return;    // 자연 지구: 도시가 없다
@@ -823,15 +850,8 @@ if (PAPER) { atmosphere.visible = false; haze.visible = false; }
 let co2Dots = null;
 if (PAPER) {
   const N = EarthVisual.CO2_DOTS.MAX;
-  const pos = new Float32Array(N * 3), base = new Float32Array(N * 3), seed = new Float32Array(N * 2);
-  for (let i = 0; i < N; i++) {
-    base[i * 3] = (Math.random() - 0.5) * (BOX_W - 0.2);
-    base[i * 3 + 1] = TERRAIN_TOP + 0.08 + Math.random() * (BOX_H - TERRAIN_TOP - 0.18);
-    base[i * 3 + 2] = (Math.random() - 0.5) * (BOX_D - 0.2);
-    seed[i * 2] = Math.random() * Math.PI * 2;
-    seed[i * 2 + 1] = 0.3 + Math.random() * 0.6;
-  }
-  pos.set(base);
+  const { base, seed } = scatterInAir(N, { BOX_W, BOX_D, BOX_H, TERRAIN_TOP });
+  const pos = Float32Array.from(base);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setDrawRange(0, 0);
@@ -1437,7 +1457,9 @@ if (city) {
 }
 
 return {
-  paper: PAPER, city, clouds, predictFx, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
+  paper: PAPER, city, clouds, predictFx, glacier, coral, shells, co2Dots, atmosphere, haze, scene, lidMat,
+  // 적외선 보기(3차 F, js/ir-scope.js)가 켜고 끌 때 바꿨다 되돌리는 것들
+  box, lid, acrylicMat, edgeMat, lampBulb, BOX_W, BOX_D, atmoMat, atmoGeo, atmoCount, atmoSeed, atmoBase,
   hazeMat, dropMat, dropGeo, dropCount, dropSeed, iceMeshes,
   wavePosAttr, waveBase, waveD, waveBaseY, waveGeo,
   foamGeo, foamCount, foamSeed, foamBaseArr,
@@ -1495,6 +1517,8 @@ function applyState(S) {
     S.lidMat.color.copy(S.CLEAR_SKY);
     S.co2Dots.visible = VIEW3D.co2;
     S.co2Dots.geometry.setDrawRange(0, EarthVisual.co2DotCount(S.state.co2));
+    // 적외선 보기(3차 F): 켜져 있으면 입자 개수·밝기·화살표를 이 씬 값으로. ir-scope.js 는 이 파일 뒤에 읽히지만 applyState 는 그 뒤에 불린다
+    if (typeof IRScope !== 'undefined') IRScope.apply(S);
   } else {
     // 직접 실험 탭: 예전 그대로 (실측 CO₂ → 뚜껑·입자·안개 색)
     S.lidMat.opacity = 0.12 + intensity * 0.35;
@@ -1652,17 +1676,9 @@ function stepScene(S) {
   if (S.predictFx) stepPredictFx(S.predictFx, !!S.predictOn);
 
   // [CO₂ 보기] 점 구름: 보일 때만, 보이는 개수만 천천히 떠다니게
-  if (S.co2Dots && S.co2Dots.visible) {
-    const cp = S.co2Dots.geometry.attributes.position, { base, seed } = S.co2Dots.userData;
-    const n = S.co2Dots.geometry.drawRange.count;
-    for (let i = 0; i < n; i++) {
-      const ph = seed[i * 2], sp = seed[i * 2 + 1];
-      cp.array[i * 3] = base[i * 3] + Math.sin(t * sp + ph) * 0.05;
-      cp.array[i * 3 + 1] = base[i * 3 + 1] + Math.sin(t * sp * 0.7 + ph * 1.3) * 0.03;
-      cp.array[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * sp + ph) * 0.05;
-    }
-    cp.needsUpdate = true;
-  }
+  if (S.co2Dots && S.co2Dots.visible) driftPoints(S.co2Dots, S.co2Dots.geometry.drawRange.count);
+  // 적외선 보기 입자·화살표 (3차 F, js/ir-scope.js). 켜 본 씬에만 부품이 있다
+  if (S.ir) IRScope.step(S);
 
   // 대기 입자 드리프트 (종이 탭은 숨겨 둔 입자라 계산하지 않는다)
   const ap = S.atmoGeo.attributes.position;
